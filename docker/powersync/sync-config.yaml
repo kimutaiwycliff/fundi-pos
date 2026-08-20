@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://unpkg.com/@powersync/service-sync-rules@latest/schema/sync_rules.json
+#
+# Placeholder — real per-store/per-terminal stream definitions land in
+# Phase 2 (spec Section 5: "Sync direction"). Syncs everything for now so
+# the Phase 0 spike has something to connect to. Restart the service after
+# editing this file — changes are not hot-reloaded.
+config:
+  edition: 3
+
+streams:
+  global:
+    auto_subscribe: true
+    queries:
+      - SELECT * FROM stock_movements
+      - SELECT * FROM orders
+      - SELECT * FROM products
