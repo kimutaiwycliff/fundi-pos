@@ -284,5 +284,38 @@ describe('Payload collections - integration', () => {
       expect(ids).toContain(storeA.id);
       expect(ids).not.toContain(storeB.id);
     });
+
+    it('ignores a spoofed tenant field on create and forces the authenticated user\'s own tenant', async () => {
+      const tenantA = await payload.create({
+        collection: 'tenants', data: { name: 'A2', subscriptionTier: 'trial', billingStatus: 'trialing' },
+        overrideAccess: true,
+      });
+      const tenantB = await payload.create({
+        collection: 'tenants', data: { name: 'B2', subscriptionTier: 'trial', billingStatus: 'trialing' },
+        overrideAccess: true,
+      });
+      const managerA = await payload.create({
+        collection: 'users',
+        data: { tenant: tenantA.id, role: 'manager', email: 'managerA2@test.local', password: 'pw123456' },
+        overrideAccess: true,
+      });
+
+      // A manager authenticated as tenant A attempts to create a supplier
+      // under tenant B's id - the beforeChange hook must override this,
+      // not the client's submitted value.
+      const supplier = await payload.create({
+        collection: 'suppliers',
+        data: { tenant: tenantB.id, name: 'Spoofed Supplier' },
+        user: asUser({ id: managerA.id as number, tenant: tenantA.id as number, role: 'manager' }),
+        overrideAccess: false,
+      });
+
+      expect(toIdValue(supplier.tenant)).toBe(tenantA.id);
+      expect(toIdValue(supplier.tenant)).not.toBe(tenantB.id);
+    });
   });
 });
+
+function toIdValue(value: unknown): unknown {
+  return value && typeof value === 'object' && 'id' in (value as object) ? (value as { id: unknown }).id : value;
+}

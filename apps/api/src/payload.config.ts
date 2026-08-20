@@ -40,6 +40,13 @@ export default buildConfig({
     Customers,
     SyncLog,
   ],
+  // apps/web talks to Payload through its own server-side route handlers
+  // (same-origin from the browser's perspective, proxied server-to-server -
+  // sidesteps cross-origin cookie SameSite/Secure complications entirely
+  // for local http dev). CORS/CSRF are still opened for localhost:3000 for
+  // any direct browser calls (e.g. public reads) and for local admin-panel access.
+  cors: ['http://localhost:3000'],
+  csrf: ['http://localhost:3000'],
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),

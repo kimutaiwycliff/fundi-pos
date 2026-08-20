@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
+import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
 export const PurchaseOrders: CollectionConfig = {
   slug: 'purchase-orders',
@@ -34,4 +35,7 @@ export const PurchaseOrders: CollectionConfig = {
     },
     { name: 'receivedAt', type: 'date' },
   ],
+  hooks: {
+    beforeChange: [enforceOwnTenant({ requireOwnStore: true })],
+  },
 };

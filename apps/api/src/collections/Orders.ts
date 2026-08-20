@@ -2,6 +2,7 @@ import type { CollectionConfig } from 'payload';
 import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
 import { isAuthenticated, managerOrOwner, neverDelete, ownTenantOnly } from '../access/index.ts';
 import { toID } from '../lib/relations.ts';
+import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
 export const Orders: CollectionConfig = {
   slug: 'orders',
@@ -79,6 +80,7 @@ export const Orders: CollectionConfig = {
   ],
   hooks: {
     beforeChange: [
+      enforceOwnTenant({ requireOwnStore: true }),
       ({ data, operation }) => {
         if (operation !== 'create' || !Array.isArray(data.lineItems)) return data;
 

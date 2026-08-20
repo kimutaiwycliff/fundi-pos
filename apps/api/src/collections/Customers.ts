@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload';
 import { isAuthenticated, ownTenantOnly } from '../access/index.ts';
+import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
 export const Customers: CollectionConfig = {
   slug: 'customers',
@@ -18,4 +19,7 @@ export const Customers: CollectionConfig = {
     { name: 'phone', type: 'text', index: true },
     { name: 'loyaltyPoints', type: 'number', required: true, defaultValue: 0 },
   ],
+  hooks: {
+    beforeChange: [enforceOwnTenant()],
+  },
 };

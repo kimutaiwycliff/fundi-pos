@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
+import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
 export const Stores: CollectionConfig = {
   slug: 'stores',
@@ -16,4 +17,7 @@ export const Stores: CollectionConfig = {
     { name: 'address', type: 'text' },
     { name: 'timezone', type: 'text', required: true, defaultValue: 'Africa/Nairobi' },
   ],
+  hooks: {
+    beforeChange: [enforceOwnTenant()],
+  },
 };

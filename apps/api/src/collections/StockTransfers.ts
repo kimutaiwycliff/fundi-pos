@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
+import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
 export const StockTransfers: CollectionConfig = {
   slug: 'stock-transfers',
@@ -32,4 +33,7 @@ export const StockTransfers: CollectionConfig = {
       options: ['draft', 'in_transit', 'received'],
     },
   ],
+  hooks: {
+    beforeChange: [enforceOwnTenant()],
+  },
 };

@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
+import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
 export const Products: CollectionConfig = {
   slug: 'products',
@@ -39,4 +40,7 @@ export const Products: CollectionConfig = {
       ],
     },
   ],
+  hooks: {
+    beforeChange: [enforceOwnTenant()],
+  },
 };

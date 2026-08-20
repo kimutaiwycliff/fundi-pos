@@ -2,6 +2,7 @@ import type { CollectionConfig } from 'payload';
 import { isAuthenticated, neverDelete, ownTenantOnly } from '../access/index.ts';
 import { computeRunningBalance } from '../hooks/stockBalance.ts';
 import { toID } from '../lib/relations.ts';
+import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
 export const StockMovements: CollectionConfig = {
   slug: 'stock-movements',
@@ -53,6 +54,7 @@ export const StockMovements: CollectionConfig = {
   ],
   hooks: {
     beforeChange: [
+      enforceOwnTenant({ requireOwnStore: true }),
       ({ data, operation }) => {
         if (operation === 'create' && !data.serverTimestamp) {
           data.serverTimestamp = new Date().toISOString();

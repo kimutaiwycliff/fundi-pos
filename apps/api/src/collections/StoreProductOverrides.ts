@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
+import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
 export const StoreProductOverrides: CollectionConfig = {
   slug: 'store-product-overrides',
@@ -17,4 +18,7 @@ export const StoreProductOverrides: CollectionConfig = {
     { name: 'priceOverride', type: 'number', admin: { step: 0.01 } },
     { name: 'isAvailable', type: 'checkbox', defaultValue: true },
   ],
+  hooks: {
+    beforeChange: [enforceOwnTenant({ requireOwnStore: true })],
+  },
 };
