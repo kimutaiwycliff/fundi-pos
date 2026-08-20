@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyRestock, applyConsumption, costOfGoodsSold, type CostBasis } from './costing.js';
+import { applyRestock, applyConsumption, costOfGoodsSold, type CostBasis } from './costing.ts';
 
 describe('weighted-average costing', () => {
   it('blends a restock into the running average cost', () => {

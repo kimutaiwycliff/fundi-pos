@@ -1,0 +1,282 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { getPayload, type Payload } from 'payload';
+import config from '../payload.config.ts';
+import { isDuplicateIdError } from '../lib/idempotency.ts';
+
+let payload: Payload;
+
+// asUser mimics the shape Payload's access-control functions read off
+// req.user - enough to exercise real access control without a full
+// auth/JWT round-trip.
+function asUser(user: { id: number; tenant: number; role: string }) {
+  return { ...user, collection: 'users' } as any;
+}
+
+async function truncateAll() {
+  const tables = [
+    'orders_line_items', 'orders', 'stock_movements', 'products_bundle_components',
+    'products_variants', 'products', 'store_product_overrides', 'purchase_orders_line_items',
+    'purchase_orders', 'suppliers', 'stock_transfers_line_items', 'stock_transfers',
+    'customers', 'sync_log', 'users_sessions', 'users', 'stores', 'tenants',
+  ];
+  await payload.db.drizzle.execute(
+    `TRUNCATE ${tables.map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE;`,
+  );
+}
+
+describe('Payload collections - integration', () => {
+  beforeAll(async () => {
+    payload = await getPayload({ config });
+    await truncateAll();
+  });
+
+  afterAll(async () => {
+    await payload.destroy();
+  });
+
+  describe('Orders + StockMovements ledger', () => {
+    let tenantId: number;
+    let storeId: number;
+    let cashierId: number;
+    let managerId: number;
+    let productId: number;
+
+    beforeEach(async () => {
+      await truncateAll();
+      const tenant = await payload.create({
+        collection: 'tenants',
+        data: { name: 'Test Tenant', subscriptionTier: 'trial', billingStatus: 'trialing' },
+        overrideAccess: true,
+      });
+      tenantId = tenant.id as number;
+
+      const store = await payload.create({
+        collection: 'stores',
+        data: { tenant: tenantId, name: 'Test Store', timezone: 'Africa/Nairobi' },
+        overrideAccess: true,
+      });
+      storeId = store.id as number;
+
+      const cashier = await payload.create({
+        collection: 'users',
+        data: { tenant: tenantId, store: storeId, role: 'cashier', email: 'c@test.local', password: 'pw123456' },
+        overrideAccess: true,
+      });
+      cashierId = cashier.id as number;
+
+      const manager = await payload.create({
+        collection: 'users',
+        data: { tenant: tenantId, store: storeId, role: 'manager', email: 'm@test.local', password: 'pw123456' },
+        overrideAccess: true,
+      });
+      managerId = manager.id as number;
+
+      const product = await payload.create({
+        collection: 'products',
+        data: {
+          tenant: tenantId, sku: 'SKU-1', name: 'Test Widget',
+          costPrice: 10, sellPrice: 100, taxRate: 0.16,
+        },
+        overrideAccess: true,
+      });
+      productId = product.id as number;
+
+      // Opening stock: 5 units.
+      await payload.create({
+        collection: 'stock-movements',
+        data: {
+          id: crypto.randomUUID(), tenant: tenantId, store: storeId, product: productId,
+          quantityDelta: 5, reason: 'restock', clientTimestamp: new Date().toISOString(),
+          sourceTerminal: 'test-seed',
+        },
+        overrideAccess: true,
+      });
+    });
+
+    it('recomputes totals server-side, ignoring client-submitted values', async () => {
+      const order = await payload.create({
+        collection: 'orders',
+        data: {
+          id: crypto.randomUUID(), tenant: tenantId, store: storeId, terminal: 'till-1',
+          cashier: cashierId,
+          lineItems: [{ product: productId, quantity: 2, unitPrice: 100, discount: 0 }],
+          // Tampered client values - server must override these.
+          taxTotal: 999, discountTotal: 999, total: 1,
+          tenderType: 'cash', status: 'completed',
+        },
+        user: asUser({ id: cashierId, tenant: tenantId, role: 'cashier' }),
+        overrideAccess: false,
+      });
+
+      // 2 x 100 = 200 gross, 16% VAT-inclusive => net 172.41, tax 27.59
+      expect(order.total).toBe(200);
+      expect(order.taxTotal).toBeCloseTo(27.59, 2);
+      expect(order.discountTotal).toBe(0);
+    });
+
+    it('derives a sale StockMovement per line item, linked to the order', async () => {
+      const order = await payload.create({
+        collection: 'orders',
+        data: {
+          id: crypto.randomUUID(), tenant: tenantId, store: storeId, terminal: 'till-1',
+          cashier: cashierId,
+          lineItems: [{ product: productId, quantity: 2, unitPrice: 100, discount: 0 }],
+          taxTotal: 0, discountTotal: 0, total: 0,
+          tenderType: 'cash', status: 'completed',
+        },
+        user: asUser({ id: cashierId, tenant: tenantId, role: 'cashier' }),
+        overrideAccess: false,
+      });
+
+      const movements = await payload.find({
+        collection: 'stock-movements',
+        where: { relatedOrder: { equals: order.id } },
+        overrideAccess: true,
+      });
+
+      expect(movements.docs).toHaveLength(1);
+      expect(movements.docs[0].quantityDelta).toBe(-2);
+      expect(movements.docs[0].reason).toBe('sale');
+    });
+
+    it('flags the movement for review when a sale drives stock negative, without clamping', async () => {
+      // Only 5 in stock; sell 8.
+      const order = await payload.create({
+        collection: 'orders',
+        data: {
+          id: crypto.randomUUID(), tenant: tenantId, store: storeId, terminal: 'till-1',
+          cashier: cashierId,
+          lineItems: [{ product: productId, quantity: 8, unitPrice: 100, discount: 0 }],
+          taxTotal: 0, discountTotal: 0, total: 0,
+          tenderType: 'cash', status: 'completed',
+        },
+        user: asUser({ id: cashierId, tenant: tenantId, role: 'cashier' }),
+        overrideAccess: false,
+      });
+
+      const movements = await payload.find({
+        collection: 'stock-movements',
+        where: { relatedOrder: { equals: order.id } },
+        overrideAccess: true,
+      });
+
+      expect(movements.docs[0].quantityDelta).toBe(-8); // never silently clamped to zero
+      expect(movements.docs[0].flaggedForReview).toBe(true);
+    });
+
+    it('treats a replayed client-generated UUID as a detectable duplicate, not silent overwrite', async () => {
+      const id = crypto.randomUUID();
+      const movementData = {
+        id, tenant: tenantId, store: storeId, product: productId,
+        quantityDelta: 1, reason: 'restock' as const, clientTimestamp: new Date().toISOString(),
+        sourceTerminal: 'till-1',
+      };
+
+      await payload.create({ collection: 'stock-movements', data: movementData, overrideAccess: true });
+
+      await expect(
+        payload.create({ collection: 'stock-movements', data: movementData, overrideAccess: true }),
+      ).rejects.toSatisfy((err: unknown) => isDuplicateIdError(err));
+
+      const all = await payload.find({
+        collection: 'stock-movements',
+        where: { id: { equals: id } },
+        overrideAccess: true,
+      });
+      expect(all.docs).toHaveLength(1); // no duplicate row was created
+    });
+
+    it('lets a manager update an order (e.g. refund) but not a cashier', async () => {
+      const order = await payload.create({
+        collection: 'orders',
+        data: {
+          id: crypto.randomUUID(), tenant: tenantId, store: storeId, terminal: 'till-1',
+          cashier: cashierId,
+          lineItems: [{ product: productId, quantity: 1, unitPrice: 100, discount: 0 }],
+          taxTotal: 0, discountTotal: 0, total: 0,
+          tenderType: 'cash', status: 'completed',
+        },
+        overrideAccess: true,
+      });
+
+      await expect(
+        payload.update({
+          collection: 'orders',
+          id: order.id,
+          data: { status: 'refunded' },
+          user: asUser({ id: cashierId, tenant: tenantId, role: 'cashier' }),
+          overrideAccess: false,
+        }),
+      ).rejects.toThrow();
+
+      const refunded = await payload.update({
+        collection: 'orders',
+        id: order.id,
+        data: { status: 'refunded' },
+        user: asUser({ id: managerId, tenant: tenantId, role: 'manager' }),
+        overrideAccess: false,
+      });
+      expect(refunded.status).toBe('refunded');
+    });
+
+    it('never allows deleting an Order or StockMovement, even for an owner', async () => {
+      const order = await payload.create({
+        collection: 'orders',
+        data: {
+          id: crypto.randomUUID(), tenant: tenantId, store: storeId, terminal: 'till-1',
+          cashier: cashierId,
+          lineItems: [{ product: productId, quantity: 1, unitPrice: 100, discount: 0 }],
+          taxTotal: 0, discountTotal: 0, total: 0,
+          tenderType: 'cash', status: 'completed',
+        },
+        overrideAccess: true,
+      });
+
+      await expect(
+        payload.delete({
+          collection: 'orders',
+          id: order.id,
+          user: asUser({ id: managerId, tenant: tenantId, role: 'owner' }),
+          overrideAccess: false,
+        }),
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('Tenant isolation', () => {
+    it('never returns another tenant\'s data, even to that tenant\'s owner', async () => {
+      await truncateAll();
+      const tenantA = await payload.create({
+        collection: 'tenants', data: { name: 'A', subscriptionTier: 'trial', billingStatus: 'trialing' },
+        overrideAccess: true,
+      });
+      const tenantB = await payload.create({
+        collection: 'tenants', data: { name: 'B', subscriptionTier: 'trial', billingStatus: 'trialing' },
+        overrideAccess: true,
+      });
+      const storeA = await payload.create({
+        collection: 'stores', data: { tenant: tenantA.id, name: 'A Store', timezone: 'Africa/Nairobi' },
+        overrideAccess: true,
+      });
+      const storeB = await payload.create({
+        collection: 'stores', data: { tenant: tenantB.id, name: 'B Store', timezone: 'Africa/Nairobi' },
+        overrideAccess: true,
+      });
+      const ownerA = await payload.create({
+        collection: 'users',
+        data: { tenant: tenantA.id, role: 'owner', email: 'ownerA@test.local', password: 'pw123456' },
+        overrideAccess: true,
+      });
+
+      const result = await payload.find({
+        collection: 'stores',
+        user: asUser({ id: ownerA.id as number, tenant: tenantA.id as number, role: 'owner' }),
+        overrideAccess: false,
+      });
+
+      const ids = result.docs.map((d) => d.id);
+      expect(ids).toContain(storeA.id);
+      expect(ids).not.toContain(storeB.id);
+    });
+  });
+});

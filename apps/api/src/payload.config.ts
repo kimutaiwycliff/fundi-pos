@@ -1,0 +1,52 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { postgresAdapter } from '@payloadcms/db-postgres';
+import { buildConfig } from 'payload';
+
+import { Tenants } from './collections/Tenants.ts';
+import { Stores } from './collections/Stores.ts';
+import { Users } from './collections/Users.ts';
+import { Products } from './collections/Products.ts';
+import { StoreProductOverrides } from './collections/StoreProductOverrides.ts';
+import { StockMovements } from './collections/StockMovements.ts';
+import { Orders } from './collections/Orders.ts';
+import { PurchaseOrders } from './collections/PurchaseOrders.ts';
+import { Suppliers } from './collections/Suppliers.ts';
+import { StockTransfers } from './collections/StockTransfers.ts';
+import { Customers } from './collections/Customers.ts';
+import { SyncLog } from './collections/SyncLog.ts';
+
+const filename = fileURLToPath(import.meta.url);
+const dirname = path.dirname(filename);
+
+export default buildConfig({
+  admin: {
+    user: Users.slug,
+    importMap: {
+      baseDir: path.resolve(dirname, 'app/(payload)'),
+    },
+  },
+  collections: [
+    Tenants,
+    Stores,
+    Users,
+    Products,
+    StoreProductOverrides,
+    StockMovements,
+    Orders,
+    PurchaseOrders,
+    Suppliers,
+    StockTransfers,
+    Customers,
+    SyncLog,
+  ],
+  secret: process.env.PAYLOAD_SECRET || '',
+  typescript: {
+    outputFile: path.resolve(dirname, 'payload-types.ts'),
+  },
+  db: postgresAdapter({
+    pool: {
+      connectionString: process.env.DATABASE_URI || '',
+    },
+  }),
+});

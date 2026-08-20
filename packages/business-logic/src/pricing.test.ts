@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeLine, computeOrderTotals, type LineInput } from './pricing.js';
+import { computeLine, computeOrderTotals, type LineInput } from './pricing.ts';
 
 describe('computeLine', () => {
   it('applies discount then extracts tax-inclusive VAT', () => {

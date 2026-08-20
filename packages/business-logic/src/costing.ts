@@ -1,4 +1,4 @@
-import { roundCurrency } from './money.js';
+import { roundCurrency } from './money.ts';
 
 // Weighted-average costing (spec Section 6.2 leaves FIFO vs. weighted-average
 // open; weighted-average is the default — see build plan for rationale).

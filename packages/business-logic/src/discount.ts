@@ -1,4 +1,4 @@
-import { roundCurrency } from './money.js';
+import { roundCurrency } from './money.ts';
 
 // Line-level discount is a flat monetary amount (matches OrderLineItem.discount
 // in shared-types). Promo codes resolve to a flat amount or percentage-off

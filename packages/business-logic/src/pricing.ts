@@ -1,6 +1,6 @@
-import { roundCurrency } from './money.js';
-import { computeTax, type TaxMode } from './tax.js';
-import { applyLineDiscount } from './discount.js';
+import { roundCurrency } from './money.ts';
+import { computeTax, type TaxMode } from './tax.ts';
+import { applyLineDiscount } from './discount.ts';
 
 export interface LineInput {
   quantity: number;

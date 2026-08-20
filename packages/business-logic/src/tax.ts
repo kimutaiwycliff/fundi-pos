@@ -1,4 +1,4 @@
-import { roundCurrency } from './money.js';
+import { roundCurrency } from './money.ts';
 
 // Kenyan retail convention (and the default for this POS): sellPrice is
 // VAT-inclusive — the shelf price already contains the tax. `computeTax`

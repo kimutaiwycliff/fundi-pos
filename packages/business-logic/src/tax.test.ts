@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeTax } from './tax.js';
+import { computeTax } from './tax.ts';
 
 describe('computeTax', () => {
   it('extracts VAT from a tax-inclusive gross amount (KRA default: 16%)', () => {

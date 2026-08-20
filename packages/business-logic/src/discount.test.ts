@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyLineDiscount, resolvePromoDiscount } from './discount.js';
+import { applyLineDiscount, resolvePromoDiscount } from './discount.ts';
 
 describe('applyLineDiscount', () => {
   it('subtracts a flat discount from the line subtotal', () => {
