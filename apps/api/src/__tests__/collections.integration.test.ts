@@ -8,8 +8,14 @@ let payload: Payload;
 // asUser mimics the shape Payload's access-control functions read off
 // req.user - enough to exercise real access control without a full
 // auth/JWT round-trip.
+// Deliberately shaped like Payload's REAL populated user (tenant as a full
+// object, not a bare id) - a real authenticated request populates
+// relationships this way, and a bare-id shape here would hide bugs in
+// access-control functions that forget to unwrap it (this happened: a real
+// POST /api/users request 500'd in production-shaped testing after this
+// helper's earlier bare-id version let the same bug pass silently).
 function asUser(user: { id: number; tenant: number; role: string }) {
-  return { ...user, collection: 'users' } as any;
+  return { ...user, tenant: { id: user.tenant }, collection: 'users' } as any;
 }
 
 async function truncateAll() {

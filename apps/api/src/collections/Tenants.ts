@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload';
 import { isAuthenticated, ownerOnly } from '../access/index.ts';
+import { toID } from '../lib/relations.ts';
 
 export const Tenants: CollectionConfig = {
   slug: 'tenants',
@@ -7,10 +8,13 @@ export const Tenants: CollectionConfig = {
   access: {
     // A user may only ever read their own tenant record - there is no
     // superadmin bypass at this layer (ops access goes through direct DB
-    // access, not the API).
+    // access, not the API). req.user.tenant arrives populated (a full
+    // object) on a real request - must unwrap via toID(), same bug class
+    // already fixed in access/index.ts's shared helpers, but this
+    // collection has its own inline access fn that was missed the first time.
     read: ({ req }) => {
       if (!req.user) return false;
-      return { id: { equals: req.user.tenant } };
+      return { id: { equals: toID(req.user.tenant) } };
     },
     update: ownerOnly,
     create: () => false, // tenants are created by the signup/billing flow, not via the API
