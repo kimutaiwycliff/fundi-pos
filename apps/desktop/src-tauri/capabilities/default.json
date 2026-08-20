@@ -6,6 +6,10 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "powersync:default"
+    "powersync:default",
+    {
+      "identifier": "http:default",
+      "allow": [{ "url": "http://localhost:3011/*" }]
+    }
   ]
 }

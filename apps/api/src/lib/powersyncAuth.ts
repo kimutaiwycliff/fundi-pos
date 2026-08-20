@@ -30,8 +30,16 @@ export async function signPowerSyncToken(user: {
   const kid = requireEnv('POWERSYNC_JWT_KID');
 
   return new SignJWT({
-    tenant_id: String(user.tenant),
-    store_id: user.store != null ? String(user.store) : null,
+    // MUST be JSON numbers, not strings: PowerSync's bucket-parameterization
+    // builds a literal key from the JWT claim's JSON type (a quoted "1" vs
+    // bare 1), and compares it against the key computed from the replicated
+    // row's actual column value - tenant_id/store_id are integer columns in
+    // Postgres, so a string claim here means the two keys never match and
+    // sync silently returns zero rows. Found via a real end-to-end sync
+    // test (PowerSync logged operations_synced: 0 despite correct bucket
+    // names and a live, correctly-authenticated connection).
+    tenant_id: Number(user.tenant),
+    store_id: user.store != null ? Number(user.store) : null,
     role: user.role,
   })
     .setProtectedHeader({ alg: 'RS256', kid })

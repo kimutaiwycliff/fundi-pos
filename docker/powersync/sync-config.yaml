@@ -49,6 +49,14 @@ streams:
     auto_subscribe: true
     query: SELECT * FROM stores WHERE tenant_id = auth.parameter('tenant_id')
 
+  # Explicit column list, not `SELECT *`: Payload's `users` table also holds
+  # `hash`/`salt`/`reset_password_token` (its own admin-panel auth secrets).
+  # Syncing those to every till would let a compromised/malicious terminal
+  # exfiltrate every staff member's password hash for offline cracking -
+  # caught by inspecting real synced data, not by inspection of the query
+  # alone. A till only ever needs these columns for cashier lookup/PIN login.
   users:
     auto_subscribe: true
-    query: SELECT * FROM users WHERE tenant_id = auth.parameter('tenant_id')
+    query: |
+      SELECT id, tenant_id, store_id, role, pin_hash, email, created_at, updated_at
+      FROM users WHERE tenant_id = auth.parameter('tenant_id')

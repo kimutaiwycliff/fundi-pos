@@ -14,6 +14,15 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Mirrors vite.config.ts's resolve.alias workaround for an npm hoisting
+       quirk that leaves @powersync/common reachable only from here, not from
+       the workspace root where @powersync/shared-internals/tauri-plugin are
+       hoisted to and import it from. Paths resolve relative to this file
+       without needing baseUrl (TS 4.1+). */
+    "paths": {
+      "@powersync/common": ["./node_modules/@powersync/common"]
+    },
+
     /* Linting */
     "strict": true,
     "noUnusedLocals": true,

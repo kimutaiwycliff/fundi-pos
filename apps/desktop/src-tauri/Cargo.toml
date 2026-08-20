@@ -20,7 +20,16 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-http = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-powersync = "0.0.6"
+# Same version tauri-plugin-powersync itself depends on (see
+# ~/.cargo/registry/src/*/tauri-plugin-powersync-0.0.6/Cargo.toml) - needed
+# directly here to name powersync::BackendConnector/SyncOptions/etc. in our
+# own connector.rs, since tauri-plugin-powersync doesn't re-export them.
+powersync = { version = "0.0.7", features = ["tokio", "reqwest"] }
+async-trait = "0.1"
+reqwest = { version = "0.13", features = ["json"] }
+thiserror = "2"
 

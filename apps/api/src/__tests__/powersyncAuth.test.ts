@@ -37,8 +37,10 @@ describe('PowerSync JWT issuance', () => {
 
     expect(protectedHeader.kid).toBe('test-key');
     expect(payload.sub).toBe('42');
-    expect(payload.tenant_id).toBe('7');
-    expect(payload.store_id).toBe('3');
+    // Numbers, not strings - PowerSync's bucket-key matching requires the
+    // JSON type to match the replicated column's actual type (integer).
+    expect(payload.tenant_id).toBe(7);
+    expect(payload.store_id).toBe(3);
     expect(payload.role).toBe('cashier');
   });
 
