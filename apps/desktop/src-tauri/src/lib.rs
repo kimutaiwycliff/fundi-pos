@@ -1,4 +1,5 @@
 mod connector;
+mod pin;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -86,6 +87,17 @@ async fn powersync_disconnect(app: AppHandle, rust_handle: usize) -> Result<(), 
     Ok(())
 }
 
+/// Verifies a manager/owner's PIN fully offline (spec Section 6.1: refunds/
+/// voids gated behind manager PIN, must work with zero network) against the
+/// `pin_hash` column already synced down for this tenant via the `users`
+/// PowerSync stream. The JS side looks up the candidate manager's stored
+/// hash locally first (see src/pin.ts) and passes it in here - this command
+/// never touches the database itself, just the scrypt comparison.
+#[tauri::command]
+fn verify_manager_pin(pin: String, stored_hash: String) -> bool {
+    pin::verify_pin(&pin, &stored_hash)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -98,7 +110,8 @@ pub fn run() {
             ensure_app_data_dir,
             powersync_connect,
             powersync_update_token,
-            powersync_disconnect
+            powersync_disconnect,
+            verify_manager_pin
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

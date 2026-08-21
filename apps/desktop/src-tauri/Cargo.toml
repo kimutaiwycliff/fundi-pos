@@ -32,4 +32,6 @@ powersync = { version = "0.0.7", features = ["tokio", "reqwest"] }
 async-trait = "0.1"
 reqwest = { version = "0.13", features = ["json"] }
 thiserror = "2"
+scrypt = "0.12.0"
+hex = "0.4.3"
 
