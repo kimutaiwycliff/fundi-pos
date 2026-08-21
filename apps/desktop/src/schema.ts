@@ -139,6 +139,26 @@ const orders = new Table(
   { indexes: { tenant: ['tenant_id'], store: ['store_id'] } },
 );
 
+// Payload normalizes Orders.lineItems into its own Postgres child table
+// (_parent_id -> orders.id, _order = array index) rather than a JSON column -
+// mirrored here the same way so a local order write is two related table
+// inserts, exactly like the server side. Matches
+// `SELECT oli.* FROM orders_line_items oli JOIN orders ...` in
+// sync-config.yaml exactly - the join there is only for server-side
+// scoping, it doesn't add any of `orders`'s own columns to what's replicated.
+const orders_line_items = new Table(
+  {
+    _parent_id: column.text,
+    _order: column.integer,
+    product_id: column.integer,
+    variant: column.text,
+    quantity: column.real,
+    unit_price: column.real,
+    discount: column.real,
+  },
+  { indexes: { parent: ['_parent_id'] } },
+);
+
 export const AppSchema = new Schema({
   products,
   stores,
@@ -147,4 +167,5 @@ export const AppSchema = new Schema({
   store_product_overrides,
   stock_movements,
   orders,
+  orders_line_items,
 });

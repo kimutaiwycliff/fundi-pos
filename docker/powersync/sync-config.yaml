@@ -42,6 +42,18 @@ streams:
       SELECT * FROM orders
       WHERE tenant_id = auth.parameter('tenant_id') AND store_id = auth.parameter('store_id')
 
+  # orders_line_items has no tenant_id/store_id of its own (Payload
+  # normalizes the Orders.lineItems array field into a child table keyed
+  # only by _parent_id -> orders.id) - scope it by joining back to the
+  # parent order's own tenant/store instead of denormalizing columns onto
+  # the child table.
+  orders_line_items:
+    auto_subscribe: true
+    query: |
+      SELECT oli.* FROM orders_line_items oli
+      JOIN orders o ON o.id = oli._parent_id
+      WHERE o.tenant_id = auth.parameter('tenant_id') AND o.store_id = auth.parameter('store_id')
+
   # Org-level reference data a till needs for staff lookup/PIN login -
   # tenant-scoped, not store-scoped, since owners/managers can float
   # between stores.
