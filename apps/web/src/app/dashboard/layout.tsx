@@ -25,6 +25,10 @@ type CurrentUser = {
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Overview' },
   { href: '/dashboard/products', label: 'Products' },
+  { href: '/dashboard/inventory', label: 'Inventory' },
+  { href: '/dashboard/transfers', label: 'Transfers' },
+  { href: '/dashboard/exceptions', label: 'Exceptions' },
+  { href: '/dashboard/reports', label: 'Reports' },
   { href: '/dashboard/stores', label: 'Stores' },
   { href: '/dashboard/staff', label: 'Staff' },
 ];
