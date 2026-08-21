@@ -15,6 +15,7 @@ import { Suppliers } from './collections/Suppliers.ts';
 import { StockTransfers } from './collections/StockTransfers.ts';
 import { Customers } from './collections/Customers.ts';
 import { SyncLog } from './collections/SyncLog.ts';
+import { Shifts } from './collections/Shifts.ts';
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
@@ -39,6 +40,7 @@ export default buildConfig({
     StockTransfers,
     Customers,
     SyncLog,
+    Shifts,
   ],
   // apps/web talks to Payload through its own server-side route handlers
   // (same-origin from the browser's perspective, proxied server-to-server -

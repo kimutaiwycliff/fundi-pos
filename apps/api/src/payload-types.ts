@@ -79,6 +79,7 @@ export interface Config {
     'stock-transfers': StockTransfer;
     customers: Customer;
     'sync-log': SyncLog;
+    shifts: Shift;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -98,6 +99,7 @@ export interface Config {
     'stock-transfers': StockTransfersSelect<false> | StockTransfersSelect<true>;
     customers: CustomersSelect<false> | CustomersSelect<true>;
     'sync-log': SyncLogSelect<false> | SyncLogSelect<true>;
+    shifts: ShiftsSelect<false> | ShiftsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -217,6 +219,10 @@ export interface Product {
   costPrice: number;
   sellPrice: number;
   taxRate: number;
+  /**
+   * Dashboard flags this product as low-stock per store once on-hand quantity drops to or below this.
+   */
+  reorderPoint: number;
   isBundle?: boolean | null;
   bundleComponents?:
     | {
@@ -376,6 +382,32 @@ export interface SyncLog {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "shifts".
+ */
+export interface Shift {
+  id: number;
+  tenant: number | Tenant;
+  store: number | Store;
+  terminal: string;
+  cashier: number | User;
+  openedAt: string;
+  openingFloat: number;
+  closedAt?: string | null;
+  closingCashCounted?: number | null;
+  /**
+   * openingFloat + all cash sales during this shift (server-computed on close).
+   */
+  expectedCash?: number | null;
+  /**
+   * closingCashCounted - expectedCash. Never auto-corrected - a manager reviews any non-zero variance.
+   */
+  variance?: number | null;
+  status: 'open' | 'closed';
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -445,6 +477,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'sync-log';
         value: number | SyncLog;
+      } | null)
+    | ({
+        relationTo: 'shifts';
+        value: number | Shift;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -559,6 +595,7 @@ export interface ProductsSelect<T extends boolean = true> {
   costPrice?: T;
   sellPrice?: T;
   taxRate?: T;
+  reorderPoint?: T;
   isBundle?: T;
   bundleComponents?:
     | T
@@ -710,6 +747,25 @@ export interface SyncLogSelect<T extends boolean = true> {
   lastSyncedAt?: T;
   pendingCount?: T;
   conflictCount?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "shifts_select".
+ */
+export interface ShiftsSelect<T extends boolean = true> {
+  tenant?: T;
+  store?: T;
+  terminal?: T;
+  cashier?: T;
+  openedAt?: T;
+  openingFloat?: T;
+  closedAt?: T;
+  closingCashCounted?: T;
+  expectedCash?: T;
+  variance?: T;
+  status?: T;
   updatedAt?: T;
   createdAt?: T;
 }

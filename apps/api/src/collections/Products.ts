@@ -29,6 +29,13 @@ export const Products: CollectionConfig = {
     { name: 'costPrice', type: 'number', required: true, defaultValue: 0, admin: { step: 0.01 } },
     { name: 'sellPrice', type: 'number', required: true, defaultValue: 0, admin: { step: 0.01 } },
     { name: 'taxRate', type: 'number', required: true, defaultValue: 0.16, admin: { step: 0.01 } },
+    {
+      name: 'reorderPoint',
+      type: 'number',
+      required: true,
+      defaultValue: 0,
+      admin: { description: 'Dashboard flags this product as low-stock per store once on-hand quantity drops to or below this.' },
+    },
     { name: 'isBundle', type: 'checkbox', defaultValue: false },
     {
       name: 'bundleComponents',
