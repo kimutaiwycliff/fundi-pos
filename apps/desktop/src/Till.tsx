@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
 import { getDb } from './database';
 import type { PayloadUser } from './auth';
+import { VoidOrderPanel } from './VoidOrderPanel';
 
 interface LocalProduct {
   id: string;
@@ -21,6 +22,7 @@ interface CartLine {
 interface TillProps {
   user: PayloadUser;
   terminalId: string;
+  payloadToken: string;
   onDisconnect: () => void;
 }
 
@@ -34,7 +36,7 @@ const TENDER_OPTIONS = [
   { value: 'card', label: 'Card', enabled: false },
 ] as const;
 
-export function Till({ user, terminalId, onDisconnect }: TillProps) {
+export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LocalProduct[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -276,6 +278,8 @@ export function Till({ user, terminalId, onDisconnect }: TillProps) {
       </button>
 
       {message && <p className="till-message">{message}</p>}
+
+      {storeId != null && <VoidOrderPanel storeId={storeId} payloadToken={payloadToken} />}
     </div>
   );
 }

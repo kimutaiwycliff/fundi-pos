@@ -26,6 +26,7 @@ function App() {
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<PayloadUser | null>(null);
+  const payloadTokenRef = useRef<string | null>(null);
   const terminalId = useRef(getTerminalId()).current;
 
   useEffect(() => {
@@ -46,6 +47,7 @@ function App() {
     try {
       setState("logging-in");
       const { payloadToken, user: loggedInUser } = await loginToPayload(email, password);
+      payloadTokenRef.current = payloadToken;
       setUser(loggedInUser);
 
       setState("connecting");
@@ -63,8 +65,15 @@ function App() {
     setState("idle");
   }
 
-  if (state === "connected" && user) {
-    return <Till user={user} terminalId={terminalId} onDisconnect={handleDisconnect} />;
+  if (state === "connected" && user && payloadTokenRef.current) {
+    return (
+      <Till
+        user={user}
+        terminalId={terminalId}
+        payloadToken={payloadTokenRef.current}
+        onDisconnect={handleDisconnect}
+      />
+    );
   }
 
   return (

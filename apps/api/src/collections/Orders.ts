@@ -106,12 +106,19 @@ export const Orders: CollectionConfig = {
     afterChange: [
       async ({ doc, operation, req, previousDoc }) => {
         // Derive the ledger rows this order implies. On create: one 'sale'
-        // movement per line item. On a status transition into 'refunded':
-        // the mirror-image movements, so the ledger always reflects reality
-        // without ever mutating history.
+        // movement per line item. On a status transition into 'refunded' OR
+        // 'voided': the mirror-image movements, so the ledger always
+        // reflects reality without ever mutating history. Both statuses
+        // restore the same physical shelf stock - the ledger doesn't care
+        // about the legal/financial distinction between a refund and a
+        // void, only that the item is back on the shelf. (Originally only
+        // checked 'refunded' - caught while wiring up the void flow.)
         const shouldPostSaleMovements = operation === 'create' && doc.status === 'completed';
         const shouldPostRefundMovements =
-          operation === 'update' && doc.status === 'refunded' && previousDoc?.status !== 'refunded';
+          operation === 'update' &&
+          (doc.status === 'refunded' || doc.status === 'voided') &&
+          previousDoc?.status !== 'refunded' &&
+          previousDoc?.status !== 'voided';
 
         if (!shouldPostSaleMovements && !shouldPostRefundMovements) return doc;
 

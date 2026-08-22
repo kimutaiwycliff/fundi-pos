@@ -204,3 +204,35 @@ button {
   background: #f0f0f0;
   border-radius: 6px;
 }
+
+.void-panel {
+  border-top: 1px solid #ccc;
+  padding-top: 12px;
+}
+
+.void-panel ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.void-panel li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.void-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.void-status {
+  font-size: 0.9em;
+  color: #b35900;
+}

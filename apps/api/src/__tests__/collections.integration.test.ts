@@ -225,6 +225,44 @@ describe('Payload collections - integration', () => {
       expect(refunded.status).toBe('refunded');
     });
 
+    it('restores stock on a void, same as a refund (both undo the same physical sale)', async () => {
+      const order = await payload.create({
+        collection: 'orders',
+        data: {
+          id: crypto.randomUUID(), tenant: tenantId, store: storeId, terminal: 'till-1',
+          cashier: cashierId,
+          lineItems: [{ product: productId, quantity: 2, unitPrice: 100, discount: 0 }],
+          taxTotal: 0, discountTotal: 0, total: 0,
+          tenderType: 'cash', status: 'completed',
+        },
+        overrideAccess: true,
+      });
+
+      const before = await payload.find({
+        collection: 'stock-movements',
+        where: { relatedOrder: { equals: order.id } },
+        overrideAccess: true,
+      });
+      expect(before.docs).toHaveLength(1); // the original sale movement, -2
+
+      await payload.update({
+        collection: 'orders',
+        id: order.id,
+        data: { status: 'voided' },
+        user: asUser({ id: managerId, tenant: tenantId, role: 'manager' }),
+        overrideAccess: false,
+      });
+
+      const after = await payload.find({
+        collection: 'stock-movements',
+        where: { relatedOrder: { equals: order.id } },
+        overrideAccess: true,
+      });
+      expect(after.docs).toHaveLength(2);
+      const reversal = after.docs.find((m) => m.reason === 'adjustment');
+      expect(reversal?.quantityDelta).toBe(2); // mirror image of the original -2 sale
+    });
+
     it('never allows deleting an Order or StockMovement, even for an owner', async () => {
       const order = await payload.create({
         collection: 'orders',
