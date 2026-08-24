@@ -25,6 +25,7 @@ type Store = { id: number; name: string };
 type Staff = {
   id: number;
   email: string;
+  name: string | null;
   phone: string | null;
   role: string;
   store: { id: number } | number | null;
@@ -43,6 +44,7 @@ export function StaffDialog({ stores, staff }: { stores: Store[]; staff?: Staff 
   const [error, setError] = useState<string | null>(null);
   const initialStoreId = staff?.store == null ? 'none' : String(typeof staff.store === 'object' ? staff.store.id : staff.store);
   const [form, setForm] = useState({
+    name: staff?.name ?? '',
     email: staff?.email ?? '',
     password: '',
     phone: staff?.phone ?? '',
@@ -51,7 +53,7 @@ export function StaffDialog({ stores, staff }: { stores: Store[]; staff?: Staff 
     pin: '',
   });
 
-  function update(field: 'email' | 'password' | 'phone' | 'pin') {
+  function update(field: 'name' | 'email' | 'password' | 'phone' | 'pin') {
     return (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [field]: e.target.value }));
   }
 
@@ -61,6 +63,7 @@ export function StaffDialog({ stores, staff }: { stores: Store[]; staff?: Staff 
     setError(null);
 
     const data: Record<string, unknown> = {
+      name: form.name,
       email: form.email,
       phone: form.phone || null,
       role: form.role,
@@ -108,6 +111,10 @@ export function StaffDialog({ stores, staff }: { stores: Store[]; staff?: Staff 
           <DialogTitle>{isEdit ? 'Edit staff' : 'Add staff'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="name">Name</Label>
+            <Input id="name" required value={form.name} onChange={update('name')} placeholder="e.g. Jane Wanjiru" />
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" required value={form.email} onChange={update('email')} />

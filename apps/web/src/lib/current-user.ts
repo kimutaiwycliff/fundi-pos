@@ -4,6 +4,7 @@ import { payloadFetch, PayloadApiError } from './payload-client';
 export type CurrentUser = {
   id: number;
   email: string;
+  name: string | null;
   role: 'owner' | 'manager' | 'cashier';
   tenant: { id: number; name: string; billingStatus: 'active' | 'trialing' | 'past_due' | 'canceled' } | number;
 };

@@ -73,6 +73,7 @@ const users = new Table(
     role: column.text,
     pin_hash: column.text,
     email: column.text,
+    name: column.text,
     updated_at: column.text,
     created_at: column.text,
   },

@@ -11,11 +11,18 @@ import { payloadFetch } from '@/lib/payload-client';
 import { StaffDialog } from './staff-dialog';
 
 type Store = { id: number; name: string };
-type Staff = { id: number; email: string; phone: string | null; role: string; store: { id: number; name: string } | number | null };
+type Staff = {
+  id: number;
+  email: string;
+  name: string | null;
+  phone: string | null;
+  role: string;
+  store: { id: number; name: string } | number | null;
+};
 
 export default async function StaffPage() {
   const [{ docs: staff }, { docs: stores }] = await Promise.all([
-    payloadFetch<{ docs: Staff[] }>('/api/users?sort=email&limit=100'),
+    payloadFetch<{ docs: Staff[] }>('/api/users?sort=name&limit=100'),
     payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
   ]);
 
@@ -29,6 +36,7 @@ export default async function StaffPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Role</TableHead>
@@ -39,6 +47,7 @@ export default async function StaffPage() {
           <TableBody>
             {staff.map((person) => (
               <TableRow key={person.id}>
+                <TableCell className="font-medium">{person.name ?? '—'}</TableCell>
                 <TableCell>{person.email}</TableCell>
                 <TableCell>{person.phone ?? '—'}</TableCell>
                 <TableCell>

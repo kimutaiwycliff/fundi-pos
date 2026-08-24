@@ -19,6 +19,7 @@ export const POWERSYNC_URL = 'http://localhost:8080';
 export interface PayloadUser {
   id: number;
   email: string;
+  name?: string | null;
   role: string;
   tenant: number | { id: number };
   store?: number | { id: number } | null;

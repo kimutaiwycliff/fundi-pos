@@ -33,6 +33,16 @@ export const Users: CollectionConfig = {
       options: ['owner', 'manager', 'cashier'],
     },
     {
+      // Shown at the till (and everywhere else in the dashboard) instead of
+      // email once set - a cashier's own login email is rarely what a
+      // shopkeeper wants printed on a receipt or shown on a shared terminal.
+      // Optional so existing/seeded staff created before this field existed
+      // aren't broken; every display site falls back to email when absent.
+      name: 'name',
+      type: 'text',
+      admin: { description: "Displayed at the till instead of the staff member's email." },
+    },
+    {
       // A real phone number is effectively a personal identifier already -
       // DB-wide uniqueness (not just per-tenant) is the correct constraint,
       // not an oversight. Optional for now so existing/seeded staff aren't

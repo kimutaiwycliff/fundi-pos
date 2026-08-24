@@ -231,6 +231,10 @@ export interface User {
   store?: (number | null) | Store;
   role: 'owner' | 'manager' | 'cashier';
   /**
+   * Displayed at the till instead of the staff member's email.
+   */
+  name?: string | null;
+  /**
    * e.g. 0712345678 - used for fast PIN login at the till.
    */
   phone?: string | null;
@@ -690,6 +694,7 @@ export interface UsersSelect<T extends boolean = true> {
   tenant?: T;
   store?: T;
   role?: T;
+  name?: T;
   phone?: T;
   pin?: T;
   pinHash?: T;

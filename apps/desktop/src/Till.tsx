@@ -9,6 +9,20 @@ import { CashierSwitcher } from './CashierSwitcher';
 import { deleteHeldSale, holdSale, listHeldSales, type HeldSale } from './heldSales';
 import { printReceipt } from './printer';
 import { PrinterSettings } from './PrinterSettings';
+import { Drawer } from './Drawer';
+import {
+  ArchiveIcon,
+  ClockIcon,
+  MinusIcon,
+  PlusIcon,
+  PrinterIcon,
+  SearchIcon,
+  ShieldIcon,
+  UndoIcon,
+  WifiIcon,
+  WifiOffIcon,
+  WrenchIcon,
+} from './icons';
 
 interface LocalProduct {
   id: string;
@@ -82,9 +96,12 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
   const [message, setMessage] = useState<string | null>(null);
   const [pendingSyncCount, setPendingSyncCount] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
-  const [activeCashier, setActiveCashier] = useState({ id: user.id, email: user.email });
+  const [activeCashier, setActiveCashier] = useState({ id: user.id, email: user.email, name: user.name ?? null });
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
   const [tenant, setTenant] = useState<LocalTenant | null>(null);
+  const [heldSalesOpen, setHeldSalesOpen] = useState(false);
+  const [voidPanelOpen, setVoidPanelOpen] = useState(false);
+  const [printerSettingsOpen, setPrinterSettingsOpen] = useState(false);
 
   const storeId = typeof user.store === 'object' ? user.store?.id : user.store;
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
@@ -279,7 +296,7 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       // would be undermined if the source of truth depended on a
       // peripheral). UNVERIFIED against real hardware.
       printReceipt({
-        storeName: tenant?.name ?? 'Hardware POS',
+        storeName: tenant?.name ?? 'Fundi',
         orderId,
         lines: cart.map((line) => ({
           name: line.product.name,
@@ -304,142 +321,234 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
     }
   }
 
+  const trimmedQuery = query.trim();
+  const isMessageError = message != null && /error|fail/i.test(message);
+
   return (
-    <div className="till">
-      <header className="till-header">
-        <span>
-          {user.email} · {user.role} · terminal {terminalId}
-        </span>
-        <span className={isOnline ? 'status-online' : 'status-offline'}>
+    <div className="till-shell">
+      <header className="till-topbar">
+        <div className="till-identity">
+          <span className="brand-mark">
+            <WrenchIcon />
+          </span>
+          <div className="till-identity-text">
+            <p className="till-identity-title">{tenant?.name ?? 'Fundi Till'}</p>
+            <p className="till-identity-sub">
+              {user.name || user.email} · {user.role} · terminal {terminalId}
+            </p>
+          </div>
+        </div>
+
+        <div className="till-topbar-spacer" />
+
+        <span className={`status-pill ${isOnline ? 'online' : 'offline'}`}>
+          {isOnline ? <WifiIcon /> : <WifiOffIcon />}
           {isOnline ? 'Online' : 'Offline'}
-          {pendingSyncCount != null && pendingSyncCount > 0 ? ` · ${pendingSyncCount} pending sync` : ''}
+          {pendingSyncCount != null && pendingSyncCount > 0 ? (
+            <span className="sync-count">· {pendingSyncCount} pending</span>
+          ) : null}
         </span>
-        <button onClick={onDisconnect}>Log out</button>
+
+        <div className="till-topbar-actions">
+          <CashierSwitcher active={activeCashier} onSwitch={setActiveCashier} />
+          <button className="btn btn-ghost btn-sm" onClick={onDisconnect}>
+            Log out
+          </button>
+        </div>
       </header>
 
-      <CashierSwitcher active={activeCashier} onSwitch={setActiveCashier} />
+      <div className="till-utilitybar">
+        {storeId != null && tenantId != null && (
+          <ShiftPanel
+            payloadToken={payloadToken}
+            tenantId={tenantId}
+            storeId={storeId}
+            terminalId={terminalId}
+            cashierId={activeCashier.id}
+          />
+        )}
 
-      {storeId != null && tenantId != null && (
-        <ShiftPanel
-          payloadToken={payloadToken}
-          tenantId={tenantId}
-          storeId={storeId}
-          terminalId={terminalId}
-          cashierId={activeCashier.id}
-        />
-      )}
+        <div className="quick-actions">
+          <button className="btn btn-secondary btn-sm quick-action-btn" onClick={() => setHeldSalesOpen(true)}>
+            <ClockIcon />
+            Held sales
+            {heldSales.length > 0 && <span className="badge-count">{heldSales.length}</span>}
+          </button>
+          {storeId != null && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setVoidPanelOpen(true)}>
+              <ShieldIcon />
+              Void / refund
+            </button>
+          )}
+          <button className="btn btn-ghost btn-icon" onClick={() => setPrinterSettingsOpen(true)} aria-label="Printer settings">
+            <PrinterIcon />
+          </button>
+        </div>
+      </div>
 
-      <div className="till-search">
-        <input
-          autoFocus
-          placeholder="Scan barcode or search by name/SKU..."
-          value={query}
-          onChange={(e) => setQuery(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && results.length > 0) addToCart(results[0]);
-          }}
-        />
-        {results.length > 0 && (
-          <ul className="till-search-results">
-            {results.map((product) => (
-              <li key={product.id}>
-                <button onClick={() => addToCart(product)}>
-                  {product.name} - {product.sku} ({product.sell_price.toFixed(2)})
+      <div className="till-body">
+        <section className="till-search-pane">
+          <div className="search-box">
+            <SearchIcon />
+            <input
+              autoFocus
+              placeholder="Scan barcode or search by name/SKU..."
+              value={query}
+              onChange={(e) => setQuery(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && results.length > 0) addToCart(results[0]);
+              }}
+            />
+          </div>
+
+          {results.length > 0 ? (
+            <div className="search-results-grid">
+              {results.map((product) => (
+                <button key={product.id} className="product-card" onClick={() => addToCart(product)}>
+                  <span className="product-card-name">{product.name}</span>
+                  <span className="product-card-meta">{product.sku}</span>
+                  <span className="product-card-price">{product.sell_price.toFixed(2)}</span>
+                </button>
+              ))}
+            </div>
+          ) : trimmedQuery ? (
+            <div className="pane-empty-state">
+              <SearchIcon />
+              <p className="pane-empty-state-title">No products match &ldquo;{trimmedQuery}&rdquo;</p>
+              <p className="pane-empty-state-hint">Try a different name, SKU, or scan the barcode directly.</p>
+            </div>
+          ) : (
+            <div className="pane-empty-state">
+              <WrenchIcon />
+              <p className="pane-empty-state-title">Ready to sell</p>
+              <p className="pane-empty-state-hint">Scan a barcode or start typing to add a product to the sale.</p>
+            </div>
+          )}
+        </section>
+
+        <aside className="till-cart-pane">
+          <div className="cart-header">
+            <h2>Current sale</h2>
+            <span className="cart-header-count">{cart.length} item{cart.length === 1 ? '' : 's'}</span>
+          </div>
+
+          {cart.length === 0 ? (
+            <div className="cart-empty">
+              <ArchiveIcon />
+              <p className="cart-empty-hint">Cart is empty - search or scan a product to get started.</p>
+            </div>
+          ) : (
+            <div className="cart-list">
+              {cart.map((line) => (
+                <div key={line.product.id} className="cart-line">
+                  <div className="cart-line-info">
+                    <p className="cart-line-name">{line.product.name}</p>
+                    <p className="cart-line-price">{line.product.sell_price.toFixed(2)} each</p>
+                  </div>
+                  <div className="qty-stepper">
+                    <button onClick={() => updateQuantity(line.product.id, line.quantity - 1)} aria-label="Decrease quantity">
+                      <MinusIcon />
+                    </button>
+                    <span>{line.quantity}</span>
+                    <button onClick={() => updateQuantity(line.product.id, line.quantity + 1)} aria-label="Increase quantity">
+                      <PlusIcon />
+                    </button>
+                  </div>
+                  <span className="cart-line-total">
+                    {(line.quantity * line.product.sell_price - line.discount).toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="till-cart-footer">
+            <div className="totals-block">
+              <div className="totals-row">
+                <span>Tax</span>
+                <span>{totals.taxTotal.toFixed(2)}</span>
+              </div>
+              {totals.discountTotal > 0 && (
+                <div className="totals-row">
+                  <span>Discount</span>
+                  <span>-{totals.discountTotal.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="totals-row total">
+                <span>Total</span>
+                <span>{totals.total.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="tender-toggle" role="group" aria-label="Tender type">
+              {TENDER_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={tenderType === option.value}
+                  onClick={() => setTenderType(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            {tenderType === 'mpesa' && (
+              <input
+                placeholder="Customer phone (e.g. 0712345678)"
+                value={mpesaPhone}
+                onChange={(e) => setMpesaPhone(e.currentTarget.value)}
+              />
+            )}
+
+            {message && <p className={`toast ${isMessageError ? 'is-error' : ''}`}>{message}</p>}
+
+            <div className="cart-actions">
+              <button
+                className="btn btn-primary btn-lg btn-block"
+                disabled={cart.length === 0 || completing}
+                onClick={completeSale}
+              >
+                {completing ? 'Completing...' : 'Complete sale'}
+              </button>
+              <button className="btn btn-secondary btn-block" disabled={cart.length === 0} onClick={handleHoldSale}>
+                Hold sale
+              </button>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <Drawer open={heldSalesOpen} onClose={() => setHeldSalesOpen(false)} title="Held sales">
+        {heldSales.length === 0 ? (
+          <p className="pane-empty-state-hint">No held sales right now.</p>
+        ) : (
+          <ul className="held-sales-list">
+            {heldSales.map((held) => (
+              <li key={held.id} className="held-sale-row">
+                <span>{new Date(held.createdAt).toLocaleTimeString()}</span>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    handleResumeSale(held);
+                    setHeldSalesOpen(false);
+                  }}
+                >
+                  <UndoIcon />
+                  Resume
                 </button>
               </li>
             ))}
           </ul>
         )}
-      </div>
+      </Drawer>
 
-      <table className="till-cart">
-        <thead>
-          <tr>
-            <th>Product</th>
-            <th>Qty</th>
-            <th>Price</th>
-            <th>Line total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {cart.map((line) => (
-            <tr key={line.product.id}>
-              <td>{line.product.name}</td>
-              <td>
-                <button onClick={() => updateQuantity(line.product.id, line.quantity - 1)}>-</button>
-                {line.quantity}
-                <button onClick={() => updateQuantity(line.product.id, line.quantity + 1)}>+</button>
-              </td>
-              <td>{line.product.sell_price.toFixed(2)}</td>
-              <td>{(line.quantity * line.product.sell_price - line.discount).toFixed(2)}</td>
-            </tr>
-          ))}
-          {cart.length === 0 && (
-            <tr>
-              <td colSpan={4}>Cart is empty - search or scan a product above.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      <Drawer open={voidPanelOpen} onClose={() => setVoidPanelOpen(false)} title="Void or refund a sale">
+        {storeId != null && <VoidOrderPanel storeId={storeId} payloadToken={payloadToken} />}
+      </Drawer>
 
-      <div className="till-totals">
-        <p>Tax: {totals.taxTotal.toFixed(2)}</p>
-        <p>Discount: {totals.discountTotal.toFixed(2)}</p>
-        <p>
-          <strong>Total: {totals.total.toFixed(2)}</strong>
-        </p>
-      </div>
-
-      <div className="till-tender">
-        {TENDER_OPTIONS.map((option) => (
-          <label key={option.value}>
-            <input
-              type="radio"
-              name="tender"
-              checked={tenderType === option.value}
-              onChange={() => setTenderType(option.value)}
-            />
-            {option.label}
-          </label>
-        ))}
-        {tenderType === 'mpesa' && (
-          <input
-            className="till-mpesa-phone"
-            placeholder="Customer phone (e.g. 0712345678)"
-            value={mpesaPhone}
-            onChange={(e) => setMpesaPhone(e.currentTarget.value)}
-          />
-        )}
-      </div>
-
-      <div className="till-actions">
-        <button disabled={cart.length === 0 || completing} onClick={completeSale}>
-          {completing ? 'Completing...' : 'Complete sale'}
-        </button>
-        <button disabled={cart.length === 0} onClick={handleHoldSale}>
-          Hold sale
-        </button>
-      </div>
-
-      {message && <p className="till-message">{message}</p>}
-
-      {heldSales.length > 0 && (
-        <div className="held-sales">
-          <h2>Held sales</h2>
-          <ul>
-            {heldSales.map((held) => (
-              <li key={held.id}>
-                <span>{new Date(held.createdAt).toLocaleTimeString()}</span>
-                <button onClick={() => handleResumeSale(held)}>Resume</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {storeId != null && <VoidOrderPanel storeId={storeId} payloadToken={payloadToken} />}
-
-      <PrinterSettings />
+      <Drawer open={printerSettingsOpen} onClose={() => setPrinterSettingsOpen(false)} title="Printer settings">
+        <PrinterSettings />
+      </Drawer>
     </div>
   );
 }

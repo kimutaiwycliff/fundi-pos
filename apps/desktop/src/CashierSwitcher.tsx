@@ -4,6 +4,7 @@ import { findStaffAndCheckPinLocally } from './pin';
 interface ActiveCashier {
   id: number;
   email: string;
+  name: string | null;
 }
 
 interface CashierSwitcherProps {
@@ -29,7 +30,7 @@ export function CashierSwitcher({ active, onSwitch }: CashierSwitcherProps) {
       setError('Incorrect email or PIN.');
       return;
     }
-    onSwitch({ id: result.userId, email });
+    onSwitch({ id: result.userId, email, name: result.name });
     setSwitching(false);
     setEmail('');
     setPin('');
@@ -38,8 +39,10 @@ export function CashierSwitcher({ active, onSwitch }: CashierSwitcherProps) {
   if (!switching) {
     return (
       <div className="cashier-switcher">
-        <span>Active cashier: {active.email}</span>
-        <button onClick={() => setSwitching(true)}>Switch cashier</button>
+        <span>Cashier: {active.name || active.email}</span>
+        <button className="btn btn-secondary btn-sm" onClick={() => setSwitching(true)}>
+          Switch
+        </button>
       </div>
     );
   }
@@ -48,8 +51,10 @@ export function CashierSwitcher({ active, onSwitch }: CashierSwitcherProps) {
     <form onSubmit={handleSwitch} className="cashier-switch-form">
       <input placeholder="Email" value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
       <input type="password" placeholder="PIN" value={pin} onChange={(e) => setPin(e.currentTarget.value)} />
-      <button type="submit">Confirm</button>
-      <button type="button" onClick={() => setSwitching(false)}>
+      <button type="submit" className="btn btn-primary btn-sm">
+        Confirm
+      </button>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSwitching(false)}>
         Cancel
       </button>
       {error && <span className="cashier-switch-error">{error}</span>}

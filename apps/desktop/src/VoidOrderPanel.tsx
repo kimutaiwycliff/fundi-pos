@@ -95,15 +95,17 @@ export function VoidOrderPanel({ storeId, payloadToken }: VoidOrderPanelProps) {
                   value={pin}
                   onChange={(e) => setPin(e.currentTarget.value)}
                 />
-                <button type="submit" disabled={busy}>
+                <button type="submit" className="btn btn-danger btn-sm" disabled={busy}>
                   {busy ? 'Voiding...' : 'Confirm void'}
                 </button>
-                <button type="button" onClick={() => setTargetOrderId(null)}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTargetOrderId(null)}>
                   Cancel
                 </button>
               </form>
             ) : (
-              <button onClick={() => setTargetOrderId(order.id)}>Void (requires manager PIN)</button>
+              <button className="btn btn-secondary btn-sm" onClick={() => setTargetOrderId(order.id)}>
+                Void (requires manager PIN)
+              </button>
             )}
           </li>
         ))}

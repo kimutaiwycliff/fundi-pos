@@ -66,7 +66,7 @@ export function ShiftPanel({ payloadToken, tenantId, storeId, terminalId, cashie
               onChange={(e) => setOpeningFloat(e.currentTarget.value)}
             />
           </label>
-          <button onClick={handleOpen} disabled={busy}>
+          <button className="btn btn-primary btn-sm" onClick={handleOpen} disabled={busy}>
             {busy ? 'Opening...' : 'Open shift'}
           </button>
         </div>
@@ -82,7 +82,7 @@ export function ShiftPanel({ payloadToken, tenantId, storeId, terminalId, cashie
               onChange={(e) => setClosingCash(e.currentTarget.value)}
             />
           </label>
-          <button onClick={handleClose} disabled={busy}>
+          <button className="btn btn-secondary btn-sm" onClick={handleClose} disabled={busy}>
             {busy ? 'Closing...' : 'Close shift'}
           </button>
         </div>

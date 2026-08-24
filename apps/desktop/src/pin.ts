@@ -6,6 +6,7 @@ import { API_BASE_URL } from './auth';
 interface LocalUserCandidate {
   id: number;
   email: string;
+  name: string | null;
   role: string;
   pin_hash: string | null;
 }
@@ -22,18 +23,18 @@ async function findUserAndCheckPinLocally(
   email: string,
   pin: string,
   allowedRoles: string[],
-): Promise<{ userId: number; role: string; valid: boolean } | null> {
+): Promise<{ userId: number; role: string; name: string | null; valid: boolean } | null> {
   const db = getDb();
   const placeholders = allowedRoles.map(() => '?').join(', ');
   const rows = await db.getAll<LocalUserCandidate>(
-    `SELECT id, email, role, pin_hash FROM users WHERE email = ? AND role IN (${placeholders})`,
+    `SELECT id, email, name, role, pin_hash FROM users WHERE email = ? AND role IN (${placeholders})`,
     [email, ...allowedRoles],
   );
   const candidate = rows[0];
   if (!candidate || !candidate.pin_hash) return null;
 
   const valid = await invoke<boolean>('verify_manager_pin', { pin, storedHash: candidate.pin_hash });
-  return { userId: candidate.id, role: candidate.role, valid };
+  return { userId: candidate.id, role: candidate.role, name: candidate.name, valid };
 }
 
 /**
@@ -46,9 +47,9 @@ async function findUserAndCheckPinLocally(
 export async function findManagerAndCheckPinLocally(
   managerEmail: string,
   pin: string,
-): Promise<{ managerId: number; valid: boolean } | null> {
+): Promise<{ managerId: number; name: string | null; valid: boolean } | null> {
   const result = await findUserAndCheckPinLocally(managerEmail, pin, ['manager', 'owner']);
-  return result ? { managerId: result.userId, valid: result.valid } : null;
+  return result ? { managerId: result.userId, name: result.name, valid: result.valid } : null;
 }
 
 /**
@@ -61,7 +62,7 @@ export async function findManagerAndCheckPinLocally(
 export async function findStaffAndCheckPinLocally(
   email: string,
   pin: string,
-): Promise<{ userId: number; role: string; valid: boolean } | null> {
+): Promise<{ userId: number; role: string; name: string | null; valid: boolean } | null> {
   return findUserAndCheckPinLocally(email, pin, ['cashier', 'manager', 'owner']);
 }
 

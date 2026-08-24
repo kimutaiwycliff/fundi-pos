@@ -3,6 +3,7 @@ import { getDb } from "./database";
 import { loginToPayload, loginWithPin, type PayloadUser } from "./auth";
 import { connectPowerSync, disconnectPowerSync, ensureAppDataDir } from "./powersync";
 import { Till } from "./Till";
+import { WrenchIcon } from "./icons";
 import "./App.css";
 
 type ConnectionState = "idle" | "logging-in" | "connecting" | "connected" | "error";
@@ -85,53 +86,89 @@ function App() {
   }
 
   const busy = state === "logging-in" || state === "connecting";
+  const submitLabel = state === "logging-in" ? "Logging in..." : state === "connecting" ? "Connecting..." : "Log in";
 
   return (
-    <main className="container">
-      <h1>Hardware POS Till</h1>
-      <div className="row" style={{ gap: 4, marginBottom: 8 }}>
-        <button type="button" onClick={() => setMode("pin")} disabled={mode === "pin"}>
-          PIN login
-        </button>
-        <button type="button" onClick={() => setMode("password")} disabled={mode === "password"}>
-          Password login
-        </button>
+    <main className="login-shell">
+      <div className="login-card">
+        <div className="login-brand">
+          <span className="brand-mark">
+            <WrenchIcon />
+          </span>
+          <div className="login-brand-text">
+            <h1>Fundi Till</h1>
+            <p>Sign in to start selling</p>
+          </div>
+        </div>
+
+        <div className="segmented" role="tablist" aria-label="Login method">
+          <button
+            type="button"
+            role="tab"
+            aria-pressed={mode === "pin"}
+            onClick={() => setMode("pin")}
+          >
+            PIN login
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-pressed={mode === "password"}
+            onClick={() => setMode("password")}
+          >
+            Password login
+          </button>
+        </div>
+
+        {mode === "pin" ? (
+          <form onSubmit={handleLogin} className="login-form">
+            <div className="field">
+              <span className="field-label">Phone number</span>
+              <input value={phone} onChange={(e) => setPhone(e.currentTarget.value)} placeholder="0712345678" />
+            </div>
+            <div className="field">
+              <span className="field-label">PIN</span>
+              <input
+                value={pin}
+                onChange={(e) => setPin(e.currentTarget.value)}
+                placeholder="••••"
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+              />
+            </div>
+            <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
+              {submitLabel}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleLogin} className="login-form">
+            <div className="field">
+              <span className="field-label">Email</span>
+              <input value={email} onChange={(e) => setEmail(e.currentTarget.value)} placeholder="you@business.com" />
+            </div>
+            <div className="field">
+              <span className="field-label">Password</span>
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.currentTarget.value)}
+                placeholder="••••••••"
+                type="password"
+              />
+            </div>
+            <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>
+              {submitLabel}
+            </button>
+          </form>
+        )}
+
+        {error && <p className="error-banner">{error}</p>}
+
+        <p className="status-line" data-testid="connection-state">
+          Status: <strong>{state}</strong>
+        </p>
+        <p className="terminal-tag">Terminal {terminalId}</p>
       </div>
-
-      {mode === "pin" ? (
-        <form onSubmit={handleLogin} className="row" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
-          <input value={phone} onChange={(e) => setPhone(e.currentTarget.value)} placeholder="phone (e.g. 0712345678)" />
-          <input
-            value={pin}
-            onChange={(e) => setPin(e.currentTarget.value)}
-            placeholder="PIN"
-            type="password"
-            inputMode="numeric"
-            maxLength={6}
-          />
-          <button type="submit" disabled={busy}>
-            {state === "logging-in" ? "Logging in..." : state === "connecting" ? "Connecting..." : "Log in"}
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={handleLogin} className="row" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
-          <input value={email} onChange={(e) => setEmail(e.currentTarget.value)} placeholder="email" />
-          <input
-            value={password}
-            onChange={(e) => setPassword(e.currentTarget.value)}
-            placeholder="password"
-            type="password"
-          />
-          <button type="submit" disabled={busy}>
-            {state === "logging-in" ? "Logging in..." : state === "connecting" ? "Connecting..." : "Log in"}
-          </button>
-        </form>
-      )}
-
-      <p data-testid="connection-state">
-        Status: <strong>{state}</strong>
-      </p>
-      {error && <p style={{ color: "red" }}>{error}</p>}
     </main>
   );
 }

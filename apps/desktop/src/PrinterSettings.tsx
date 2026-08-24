@@ -29,8 +29,10 @@ export function PrinterSettings() {
       <span>Receipt printer (network, port 9100 typical):</span>
       <input placeholder="Printer IP" value={host} onChange={(e) => setHost(e.currentTarget.value)} />
       <input placeholder="Port" value={port} onChange={(e) => setPort(e.currentTarget.value)} />
-      <button type="submit">Save</button>
-      <button type="button" onClick={handleTestKick}>
+      <button type="submit" className="btn btn-primary btn-sm">
+        Save
+      </button>
+      <button type="button" className="btn btn-secondary btn-sm" onClick={handleTestKick}>
         Test drawer kick
       </button>
       {status && <span className="printer-status">{status}</span>}

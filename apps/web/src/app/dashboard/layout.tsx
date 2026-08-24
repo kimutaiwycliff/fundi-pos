@@ -51,7 +51,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
               <Wrench className="size-4" />
             </div>
-            <p className="text-sm font-semibold">Hardware POS</p>
+            <p className="text-sm font-semibold">Fundi</p>
           </div>
           <p className="truncate text-xs text-sidebar-foreground/60">{tenantName}</p>
         </SidebarHeader>
@@ -65,7 +65,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </SidebarContent>
         <SidebarFooter className="gap-2 px-4 py-3">
           <p className="text-xs text-muted-foreground">
-            {me.email} · {me.role}
+            {me.name || me.email} · {me.role}
           </p>
           <LogoutButton />
         </SidebarFooter>

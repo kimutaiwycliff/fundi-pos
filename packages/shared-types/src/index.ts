@@ -1,4 +1,4 @@
-// Shared domain types for the Hardware POS SaaS.
+// Shared domain types for Fundi.
 // Mirrors the Payload collections defined in POS_SAAS_SPEC.md Section 4.
 // Desktop (offline) and web (online) both import these so client and server
 // agree on shape without duplicating definitions.

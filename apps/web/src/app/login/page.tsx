@@ -45,7 +45,7 @@ export default function LoginPage() {
           <div className="mb-2 flex size-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Wrench className="size-5" />
           </div>
-          <CardTitle>Hardware POS</CardTitle>
+          <CardTitle>Fundi</CardTitle>
           <CardDescription>Sign in to manage your stores and inventory.</CardDescription>
         </CardHeader>
         <CardContent>
