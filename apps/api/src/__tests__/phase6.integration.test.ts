@@ -250,4 +250,50 @@ describe('Phase 6 - StockTransfers receiving + Shifts cash-up', () => {
       expect(closed.status).toBe('closed');
     });
   });
+
+  describe('Customer loyalty points', () => {
+    it('earns 1 point per 100 spent on a completed sale tied to a customer, and reverses on void', async () => {
+      const customer = await payload.create({
+        collection: 'customers',
+        data: { tenant: tenantId, name: 'Jane', phone: '0700000000', loyaltyPoints: 5 },
+        overrideAccess: true,
+      });
+
+      const order = await payload.create({
+        collection: 'orders',
+        data: {
+          id: crypto.randomUUID(), tenant: tenantId, store: storeA, terminal: 'till-1', cashier: cashierId,
+          customer: customer.id,
+          lineItems: [{ product: productId, quantity: 3, unitPrice: 100, discount: 0 }],
+          taxTotal: 0, discountTotal: 0, total: 0, tenderType: 'cash', status: 'completed',
+        },
+        overrideAccess: true,
+      });
+      expect(order.loyaltyPointsEarned).toBe(3); // 300 total / 100
+
+      const afterSale = await payload.findByID({ collection: 'customers', id: customer.id, overrideAccess: true });
+      expect(afterSale.loyaltyPoints).toBe(8); // 5 + 3
+
+      await payload.update({
+        collection: 'orders', id: order.id, data: { status: 'voided' },
+        user: asUser({ id: managerId, tenant: tenantId, role: 'manager' }), overrideAccess: false,
+      });
+
+      const afterVoid = await payload.findByID({ collection: 'customers', id: customer.id, overrideAccess: true });
+      expect(afterVoid.loyaltyPoints).toBe(5); // back to where it started
+    });
+
+    it('never accrues points for a sale with no attached customer', async () => {
+      const order = await payload.create({
+        collection: 'orders',
+        data: {
+          id: crypto.randomUUID(), tenant: tenantId, store: storeA, terminal: 'till-1', cashier: cashierId,
+          lineItems: [{ product: productId, quantity: 3, unitPrice: 100, discount: 0 }],
+          taxTotal: 0, discountTotal: 0, total: 0, tenderType: 'cash', status: 'completed',
+        },
+        overrideAccess: true,
+      });
+      expect(order.loyaltyPointsEarned).toBe(0);
+    });
+  });
 });

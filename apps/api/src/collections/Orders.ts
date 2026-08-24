@@ -22,6 +22,20 @@ export const Orders: CollectionConfig = {
     { name: 'store', type: 'relationship', relationTo: 'stores', required: true, index: true },
     { name: 'terminal', type: 'text', required: true },
     { name: 'cashier', type: 'relationship', relationTo: 'users', required: true },
+    // Optional - not every sale is tied to a known customer. Not in the
+    // spec's original Orders field list, but needed to actually implement
+    // "Customer profiles, purchase history, loyalty points" (spec Section
+    // 6.4) since Customers.purchaseHistory has nothing to derive from
+    // without it.
+    { name: 'customer', type: 'relationship', relationTo: 'customers' },
+    {
+      name: 'loyaltyPointsEarned',
+      type: 'number',
+      admin: {
+        readOnly: true,
+        description: '1 point per 100 spent, server-computed at sale time. Stored (not recomputed) so a refund/void reverses exactly what was earned.',
+      },
+    },
     {
       name: 'lineItems',
       type: 'array',
@@ -95,6 +109,7 @@ export const Orders: CollectionConfig = {
         data.taxTotal = totals.taxTotal;
         data.discountTotal = totals.discountTotal;
         data.total = totals.total;
+        data.loyaltyPointsEarned = data.customer ? Math.floor(totals.total / 100) : 0;
 
         if (!data.syncedAt) {
           data.syncedAt = new Date().toISOString();
@@ -149,6 +164,41 @@ export const Orders: CollectionConfig = {
             req,
           });
         }
+
+        return doc;
+      },
+      // Loyalty accrual/reversal - symmetric with the stock-movement hook
+      // above: earn on a completed sale, give back the exact same points
+      // (not a recomputed amount) on refund/void, per Customers.loyaltyPoints
+      // (spec Section 6.4).
+      async ({ doc, operation, req, previousDoc }) => {
+        if (!doc.customer) return doc;
+
+        const justCompleted = operation === 'create' && doc.status === 'completed';
+        const justReversed =
+          operation === 'update' &&
+          (doc.status === 'refunded' || doc.status === 'voided') &&
+          previousDoc?.status !== 'refunded' &&
+          previousDoc?.status !== 'voided';
+
+        if (!justCompleted && !justReversed) return doc;
+
+        const delta = justReversed ? -(doc.loyaltyPointsEarned as number) : (doc.loyaltyPointsEarned as number);
+        if (!delta) return doc;
+
+        const customer = await req.payload.findByID({
+          collection: 'customers',
+          id: toID(doc.customer),
+          overrideAccess: true,
+          req,
+        });
+        await req.payload.update({
+          collection: 'customers',
+          id: toID(doc.customer),
+          data: { loyaltyPoints: Math.max(0, (customer.loyaltyPoints as number) + delta) },
+          overrideAccess: true,
+          req,
+        });
 
         return doc;
       },

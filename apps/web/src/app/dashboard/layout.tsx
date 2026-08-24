@@ -29,6 +29,7 @@ const NAV_ITEMS = [
   { href: '/dashboard/transfers', label: 'Transfers' },
   { href: '/dashboard/exceptions', label: 'Exceptions' },
   { href: '/dashboard/reports', label: 'Reports' },
+  { href: '/dashboard/customers', label: 'Customers' },
   { href: '/dashboard/stores', label: 'Stores' },
   { href: '/dashboard/staff', label: 'Staff' },
 ];

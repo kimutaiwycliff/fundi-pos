@@ -281,6 +281,11 @@ export interface Order {
   store: number | Store;
   terminal: string;
   cashier: number | User;
+  customer?: (number | null) | Customer;
+  /**
+   * 1 point per 100 spent, server-computed at sale time. Stored (not recomputed) so a refund/void reverses exactly what was earned.
+   */
+  loyaltyPointsEarned?: number | null;
   lineItems: {
     product: number | Product;
     variant?: string | null;
@@ -301,6 +306,19 @@ export interface Order {
   kraQrCode?: string | null;
   kraCuSerial?: string | null;
   kraSubmissionStatus: 'not_applicable' | 'pending' | 'submitted' | 'failed';
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "customers".
+ */
+export interface Customer {
+  id: number;
+  tenant: number | Tenant;
+  name: string;
+  phone?: string | null;
+  loyaltyPoints: number;
   updatedAt: string;
   createdAt: string;
 }
@@ -351,19 +369,6 @@ export interface StockTransfer {
     id?: string | null;
   }[];
   status: 'draft' | 'in_transit' | 'received';
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "customers".
- */
-export interface Customer {
-  id: number;
-  tenant: number | Tenant;
-  name: string;
-  phone?: string | null;
-  loyaltyPoints: number;
   updatedAt: string;
   createdAt: string;
 }
@@ -650,6 +655,8 @@ export interface OrdersSelect<T extends boolean = true> {
   store?: T;
   terminal?: T;
   cashier?: T;
+  customer?: T;
+  loyaltyPointsEarned?: T;
   lineItems?:
     | T
     | {
