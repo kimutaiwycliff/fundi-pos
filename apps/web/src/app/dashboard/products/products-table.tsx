@@ -24,6 +24,7 @@ type Product = {
   sellPrice: number;
   taxRate: number;
   reorderPoint?: number;
+  maxDiscountPercent?: number;
 };
 
 export function ProductsTable({ products, canSeeCost }: { products: Product[]; canSeeCost: boolean }) {
@@ -64,13 +65,14 @@ export function ProductsTable({ products, canSeeCost }: { products: Product[]; c
               <TableHead className="text-right">Sell</TableHead>
               {canSeeCost ? <TableHead className="text-right">Margin</TableHead> : null}
               <TableHead className="text-right">Tax</TableHead>
+              <TableHead className="text-right">Max discount</TableHead>
               <TableHead className="w-0" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={canSeeCost ? 8 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canSeeCost ? 9 : 7} className="text-center text-muted-foreground">
                   {products.length === 0 ? 'No products yet.' : 'No products match your search.'}
                 </TableCell>
               </TableRow>
@@ -92,6 +94,9 @@ export function ProductsTable({ products, canSeeCost }: { products: Product[]; c
                     </TableCell>
                   ) : null}
                   <TableCell className="text-right">{(product.taxRate * 100).toFixed(0)}%</TableCell>
+                  <TableCell className="text-right">
+                    {product.maxDiscountPercent ? `${product.maxDiscountPercent}%` : '—'}
+                  </TableCell>
                   <TableCell>
                     <ProductDialog product={product} />
                   </TableCell>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,13 +46,16 @@ export function StoreDialog({ store }: { store?: Store }) {
 
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      setError(body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} store`);
+      const message = body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} store`;
+      setError(message);
+      toast.error(message);
       setLoading(false);
       return;
     }
 
     setOpen(false);
     setLoading(false);
+    toast.success(isEdit ? 'Store updated' : 'Store created');
     router.refresh();
   }
 

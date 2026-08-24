@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
@@ -57,13 +58,19 @@ export function ImportProductsDialog({ stores }: { stores: Store[] }) {
     const body = await response.json().catch(() => null);
 
     if (!response.ok) {
-      setError(body?.error ?? 'Upload failed');
+      const message = body?.error ?? 'Upload failed';
+      setError(message);
+      toast.error(message);
       setLoading(false);
       return;
     }
 
-    setResult(body as UploadResult);
+    const uploadResult = body as UploadResult;
+    setResult(uploadResult);
     setLoading(false);
+    toast.success(
+      `${uploadResult.createdCount} product${uploadResult.createdCount === 1 ? '' : 's'} created, ${uploadResult.skippedCount} skipped`,
+    );
     router.refresh();
   }
 

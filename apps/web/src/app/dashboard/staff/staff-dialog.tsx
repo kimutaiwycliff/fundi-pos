@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -85,13 +86,16 @@ export function StaffDialog({ stores, staff }: { stores: Store[]; staff?: Staff 
 
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      setError(body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} staff member`);
+      const message = body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} staff member`;
+      setError(message);
+      toast.error(message);
       setLoading(false);
       return;
     }
 
     setOpen(false);
     setLoading(false);
+    toast.success(isEdit ? 'Staff member updated' : 'Staff member added');
     router.refresh();
   }
 
@@ -123,7 +127,7 @@ export function StaffDialog({ stores, staff }: { stores: Store[]; staff?: Staff 
             <Label htmlFor="password">{isEdit ? 'New password (leave blank to keep current)' : 'Password'}</Label>
             <Input id="password" type="password" minLength={8} required={!isEdit} value={form.password} onChange={update('password')} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="phone">Phone</Label>
               <Input id="phone" value={form.phone} onChange={update('phone')} placeholder="0712345678" />
@@ -133,7 +137,7 @@ export function StaffDialog({ stores, staff }: { stores: Store[]; staff?: Staff 
               <Input id="pin" inputMode="numeric" maxLength={6} value={form.pin} onChange={update('pin')} placeholder="4-6 digits" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="role">Role</Label>
               <Select value={form.role} onValueChange={(v) => setForm((f) => ({ ...f, role: v }))}>

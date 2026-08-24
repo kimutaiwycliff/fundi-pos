@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -54,7 +55,9 @@ export function StockAdjustmentDialog({ products, stores }: { products: Product[
 
     const qty = Number(form.quantity);
     if (!form.productId || !form.storeId || !Number.isFinite(qty) || qty === 0) {
-      setError('Pick a product, store, and a non-zero quantity');
+      const message = 'Pick a product, store, and a non-zero quantity';
+      setError(message);
+      toast.error(message);
       return;
     }
     // Restock/write-off have an implied sign - a manager typing "10" for a
@@ -79,7 +82,9 @@ export function StockAdjustmentDialog({ products, stores }: { products: Product[
 
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      setError(body?.errors?.[0]?.message ?? 'Failed to record the stock movement');
+      const message = body?.errors?.[0]?.message ?? 'Failed to record the stock movement';
+      setError(message);
+      toast.error(message);
       setLoading(false);
       return;
     }
@@ -87,6 +92,7 @@ export function StockAdjustmentDialog({ products, stores }: { products: Product[
     setOpen(false);
     setForm((f) => ({ ...f, productId: '', quantity: '' }));
     setLoading(false);
+    toast.success('Stock movement recorded');
     router.refresh();
   }
 

@@ -18,6 +18,7 @@ type Product = {
   sellPrice: number;
   taxRate: number;
   reorderPoint?: number;
+  maxDiscountPercent?: number;
 };
 
 export default async function ProductsPage() {
@@ -30,7 +31,7 @@ export default async function ProductsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Products</h1>
         <div className="flex gap-2">
           <ImportProductsDialog stores={stores} />

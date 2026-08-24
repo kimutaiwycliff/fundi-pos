@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -60,13 +61,16 @@ export function NewTransferDialog({ stores, products }: { stores: Store[]; produ
 
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      setError(body?.errors?.[0]?.message ?? 'Failed to create transfer');
+      const message = body?.errors?.[0]?.message ?? 'Failed to create transfer';
+      setError(message);
+      toast.error(message);
       setLoading(false);
       return;
     }
 
     setOpen(false);
     setLoading(false);
+    toast.success('Transfer created');
     router.refresh();
   }
 
@@ -80,7 +84,7 @@ export function NewTransferDialog({ stores, products }: { stores: Store[]; produ
           <DialogTitle>New stock transfer</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label>From store</Label>
               <Select value={fromStore} onValueChange={setFromStore} required>

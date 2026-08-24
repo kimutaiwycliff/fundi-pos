@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,6 +25,7 @@ type Product = {
   sellPrice: number;
   taxRate: number;
   reorderPoint?: number;
+  maxDiscountPercent?: number;
 };
 
 // One dialog for both add and edit, same pattern as staff-dialog.tsx/
@@ -47,6 +49,7 @@ export function ProductDialog({ product }: { product?: Product }) {
     sellPrice: product ? String(product.sellPrice) : '',
     taxRate: product ? String(product.taxRate) : '0.16',
     reorderPoint: product?.reorderPoint != null ? String(product.reorderPoint) : '0',
+    maxDiscountPercent: product?.maxDiscountPercent != null ? String(product.maxDiscountPercent) : '0',
   });
 
   function update(field: keyof typeof form) {
@@ -70,18 +73,22 @@ export function ProductDialog({ product }: { product?: Product }) {
         sellPrice: Number(form.sellPrice) || 0,
         taxRate: Number(form.taxRate) || 0,
         reorderPoint: Number(form.reorderPoint) || 0,
+        maxDiscountPercent: Number(form.maxDiscountPercent) || 0,
       }),
     });
 
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      setError(body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} product`);
+      const message = body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} product`;
+      setError(message);
+      toast.error(message);
       setLoading(false);
       return;
     }
 
     setOpen(false);
     setLoading(false);
+    toast.success(isEdit ? 'Product updated' : 'Product created');
     router.refresh();
   }
 
@@ -101,7 +108,7 @@ export function ProductDialog({ product }: { product?: Product }) {
           <DialogTitle>{isEdit ? 'Edit product' : 'New product'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sku">SKU</Label>
               <Input id="sku" required value={form.sku} onChange={update('sku')} />
@@ -119,7 +126,7 @@ export function ProductDialog({ product }: { product?: Product }) {
             <Label htmlFor="category">Category</Label>
             <Input id="category" value={form.category} onChange={update('category')} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="costPrice">Cost price</Label>
               <Input id="costPrice" type="number" step="0.01" value={form.costPrice} onChange={update('costPrice')} />
@@ -129,7 +136,7 @@ export function ProductDialog({ product }: { product?: Product }) {
               <Input id="sellPrice" type="number" step="0.01" value={form.sellPrice} onChange={update('sellPrice')} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="taxRate">Tax rate</Label>
               <Input id="taxRate" type="number" step="0.01" value={form.taxRate} onChange={update('taxRate')} />
@@ -137,6 +144,18 @@ export function ProductDialog({ product }: { product?: Product }) {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="reorderPoint">Reorder point</Label>
               <Input id="reorderPoint" type="number" step="1" value={form.reorderPoint} onChange={update('reorderPoint')} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="maxDiscountPercent">Max discount %</Label>
+              <Input
+                id="maxDiscountPercent"
+                type="number"
+                step="1"
+                min="0"
+                max="100"
+                value={form.maxDiscountPercent}
+                onChange={update('maxDiscountPercent')}
+              />
             </div>
           </div>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
