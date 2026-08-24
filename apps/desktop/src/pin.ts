@@ -3,7 +3,7 @@ import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { getDb } from './database';
 import { API_BASE_URL } from './auth';
 
-interface LocalManagerCandidate {
+interface LocalUserCandidate {
   id: number;
   email: string;
   role: string;
@@ -11,27 +11,58 @@ interface LocalManagerCandidate {
 }
 
 /**
- * Fast, fully-offline pre-check against the manager/owner's pin_hash
- * already synced down locally (spec Section 6.1's PIN gate is meant to be
- * instant, not wait on a round-trip). This is NOT the actual authorization -
- * see authorizeOrderStatusChange below, which the server independently
- * re-verifies before committing anything (a tampered client could otherwise
- * fake this local check).
+ * Fully-offline PIN check against a specific role subset's pin_hash,
+ * already synced down locally (spec Section 6.1: PIN login must be
+ * instant, zero network). Shared by the manager-authorization pre-check
+ * (findManagerAndCheckPinLocally) and fast cashier switching
+ * (findStaffAndCheckPinLocally) below - same mechanism, different role
+ * filter, so it's factored out once rather than duplicated.
  */
-export async function findManagerAndCheckPinLocally(
-  managerEmail: string,
+async function findUserAndCheckPinLocally(
+  email: string,
   pin: string,
-): Promise<{ managerId: number; valid: boolean } | null> {
+  allowedRoles: string[],
+): Promise<{ userId: number; role: string; valid: boolean } | null> {
   const db = getDb();
-  const rows = await db.getAll<LocalManagerCandidate>(
-    `SELECT id, email, role, pin_hash FROM users WHERE email = ? AND (role = 'manager' OR role = 'owner')`,
-    [managerEmail],
+  const placeholders = allowedRoles.map(() => '?').join(', ');
+  const rows = await db.getAll<LocalUserCandidate>(
+    `SELECT id, email, role, pin_hash FROM users WHERE email = ? AND role IN (${placeholders})`,
+    [email, ...allowedRoles],
   );
   const candidate = rows[0];
   if (!candidate || !candidate.pin_hash) return null;
 
   const valid = await invoke<boolean>('verify_manager_pin', { pin, storedHash: candidate.pin_hash });
-  return { managerId: candidate.id, valid };
+  return { userId: candidate.id, role: candidate.role, valid };
+}
+
+/**
+ * NOT the actual authorization for a refund/void - see
+ * authorizeOrderStatusChange below, which the server independently
+ * re-verifies before committing anything (a tampered client could
+ * otherwise fake this local check). This is only the fast local pre-check
+ * for immediate UX feedback on a wrong PIN.
+ */
+export async function findManagerAndCheckPinLocally(
+  managerEmail: string,
+  pin: string,
+): Promise<{ managerId: number; valid: boolean } | null> {
+  const result = await findUserAndCheckPinLocally(managerEmail, pin, ['manager', 'owner']);
+  return result ? { managerId: result.userId, valid: result.valid } : null;
+}
+
+/**
+ * Fast cashier switching (spec Section 6.1): any staff member - cashier,
+ * manager, or owner - can "clock in" as the active cashier for subsequent
+ * sales via PIN alone, without a full logout/login cycle or losing the
+ * underlying PowerSync connection (which stays authenticated as whoever
+ * did the original login).
+ */
+export async function findStaffAndCheckPinLocally(
+  email: string,
+  pin: string,
+): Promise<{ userId: number; role: string; valid: boolean } | null> {
+  return findUserAndCheckPinLocally(email, pin, ['cashier', 'manager', 'owner']);
 }
 
 /**

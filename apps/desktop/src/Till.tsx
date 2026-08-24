@@ -3,6 +3,9 @@ import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic
 import { getDb } from './database';
 import type { PayloadUser } from './auth';
 import { VoidOrderPanel } from './VoidOrderPanel';
+import { ShiftPanel } from './ShiftPanel';
+import { CashierSwitcher } from './CashierSwitcher';
+import { deleteHeldSale, holdSale, listHeldSales, type HeldSale } from './heldSales';
 
 interface LocalProduct {
   id: string;
@@ -45,9 +48,32 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
   const [message, setMessage] = useState<string | null>(null);
   const [pendingSyncCount, setPendingSyncCount] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
+  const [activeCashier, setActiveCashier] = useState({ id: user.id, email: user.email });
+  const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
 
   const storeId = typeof user.store === 'object' ? user.store?.id : user.store;
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
+
+  async function refreshHeldSales() {
+    setHeldSales(await listHeldSales());
+  }
+
+  useEffect(() => {
+    refreshHeldSales();
+  }, []);
+
+  async function handleHoldSale() {
+    if (cart.length === 0) return;
+    await holdSale(JSON.stringify(cart));
+    setCart([]);
+    await refreshHeldSales();
+  }
+
+  async function handleResumeSale(held: HeldSale) {
+    setCart(JSON.parse(held.cartJson) as CartLine[]);
+    await deleteHeldSale(held.id);
+    await refreshHeldSales();
+  }
 
   // Barcode scanners are plain USB-HID keyboard input (spec: "no plugin
   // needed") - they type into whatever has focus and end with Enter, so a
@@ -155,7 +181,7 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
             tenantId,
             storeId,
             terminalId,
-            user.id,
+            activeCashier.id,
             totals.taxTotal,
             totals.discountTotal,
             totals.total,
@@ -195,6 +221,18 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
         </span>
         <button onClick={onDisconnect}>Log out</button>
       </header>
+
+      <CashierSwitcher active={activeCashier} onSwitch={setActiveCashier} />
+
+      {storeId != null && tenantId != null && (
+        <ShiftPanel
+          payloadToken={payloadToken}
+          tenantId={tenantId}
+          storeId={storeId}
+          terminalId={terminalId}
+          cashierId={activeCashier.id}
+        />
+      )}
 
       <div className="till-search">
         <input
@@ -273,11 +311,30 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
         ))}
       </div>
 
-      <button disabled={cart.length === 0 || completing} onClick={completeSale}>
-        {completing ? 'Completing...' : 'Complete sale'}
-      </button>
+      <div className="till-actions">
+        <button disabled={cart.length === 0 || completing} onClick={completeSale}>
+          {completing ? 'Completing...' : 'Complete sale'}
+        </button>
+        <button disabled={cart.length === 0} onClick={handleHoldSale}>
+          Hold sale
+        </button>
+      </div>
 
       {message && <p className="till-message">{message}</p>}
+
+      {heldSales.length > 0 && (
+        <div className="held-sales">
+          <h2>Held sales</h2>
+          <ul>
+            {heldSales.map((held) => (
+              <li key={held.id}>
+                <span>{new Date(held.createdAt).toLocaleTimeString()}</span>
+                <button onClick={() => handleResumeSale(held)}>Resume</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {storeId != null && <VoidOrderPanel storeId={storeId} payloadToken={payloadToken} />}
     </div>

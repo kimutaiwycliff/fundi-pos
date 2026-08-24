@@ -236,3 +236,58 @@ button {
   font-size: 0.9em;
   color: #b35900;
 }
+
+.till-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.held-sales ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.held-sales li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cashier-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
+}
+
+.cashier-switch-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cashier-switch-error {
+  color: #c0392b;
+  font-size: 0.85em;
+}
+
+.shift-panel {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.shift-open-form,
+.shift-close-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shift-message {
+  font-size: 0.9em;
+}
