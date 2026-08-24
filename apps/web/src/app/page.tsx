@@ -88,12 +88,16 @@ const PLANS = [
   {
     name: 'Starter',
     tagline: 'For a single till getting started.',
+    price: 'KES 2,500',
+    priceNote: '/ month · 1 store',
     features: ['1 store, unlimited PIN logins', 'Offline till + M-Pesa payments', 'Core inventory & sales reports', 'Standard receipt printing'],
     featured: false,
   },
   {
     name: 'Growth',
     tagline: 'For growing multi-branch stores.',
+    price: 'KES 6,500',
+    priceNote: '/ month · up to 5 stores',
     features: [
       'Everything in Starter',
       'Multiple stores & stock transfers',
@@ -106,6 +110,8 @@ const PLANS = [
   {
     name: 'Enterprise',
     tagline: 'For larger operations with custom needs.',
+    price: 'Custom',
+    priceNote: 'unlimited stores',
     features: ['Everything in Growth', 'Unlimited stores', 'Dedicated onboarding', 'Priority support'],
     featured: false,
   },
@@ -327,6 +333,10 @@ export default function LandingPage() {
                 <CardHeader>
                   <CardTitle className="text-lg">{plan.name}</CardTitle>
                   <p className="text-sm text-muted-foreground">{plan.tagline}</p>
+                  <p className="mt-3 flex items-baseline gap-1.5">
+                    <span className="font-heading text-3xl font-semibold">{plan.price}</span>
+                    <span className="text-sm text-muted-foreground">{plan.priceNote}</span>
+                  </p>
                 </CardHeader>
                 <CardContent className="flex h-full flex-col">
                   <ul className="flex-1 space-y-2.5">
