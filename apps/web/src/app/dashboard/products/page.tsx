@@ -9,6 +9,9 @@ import {
 } from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
 import { NewProductDialog } from './new-product-dialog';
+import { ImportProductsDialog } from './import-dialog';
+
+type Store = { id: number; name: string };
 
 type Product = {
   id: number;
@@ -22,15 +25,19 @@ type Product = {
 };
 
 export default async function ProductsPage() {
-  const { docs: products } = await payloadFetch<{ docs: Product[] }>(
-    '/api/products?sort=-createdAt&limit=100',
-  );
+  const [{ docs: products }, { docs: stores }] = await Promise.all([
+    payloadFetch<{ docs: Product[] }>('/api/products?sort=-createdAt&limit=100'),
+    payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Products</h1>
-        <NewProductDialog />
+        <div className="flex gap-2">
+          <ImportProductsDialog stores={stores} />
+          <NewProductDialog />
+        </div>
       </div>
 
       <div className="rounded-md border">
