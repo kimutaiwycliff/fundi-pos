@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { Wrench } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -8,14 +8,12 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { LogoutButton } from '@/components/logout-button';
 import { getCurrentUser } from '@/lib/current-user';
+import { NavItems } from './nav-items';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Overview' },
@@ -37,23 +35,20 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <SidebarProvider>
       <Sidebar>
-        <SidebarHeader className="px-4 py-3">
-          <p className="text-sm font-semibold">Hardware POS</p>
-          <p className="text-xs text-muted-foreground">{tenantName}</p>
+        <SidebarHeader className="gap-2 px-4 py-4">
+          <div className="flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
+              <Wrench className="size-4" />
+            </div>
+            <p className="text-sm font-semibold">Hardware POS</p>
+          </div>
+          <p className="truncate text-xs text-sidebar-foreground/60">{tenantName}</p>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupLabel>Manage</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>
-                {navItems.map((item) => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton asChild>
-                      <Link href={item.href}>{item.label}</Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
+              <NavItems items={navItems} />
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
