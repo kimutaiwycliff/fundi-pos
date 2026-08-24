@@ -529,10 +529,34 @@ label {
   color: var(--ink-faint);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+.product-card-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
 .product-card-price {
   font-weight: 700;
   color: var(--primary);
   font-size: 0.9rem;
+}
+.product-card-stock {
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.product-card-stock.is-out {
+  color: var(--danger);
+  font-weight: 600;
+}
+.product-card.is-out-of-stock {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.product-card.is-out-of-stock:hover {
+  border-color: var(--border);
+  box-shadow: none;
 }
 
 .pane-empty-state {
@@ -602,14 +626,36 @@ label {
 
 .cart-line {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 6px;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
+}
+.cart-line-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .cart-line-info {
   flex: 1;
   min-width: 0;
+}
+.cart-line-discount {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.cart-line-discount input {
+  width: 56px;
+  padding: 4px 6px;
+  font-size: 0.78rem;
+}
+.cart-line-discount span {
+  font-weight: 500;
+  color: var(--ink-faint);
 }
 .cart-line-name {
   font-size: 0.88rem;
@@ -950,4 +996,85 @@ label {
 .printer-status {
   font-size: 0.8rem;
   color: var(--ink-soft);
+}
+
+.shift-checking {
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+/* ---------------------------------------------------------------------
+   Toast stack (Toast.tsx) - fixed bottom-right, stacked newest-on-top.
+   --------------------------------------------------------------------- */
+.toast-stack {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  max-width: 360px;
+}
+.toast-item {
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-lg);
+  animation: toast-in 0.18s ease-out;
+  color: #fff;
+}
+@keyframes toast-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.toast-success {
+  background: var(--success);
+}
+.toast-error {
+  background: var(--danger);
+}
+.toast-info {
+  background: var(--ink);
+}
+
+/* ---------------------------------------------------------------------
+   ConfirmDialog - a centered modal, distinct from Drawer's slide-over
+   panel (this is a yes/no or single-acknowledgement choice, not a
+   navigable panel of content).
+   --------------------------------------------------------------------- */
+.confirm-overlay {
+  align-items: center;
+  justify-content: center;
+}
+.confirm-dialog {
+  width: min(380px, calc(100% - 40px));
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: drawer-in 0.15s ease-out;
+}
+.confirm-dialog h2 {
+  font-size: 1.05rem;
+}
+.confirm-dialog p {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
 }

@@ -15,6 +15,27 @@ export interface Shift {
   variance: number | null;
 }
 
+// ShiftPanel previously started every mount from `shift: null`, with no way
+// to tell whether the active cashier already had a shift open on this
+// terminal - meaning switching cashiers, or the app simply restarting mid-
+// shift, would silently forget it was open. Checked live: this is what
+// let a cashier appear "shift-less" (and therefore blocked from selling,
+// once that gate exists) despite genuinely having an open shift server-side.
+export async function findOpenShift(payloadToken: string, terminal: string, cashierId: number): Promise<Shift | null> {
+  const params = new URLSearchParams({
+    'where[terminal][equals]': terminal,
+    'where[cashier][equals]': String(cashierId),
+    'where[status][equals]': 'open',
+    limit: '1',
+  });
+  const res = await tauriFetch(`${API_BASE_URL}/api/shifts?${params.toString()}`, {
+    headers: { Authorization: `JWT ${payloadToken}` },
+  });
+  if (!res.ok) return null;
+  const body = await res.json().catch(() => null);
+  return body?.docs?.[0] ?? null;
+}
+
 export async function openShift(
   payloadToken: string,
   args: { tenantId: number; storeId: number; terminal: string; cashierId: number; openingFloat: number },

@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { closeShift, openShift, type Shift } from './shifts';
+import { useEffect, useState } from 'react';
+import { closeShift, findOpenShift, openShift, type Shift } from './shifts';
+import { useToast } from './Toast';
 
 interface ShiftPanelProps {
   payloadToken: string;
@@ -7,14 +8,43 @@ interface ShiftPanelProps {
   storeId: number;
   terminalId: string;
   cashierId: number;
+  onShiftChange?: (shift: Shift | null) => void;
 }
 
-export function ShiftPanel({ payloadToken, tenantId, storeId, terminalId, cashierId }: ShiftPanelProps) {
-  const [shift, setShift] = useState<Shift | null>(null);
+export function ShiftPanel({ payloadToken, tenantId, storeId, terminalId, cashierId, onShiftChange }: ShiftPanelProps) {
+  const [shift, setShiftState] = useState<Shift | null>(null);
+  const [checkingCurrent, setCheckingCurrent] = useState(true);
   const [openingFloat, setOpeningFloat] = useState('0');
   const [closingCash, setClosingCash] = useState('0');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const showToast = useToast();
+
+  function setShift(next: Shift | null) {
+    setShiftState(next);
+    onShiftChange?.(next);
+  }
+
+  // Re-checked whenever the active cashier (or terminal) changes - a shift
+  // belongs to a specific cashier, so switching cashiers must re-evaluate
+  // whether THIS person already has one open, not keep showing whoever was
+  // active before the switch.
+  useEffect(() => {
+    let active = true;
+    setCheckingCurrent(true);
+    findOpenShift(payloadToken, terminalId, cashierId)
+      .then((found) => {
+        if (!active) return;
+        setShift(found);
+      })
+      .finally(() => {
+        if (active) setCheckingCurrent(false);
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cashierId, terminalId]);
 
   async function handleOpen() {
     setBusy(true);
@@ -28,8 +58,11 @@ export function ShiftPanel({ payloadToken, tenantId, storeId, terminalId, cashie
         openingFloat: Number(openingFloat) || 0,
       });
       setShift(opened);
+      showToast('Shift opened', 'success');
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setMessage(msg);
+      showToast(msg, 'error');
     } finally {
       setBusy(false);
     }
@@ -45,12 +78,19 @@ export function ShiftPanel({ payloadToken, tenantId, storeId, terminalId, cashie
         `Shift closed. Expected ${closed.expectedCash?.toFixed(2)}, counted ${Number(closingCash).toFixed(2)}, ` +
           `variance ${closed.variance?.toFixed(2)}.`,
       );
+      showToast('Shift closed', 'success');
       setShift(null);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      setMessage(msg);
+      showToast(msg, 'error');
     } finally {
       setBusy(false);
     }
+  }
+
+  if (checkingCurrent) {
+    return <div className="shift-panel shift-checking">Checking shift status...</div>;
   }
 
   return (

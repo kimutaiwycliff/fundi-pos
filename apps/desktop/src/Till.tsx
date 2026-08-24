@@ -10,6 +10,9 @@ import { deleteHeldSale, holdSale, listHeldSales, type HeldSale } from './heldSa
 import { printReceipt } from './printer';
 import { PrinterSettings } from './PrinterSettings';
 import { Drawer } from './Drawer';
+import { ConfirmDialog } from './ConfirmDialog';
+import { useToast } from './Toast';
+import type { Shift } from './shifts';
 import {
   ArchiveIcon,
   ClockIcon,
@@ -31,6 +34,8 @@ interface LocalProduct {
   barcode: string | null;
   sell_price: number;
   tax_rate: number;
+  max_discount_percent: number;
+  stock_on_hand: number;
 }
 
 interface LocalTenant {
@@ -42,7 +47,14 @@ interface LocalTenant {
 interface CartLine {
   product: LocalProduct;
   quantity: number;
-  discount: number;
+  // A percentage (0-100, clamped to the product's own max_discount_percent),
+  // not the flat currency amount business-logic's LineInput expects - see
+  // lineDiscountAmount below for the conversion at the point of use.
+  discountPercent: number;
+}
+
+function lineDiscountAmount(line: CartLine): number {
+  return (line.quantity * line.product.sell_price * line.discountPercent) / 100;
 }
 
 interface TillProps {
@@ -93,7 +105,6 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
   const [tenderType, setTenderType] = useState<(typeof TENDER_OPTIONS)[number]['value']>('cash');
   const [mpesaPhone, setMpesaPhone] = useState('');
   const [completing, setCompleting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [pendingSyncCount, setPendingSyncCount] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [activeCashier, setActiveCashier] = useState({ id: user.id, email: user.email, name: user.name ?? null });
@@ -102,6 +113,10 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
   const [heldSalesOpen, setHeldSalesOpen] = useState(false);
   const [voidPanelOpen, setVoidPanelOpen] = useState(false);
   const [printerSettingsOpen, setPrinterSettingsOpen] = useState(false);
+  const [activeShift, setActiveShift] = useState<Shift | null>(null);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [shiftBlockOpen, setShiftBlockOpen] = useState(false);
+  const showToast = useToast();
 
   const storeId = typeof user.store === 'object' ? user.store?.id : user.store;
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
@@ -130,12 +145,14 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
     await holdSale(JSON.stringify(cart));
     setCart([]);
     await refreshHeldSales();
+    showToast('Sale held', 'success');
   }
 
   async function handleResumeSale(held: HeldSale) {
     setCart(JSON.parse(held.cartJson) as CartLine[]);
     await deleteHeldSale(held.id);
     await refreshHeldSales();
+    showToast('Sale resumed', 'success');
   }
 
   // Barcode scanners are plain USB-HID keyboard input (spec: "no plugin
@@ -150,18 +167,25 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       return;
     }
     const db = getDb();
+    // stock_on_hand is derived, never stored (the ledger is the only source
+    // of truth - see stock-adjustment-dialog.tsx's own comment on the web
+    // side) - summed here per product/store in the same query so search
+    // results can both display it and gate against overselling.
     db.getAll<LocalProduct>(
-      `SELECT id, name, sku, barcode, sell_price, tax_rate FROM products
-       WHERE tenant_id = ? AND (sku LIKE ? OR barcode = ? OR name LIKE ?)
-       ORDER BY name LIMIT 20`,
-      [tenantId, `%${trimmed}%`, trimmed, `%${trimmed}%`],
+      `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, p.tax_rate, p.max_discount_percent,
+              COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
+                        WHERE sm.product_id = p.id AND sm.store_id = ?), 0) AS stock_on_hand
+       FROM products p
+       WHERE p.tenant_id = ? AND (p.sku LIKE ? OR p.barcode = ? OR p.name LIKE ?)
+       ORDER BY p.name LIMIT 20`,
+      [storeId ?? null, tenantId, `%${trimmed}%`, trimmed, `%${trimmed}%`],
     ).then((rows) => {
       if (active) setResults(rows);
     });
     return () => {
       active = false;
     };
-  }, [query, tenantId]);
+  }, [query, tenantId, storeId]);
 
   useEffect(() => {
     const db = getDb();
@@ -193,26 +217,40 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       cart.map((line) => ({
         quantity: line.quantity,
         unitPrice: line.product.sell_price,
-        discount: line.discount,
+        discount: lineDiscountAmount(line),
         taxRate: line.product.tax_rate,
       })),
     [cart],
   );
   const totals = useMemo(() => computeOrderTotals(lineInputs), [lineInputs]);
 
+  // The till only knows about stock it has already searched for in this
+  // session (product.stock_on_hand is a snapshot from the search query, not
+  // re-queried live) - good enough to stop a cashier ringing up more of one
+  // item than the shelf has, without a DB round-trip on every +/- click.
   function addToCart(product: LocalProduct) {
+    const existing = cart.find((l) => l.product.id === product.id);
+    const nextQuantity = (existing?.quantity ?? 0) + 1;
+    if (nextQuantity > product.stock_on_hand) {
+      showToast(`Only ${product.stock_on_hand} ${product.name} left in stock`, 'error');
+      return;
+    }
     setCart((prev) => {
-      const existing = prev.find((l) => l.product.id === product.id);
       if (existing) {
         return prev.map((l) => (l.product.id === product.id ? { ...l, quantity: l.quantity + 1 } : l));
       }
-      return [...prev, { product, quantity: 1, discount: 0 }];
+      return [...prev, { product, quantity: 1, discountPercent: 0 }];
     });
     setQuery('');
     setResults([]);
   }
 
   function updateQuantity(productId: string, quantity: number) {
+    const line = cart.find((l) => l.product.id === productId);
+    if (line && quantity > line.quantity && quantity > line.product.stock_on_hand) {
+      showToast(`Only ${line.product.stock_on_hand} ${line.product.name} left in stock`, 'error');
+      return;
+    }
     setCart((prev) =>
       quantity <= 0
         ? prev.filter((l) => l.product.id !== productId)
@@ -220,14 +258,36 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
     );
   }
 
+  function updateDiscountPercent(productId: string, rawValue: number) {
+    const line = cart.find((l) => l.product.id === productId);
+    if (!line) return;
+    const max = line.product.max_discount_percent;
+    const clamped = Math.min(Math.max(rawValue, 0), max);
+    if (rawValue > max) {
+      showToast(`Max discount for ${line.product.name} is ${max}%`, 'error');
+    }
+    setCart((prev) => prev.map((l) => (l.product.id === productId ? { ...l, discountPercent: clamped } : l)));
+  }
+
   async function completeSale() {
     if (cart.length === 0 || storeId == null) return;
+    if (activeShift == null) {
+      showToast('Open a shift before completing a sale', 'error');
+      return;
+    }
     if (tenderType === 'mpesa' && !mpesaPhone.trim()) {
-      setMessage('Enter the customer\'s phone number for the M-Pesa prompt');
+      showToast("Enter the customer's phone number for the M-Pesa prompt", 'error');
+      return;
+    }
+    // Final authoritative check right before committing - a line's snapshot
+    // stock could be stale if it sat in the cart a while (another till
+    // selling the same product, a manual stock adjustment, etc.).
+    const oversold = cart.find((line) => line.quantity > line.product.stock_on_hand);
+    if (oversold) {
+      showToast(`Only ${oversold.product.stock_on_hand} ${oversold.product.name} left in stock`, 'error');
       return;
     }
     setCompleting(true);
-    setMessage(null);
     try {
       const db = getDb();
       const orderId = crypto.randomUUID();
@@ -268,24 +328,38 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
           await tx.execute(
             `INSERT INTO orders_line_items (id, _parent_id, _order, product_id, variant, quantity, unit_price, discount)
              VALUES (?, ?, ?, ?, NULL, ?, ?, ?)`,
-            [crypto.randomUUID(), orderId, i, line.product.id, line.quantity, line.product.sell_price, line.discount],
+            // Number(line.product.id): products.id is a PowerSync-implicit
+            // TEXT primary key locally, but this column mirrors Postgres's
+            // real INTEGER foreign key (schema.ts declares product_id as
+            // column.integer) - binding the raw string here is what let a
+            // "275" string leak into the sync queue and get rejected by
+            // Payload's numeric relationship field server-side (see
+            // src-tauri/src/connector.rs's to_number, which patches this up
+            // defensively for anything already queued before this fix).
+            [
+              crypto.randomUUID(),
+              orderId,
+              i,
+              Number(line.product.id),
+              line.quantity,
+              line.product.sell_price,
+              lineDiscountAmount(line),
+            ],
           );
         }
       });
 
-      setMessage(`Sale completed - order ${orderId.slice(0, 8)} (${tenderType}, ${totals.total.toFixed(2)})`);
+      showToast(`Sale completed - ${tenderType === 'mpesa' ? 'M-Pesa' : 'Cash'} ${totals.total.toFixed(2)}`, 'success');
 
       if (tenderType === 'mpesa') {
         // Best-effort, same as printing below - the sale is already
         // durably recorded regardless of whether the STK push itself
         // succeeds. A failure here just means the cashier has to retry
         // the push or fall back to cash - it never undoes the sale.
-        initiateMpesaPayment(payloadToken, orderId, mpesaPhone.trim()).then(
-          () => setMessage((prev) => `${prev ?? ''} · M-Pesa prompt sent to ${mpesaPhone.trim()}`),
-          (err) =>
-            setMessage(
-              (prev) => `${prev ?? ''} (M-Pesa prompt failed: ${err instanceof Error ? err.message : String(err)})`,
-            ),
+        const phone = mpesaPhone.trim();
+        initiateMpesaPayment(payloadToken, orderId, phone).then(
+          () => showToast(`M-Pesa prompt sent to ${phone}`, 'success'),
+          (err) => showToast(`M-Pesa prompt failed: ${err instanceof Error ? err.message : String(err)}`, 'error'),
         );
         setMpesaPhone('');
       }
@@ -302,7 +376,7 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
           name: line.product.name,
           quantity: line.quantity,
           unitPrice: line.product.sell_price,
-          lineTotal: line.quantity * line.product.sell_price - line.discount,
+          lineTotal: line.quantity * line.product.sell_price - lineDiscountAmount(line),
         })),
         taxTotal: totals.taxTotal,
         total: totals.total,
@@ -310,19 +384,18 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
         header: tenant?.receipt_header,
         footer: tenant?.receipt_footer,
       }).catch((err) => {
-        setMessage((prev) => `${prev ?? ''} (receipt print failed: ${err instanceof Error ? err.message : String(err)})`);
+        showToast(`Receipt print failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       });
 
       setCart([]);
     } catch (err) {
-      setMessage(`ERROR completing sale: ${err instanceof Error ? err.message : String(err)}`);
+      showToast(`Error completing sale: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setCompleting(false);
     }
   }
 
   const trimmedQuery = query.trim();
-  const isMessageError = message != null && /error|fail/i.test(message);
 
   return (
     <div className="till-shell">
@@ -350,8 +423,16 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
         </span>
 
         <div className="till-topbar-actions">
-          <CashierSwitcher active={activeCashier} onSwitch={setActiveCashier} />
-          <button className="btn btn-ghost btn-sm" onClick={onDisconnect}>
+          <CashierSwitcher
+            active={activeCashier}
+            onSwitch={setActiveCashier}
+            canSwitch={activeShift == null}
+            onBlocked={() => setShiftBlockOpen(true)}
+          />
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => (activeShift != null ? setShiftBlockOpen(true) : setLogoutConfirmOpen(true))}
+          >
             Log out
           </button>
         </div>
@@ -363,6 +444,7 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
             payloadToken={payloadToken}
             tenantId={tenantId}
             storeId={storeId}
+            onShiftChange={setActiveShift}
             terminalId={terminalId}
             cashierId={activeCashier.id}
           />
@@ -403,13 +485,26 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
 
           {results.length > 0 ? (
             <div className="search-results-grid">
-              {results.map((product) => (
-                <button key={product.id} className="product-card" onClick={() => addToCart(product)}>
-                  <span className="product-card-name">{product.name}</span>
-                  <span className="product-card-meta">{product.sku}</span>
-                  <span className="product-card-price">{product.sell_price.toFixed(2)}</span>
-                </button>
-              ))}
+              {results.map((product) => {
+                const outOfStock = product.stock_on_hand <= 0;
+                return (
+                  <button
+                    key={product.id}
+                    className={`product-card ${outOfStock ? 'is-out-of-stock' : ''}`}
+                    disabled={outOfStock}
+                    onClick={() => addToCart(product)}
+                  >
+                    <span className="product-card-name">{product.name}</span>
+                    <span className="product-card-meta">{product.sku}</span>
+                    <span className="product-card-row">
+                      <span className="product-card-price">{product.sell_price.toFixed(2)}</span>
+                      <span className={`product-card-stock ${outOfStock ? 'is-out' : ''}`}>
+                        {outOfStock ? 'Out of stock' : `${product.stock_on_hand} in stock`}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           ) : trimmedQuery ? (
             <div className="pane-empty-state">
@@ -441,22 +536,38 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
             <div className="cart-list">
               {cart.map((line) => (
                 <div key={line.product.id} className="cart-line">
-                  <div className="cart-line-info">
-                    <p className="cart-line-name">{line.product.name}</p>
-                    <p className="cart-line-price">{line.product.sell_price.toFixed(2)} each</p>
+                  <div className="cart-line-main">
+                    <div className="cart-line-info">
+                      <p className="cart-line-name">{line.product.name}</p>
+                      <p className="cart-line-price">{line.product.sell_price.toFixed(2)} each</p>
+                    </div>
+                    <div className="qty-stepper">
+                      <button onClick={() => updateQuantity(line.product.id, line.quantity - 1)} aria-label="Decrease quantity">
+                        <MinusIcon />
+                      </button>
+                      <span>{line.quantity}</span>
+                      <button onClick={() => updateQuantity(line.product.id, line.quantity + 1)} aria-label="Increase quantity">
+                        <PlusIcon />
+                      </button>
+                    </div>
+                    <span className="cart-line-total">
+                      {(line.quantity * line.product.sell_price - lineDiscountAmount(line)).toFixed(2)}
+                    </span>
                   </div>
-                  <div className="qty-stepper">
-                    <button onClick={() => updateQuantity(line.product.id, line.quantity - 1)} aria-label="Decrease quantity">
-                      <MinusIcon />
-                    </button>
-                    <span>{line.quantity}</span>
-                    <button onClick={() => updateQuantity(line.product.id, line.quantity + 1)} aria-label="Increase quantity">
-                      <PlusIcon />
-                    </button>
-                  </div>
-                  <span className="cart-line-total">
-                    {(line.quantity * line.product.sell_price - line.discount).toFixed(2)}
-                  </span>
+                  {line.product.max_discount_percent > 0 && (
+                    <label className="cart-line-discount">
+                      Discount
+                      <input
+                        type="number"
+                        min={0}
+                        max={line.product.max_discount_percent}
+                        step={1}
+                        value={line.discountPercent}
+                        onChange={(e) => updateDiscountPercent(line.product.id, Number(e.currentTarget.value) || 0)}
+                      />
+                      <span>% (max {line.product.max_discount_percent}%)</span>
+                    </label>
+                  )}
                 </div>
               ))}
             </div>
@@ -500,15 +611,13 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
               />
             )}
 
-            {message && <p className={`toast ${isMessageError ? 'is-error' : ''}`}>{message}</p>}
-
             <div className="cart-actions">
               <button
                 className="btn btn-primary btn-lg btn-block"
-                disabled={cart.length === 0 || completing}
+                disabled={cart.length === 0 || completing || activeShift == null}
                 onClick={completeSale}
               >
-                {completing ? 'Completing...' : 'Complete sale'}
+                {completing ? 'Completing...' : activeShift == null ? 'Open a shift to sell' : 'Complete sale'}
               </button>
               <button className="btn btn-secondary btn-block" disabled={cart.length === 0} onClick={handleHoldSale}>
                 Hold sale
@@ -549,6 +658,27 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       <Drawer open={printerSettingsOpen} onClose={() => setPrinterSettingsOpen(false)} title="Printer settings">
         <PrinterSettings />
       </Drawer>
+
+      <ConfirmDialog
+        open={logoutConfirmOpen}
+        title="Log out?"
+        message="You'll need to log back in to keep selling on this terminal."
+        confirmLabel="Log out"
+        danger
+        onCancel={() => setLogoutConfirmOpen(false)}
+        onConfirm={() => {
+          setLogoutConfirmOpen(false);
+          onDisconnect();
+        }}
+      />
+
+      <ConfirmDialog
+        open={shiftBlockOpen}
+        title="Close your shift first"
+        message="You have an open shift on this terminal. Close it below before switching cashiers or logging out."
+        confirmLabel="Got it"
+        onConfirm={() => setShiftBlockOpen(false)}
+      />
     </div>
   );
 }

@@ -42,6 +42,7 @@ const products = new Table(
     cost_price: column.real,
     sell_price: column.real,
     tax_rate: column.real,
+    max_discount_percent: column.real,
     is_bundle: column.integer,
     updated_at: column.text,
     created_at: column.text,
