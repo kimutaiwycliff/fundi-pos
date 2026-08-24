@@ -1,0 +1,17 @@
+# VPS production reverse proxy + automatic TLS (build plan Phase 9, target
+# 3). UNVERIFIED against a real domain/VPS - Caddy's automatic HTTPS
+# (Let's Encrypt via ACME) needs public DNS pointed at the VPS's IP, which
+# doesn't exist in this environment. Replace the placeholder domains below
+# with real ones before deploying; Caddy validates DNS ownership at startup
+# and will otherwise fail to issue a certificate.
+{$API_DOMAIN:api.example.com} {
+	reverse_proxy payload-api:3000
+}
+
+{$WEB_DOMAIN:app.example.com} {
+	reverse_proxy web:3000
+}
+
+{$POWERSYNC_DOMAIN:sync.example.com} {
+	reverse_proxy powersync:8080
+}

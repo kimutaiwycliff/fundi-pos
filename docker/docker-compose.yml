@@ -34,7 +34,8 @@ services:
 
   payload-api:
     build:
-      context: ../apps/api
+      context: ..
+      dockerfile: apps/api/Dockerfile
     environment:
       DATABASE_URI: postgres://${POSTGRES_USER:-pos_admin}:${POSTGRES_PASSWORD:-dev_only_change_me}@postgres:5432/${POSTGRES_DB:-pos_saas}
       PAYLOAD_SECRET: ${PAYLOAD_SECRET:-dev_only_change_me_to_a_long_random_string}
@@ -66,9 +67,19 @@ services:
 
   web:
     build:
-      context: ../apps/web
+      context: ..
+      dockerfile: apps/web/Dockerfile
     environment:
+      # Browser-facing (client-side fetches) - the browser runs on the host,
+      # so it must use the host-mapped port, not the container-internal one.
       NEXT_PUBLIC_API_URL: http://localhost:3001
+      # Server-side (Next.js route handlers running inside this container) -
+      # reaches payload-api over the compose network's internal DNS/port,
+      # never the host-mapped 3001. Caught live: without this, every
+      # server-side call defaulted to apps/web's own hardcoded host-dev
+      # fallback (http://localhost:3011) and failed with ECONNREFUSED
+      # inside the container, since nothing listens on 3011 in this network.
+      PAYLOAD_API_URL: http://payload-api:3000
     ports: ["3000:3000"]
     depends_on: [payload-api]
 

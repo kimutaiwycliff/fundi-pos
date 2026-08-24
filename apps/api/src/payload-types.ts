@@ -299,6 +299,8 @@ export interface Order {
   total: number;
   tenderType: 'cash' | 'mpesa' | 'card';
   paymentStatus: 'paid' | 'pending' | 'failed';
+  mpesaCheckoutRequestId?: string | null;
+  pesapalOrderTrackingId?: string | null;
   status: 'completed' | 'refunded' | 'voided';
   createdOffline?: boolean | null;
   syncedAt?: string | null;
@@ -672,6 +674,8 @@ export interface OrdersSelect<T extends boolean = true> {
   total?: T;
   tenderType?: T;
   paymentStatus?: T;
+  mpesaCheckoutRequestId?: T;
+  pesapalOrderTrackingId?: T;
   status?: T;
   createdOffline?: T;
   syncedAt?: T;

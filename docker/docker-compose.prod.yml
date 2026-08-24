@@ -1,0 +1,102 @@
+# VPS production overrides (build plan Phase 9, target 3). Run alongside the
+# base file, never alone - it only adds restart policies, resource limits,
+# a Caddy reverse proxy with automatic TLS, and a backup cron:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# UNVERIFIED end-to-end (no real VPS/domain in this environment) - the
+# pg_dump/gzip/rotation half of the backup service was verified live against
+# this project's own dockerized Postgres (see backup.sh's header comment);
+# Caddy's TLS issuance and the S3 upload step were not, since both need real
+# public DNS / object-storage credentials.
+services:
+  postgres:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  postgres-storage:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  payload-api:
+    restart: unless-stopped
+    # Not published directly in production - Caddy is the only public
+    # entrypoint (see the caddy service below).
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  powersync:
+    restart: unless-stopped
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  web:
+    restart: unless-stopped
+    ports: !reset []
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+      WEB_DOMAIN: ${WEB_DOMAIN}
+      POWERSYNC_DOMAIN: ${POWERSYNC_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    command: ["caddy", "run", "--config", "/etc/caddyfile"]
+    ports: ["80:80", "443:443"]
+    depends_on: [payload-api, web, powersync]
+
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    entrypoint: ["sh", "-c"]
+    # No cron daemon in the postgres image - a plain sleep loop is simpler
+    # than adding one for a single daily job. Installs aws-cli on first
+    # boot since the base image doesn't include it (see backup.sh).
+    command:
+      - |
+        apt-get update && apt-get install -y --no-install-recommends awscli && rm -rf /var/lib/apt/lists/*
+        while true; do
+          sh /backup.sh
+          sleep 86400
+        done
+    environment:
+      DATABASE_URI: postgres://${POSTGRES_USER:-pos_admin}:${POSTGRES_PASSWORD:-dev_only_change_me}@postgres:5432/${POSTGRES_DB:-pos_saas}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - pgbackups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pgbackups:

@@ -69,6 +69,15 @@ export const Orders: CollectionConfig = {
       defaultValue: 'paid',
       options: ['paid', 'pending', 'failed'],
     },
+    // Correlates Safaricom's asynchronous STK Push callback (which has no
+    // other way to reference back to this order) - spec Section 6.5:
+    // "M-Pesa STK Push... queue as pending if attempted offline and confirm
+    // on reconnect". Nullable - only set for tenderType 'mpesa'.
+    { name: 'mpesaCheckoutRequestId', type: 'text', index: true },
+    // Correlates Pesapal's IPN callback back to this order (Pesapal's
+    // OrderTrackingId is a distinct value from Daraja's CheckoutRequestID -
+    // see lib/payments/pesapal.ts). Nullable - only set for tenderType 'card'.
+    { name: 'pesapalOrderTrackingId', type: 'text', index: true },
     {
       name: 'status',
       type: 'select',
@@ -150,13 +159,13 @@ export const Orders: CollectionConfig = {
             collection: 'stock-movements',
             data: {
               id: crypto.randomUUID(),
-              tenant: toID(doc.tenant),
-              store: toID(doc.store),
-              product: toID(line.product),
-              variant: line.variant ? toID(line.variant) : null,
+              tenant: Number(toID(doc.tenant)),
+              store: Number(toID(doc.store)),
+              product: Number(toID(line.product)),
+              variant: line.variant ?? null,
               quantityDelta: sign * Math.abs(line.quantity),
               reason,
-              relatedOrder: toID(doc.id),
+              relatedOrder: String(doc.id),
               clientTimestamp: new Date().toISOString(),
               sourceTerminal: doc.terminal,
             },
