@@ -15,8 +15,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Hardware POS Dashboard",
-  description: "Inventory, staff, and multi-store reporting for Hardware POS.",
+  title: {
+    default: "Fundi — POS for hardware stores",
+    template: "%s · Fundi",
+  },
+  description:
+    "Offline-first point of sale and inventory management for Kenyan hardware and building-supply stores. Sell through blackouts, take M-Pesa at the till, and sync automatically when you're back online.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
