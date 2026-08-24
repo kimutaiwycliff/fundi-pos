@@ -49,6 +49,33 @@ export async function loginToPayload(email: string, password: string): Promise<L
 }
 
 /**
+ * POST /api/auth/pin-login - fast till login: phone + PIN instead of
+ * email + password. Still requires connectivity (it mints a real, fresh
+ * Payload session server-side, the same way loginToPayload does) - this is
+ * NOT the same thing as the fully-offline PIN check in pin.ts used for
+ * cashier-switching/manager-authorization within an already-connected
+ * session. Returns the identical shape as loginToPayload so callers don't
+ * need to branch on which method was used.
+ */
+export async function loginWithPin(phone: string, pin: string): Promise<LoginResult> {
+  const res = await tauriFetch(`${API_BASE_URL}/api/auth/pin-login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, pin }),
+  });
+
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body?.error ?? `PIN login failed (HTTP ${res.status})`);
+  }
+  if (!body?.token) {
+    throw new Error('PIN login response did not include a token');
+  }
+
+  return { payloadToken: body.token as string, user: body.user as PayloadUser };
+}
+
+/**
  * GET /api/powersync/token - exchanges the Payload session JWT for a
  * short-lived (1hr) RS256 JWT scoped for PowerSync client auth (tenant_id/
  * store_id/role claims, see apps/api/src/lib/powersyncAuth.ts).

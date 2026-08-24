@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { getDb } from "./database";
-import { loginToPayload, type PayloadUser } from "./auth";
+import { loginToPayload, loginWithPin, type PayloadUser } from "./auth";
 import { connectPowerSync, disconnectPowerSync, ensureAppDataDir } from "./powersync";
 import { Till } from "./Till";
 import "./App.css";
 
 type ConnectionState = "idle" | "logging-in" | "connecting" | "connected" | "error";
+type LoginMode = "pin" | "password";
 
 // Persisted per-installation so the same till keeps the same identity
 // across restarts (used as StockMovements/Orders.sourceTerminal/terminal
@@ -21,6 +22,12 @@ function getTerminalId(): string {
 }
 
 function App() {
+  // PIN is the default - the fast path for day-to-day till login. Password
+  // stays available since a brand-new staff member may not have a PIN/phone
+  // set yet (see the dashboard's Staff page).
+  const [mode, setMode] = useState<LoginMode>("pin");
+  const [phone, setPhone] = useState("");
+  const [pin, setPin] = useState("");
   const [email, setEmail] = useState("owner@demo-hardware.test");
   const [password, setPassword] = useState("demo-password-123");
   const [state, setState] = useState<ConnectionState>("idle");
@@ -46,7 +53,8 @@ function App() {
     setError(null);
     try {
       setState("logging-in");
-      const { payloadToken, user: loggedInUser } = await loginToPayload(email, password);
+      const { payloadToken, user: loggedInUser } =
+        mode === "pin" ? await loginWithPin(phone, pin) : await loginToPayload(email, password);
       payloadTokenRef.current = payloadToken;
       setUser(loggedInUser);
 
@@ -76,21 +84,49 @@ function App() {
     );
   }
 
+  const busy = state === "logging-in" || state === "connecting";
+
   return (
     <main className="container">
       <h1>Hardware POS Till</h1>
-      <form onSubmit={handleLogin} className="row" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
-        <input value={email} onChange={(e) => setEmail(e.currentTarget.value)} placeholder="email" />
-        <input
-          value={password}
-          onChange={(e) => setPassword(e.currentTarget.value)}
-          placeholder="password"
-          type="password"
-        />
-        <button type="submit" disabled={state === "logging-in" || state === "connecting"}>
-          {state === "logging-in" ? "Logging in..." : state === "connecting" ? "Connecting..." : "Log in"}
+      <div className="row" style={{ gap: 4, marginBottom: 8 }}>
+        <button type="button" onClick={() => setMode("pin")} disabled={mode === "pin"}>
+          PIN login
         </button>
-      </form>
+        <button type="button" onClick={() => setMode("password")} disabled={mode === "password"}>
+          Password login
+        </button>
+      </div>
+
+      {mode === "pin" ? (
+        <form onSubmit={handleLogin} className="row" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+          <input value={phone} onChange={(e) => setPhone(e.currentTarget.value)} placeholder="phone (e.g. 0712345678)" />
+          <input
+            value={pin}
+            onChange={(e) => setPin(e.currentTarget.value)}
+            placeholder="PIN"
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+          />
+          <button type="submit" disabled={busy}>
+            {state === "logging-in" ? "Logging in..." : state === "connecting" ? "Connecting..." : "Log in"}
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={handleLogin} className="row" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+          <input value={email} onChange={(e) => setEmail(e.currentTarget.value)} placeholder="email" />
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.currentTarget.value)}
+            placeholder="password"
+            type="password"
+          />
+          <button type="submit" disabled={busy}>
+            {state === "logging-in" ? "Logging in..." : state === "connecting" ? "Connecting..." : "Log in"}
+          </button>
+        </form>
+      )}
 
       <p data-testid="connection-state">
         Status: <strong>{state}</strong>

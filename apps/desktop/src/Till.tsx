@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
 import { getDb } from './database';
-import type { PayloadUser } from './auth';
+import { API_BASE_URL, type PayloadUser } from './auth';
 import { VoidOrderPanel } from './VoidOrderPanel';
 import { ShiftPanel } from './ShiftPanel';
 import { CashierSwitcher } from './CashierSwitcher';
@@ -32,20 +33,46 @@ interface TillProps {
 }
 
 // Cash is first-class per spec Section 6.5 ("always available offline, no
-// queuing needed"). M-Pesa/card need connectivity at time of transaction
-// and are stubbed until Phase 7 - shown, but disabled, so the UI shape is
-// already right for when they're wired up.
+// queuing needed"). M-Pesa needs connectivity at time of transaction - the
+// STK push itself is a live call to Safaricom, initiated below once the
+// order has synced. Card stays disabled - only cash and mobile money were
+// asked for; the tender type itself already supports 'card' in the schema
+// if that changes later.
 const TENDER_OPTIONS = [
   { value: 'cash', label: 'Cash', enabled: true },
-  { value: 'mpesa', label: 'M-Pesa', enabled: false },
+  { value: 'mpesa', label: 'Mobile Money (M-Pesa)', enabled: true },
   { value: 'card', label: 'Card', enabled: false },
 ] as const;
+
+// UNVERIFIED against a real Safaricom sandbox (see lib/daraja.ts on the
+// server) - the order write below is durable regardless of whether this
+// succeeds. The retry exists because the local write and the PowerSync
+// upload aren't atomic: /api/payments/mpesa/initiate looks the order up
+// server-side, which only works once it's actually synced up, typically
+// sub-second but not instant.
+async function initiateMpesaPayment(payloadToken: string, orderId: string, phone: string): Promise<void> {
+  let lastError: string | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await tauriFetch(`${API_BASE_URL}/api/payments/mpesa/initiate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+      body: JSON.stringify({ orderId, phone }),
+    });
+    if (res.ok) return;
+    const body = await res.json().catch(() => ({}));
+    lastError = body?.error ?? `HTTP ${res.status}`;
+    if (res.status !== 404) break; // only retry "order not synced yet" - not e.g. a real Daraja rejection
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  throw new Error(lastError ?? 'M-Pesa STK push failed');
+}
 
 export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LocalProduct[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [tenderType, setTenderType] = useState<(typeof TENDER_OPTIONS)[number]['value']>('cash');
+  const [mpesaPhone, setMpesaPhone] = useState('');
   const [completing, setCompleting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [pendingSyncCount, setPendingSyncCount] = useState<number | null>(null);
@@ -161,12 +188,21 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
 
   async function completeSale() {
     if (cart.length === 0 || storeId == null) return;
+    if (tenderType === 'mpesa' && !mpesaPhone.trim()) {
+      setMessage('Enter the customer\'s phone number for the M-Pesa prompt');
+      return;
+    }
     setCompleting(true);
     setMessage(null);
     try {
       const db = getDb();
       const orderId = crypto.randomUUID();
       const now = new Date().toISOString();
+      // Cash is settled the moment it's handed over - 'paid' immediately.
+      // Mobile money isn't settled until the customer approves the STK
+      // prompt on their phone, which the (unverified) Daraja callback
+      // resolves later - starts 'pending', same as the server-side schema.
+      const paymentStatus = tenderType === 'mpesa' ? 'pending' : 'paid';
 
       // One local transaction for the order + all its line items, so
       // PowerSync's upload queue drains them together and the Rust
@@ -177,7 +213,7 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
           `INSERT INTO orders
              (id, tenant_id, store_id, terminal, cashier_id, tax_total, discount_total, total,
               tender_type, payment_status, status, created_offline, synced_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', 'completed', 1, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', 1, ?)`,
           [
             orderId,
             tenantId,
@@ -188,6 +224,7 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
             totals.discountTotal,
             totals.total,
             tenderType,
+            paymentStatus,
             now,
           ],
         );
@@ -203,6 +240,21 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       });
 
       setMessage(`Sale completed - order ${orderId.slice(0, 8)} (${tenderType}, ${totals.total.toFixed(2)})`);
+
+      if (tenderType === 'mpesa') {
+        // Best-effort, same as printing below - the sale is already
+        // durably recorded regardless of whether the STK push itself
+        // succeeds. A failure here just means the cashier has to retry
+        // the push or fall back to cash - it never undoes the sale.
+        initiateMpesaPayment(payloadToken, orderId, mpesaPhone.trim()).then(
+          () => setMessage((prev) => `${prev ?? ''} · M-Pesa prompt sent to ${mpesaPhone.trim()}`),
+          (err) =>
+            setMessage(
+              (prev) => `${prev ?? ''} (M-Pesa prompt failed: ${err instanceof Error ? err.message : String(err)})`,
+            ),
+        );
+        setMpesaPhone('');
+      }
 
       // Printing is best-effort and must never undo or block a completed
       // sale - the order above is already durably recorded regardless of
@@ -330,9 +382,17 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
               onChange={() => setTenderType(option.value)}
             />
             {option.label}
-            {!option.enabled ? ' (Phase 7)' : ''}
+            {!option.enabled ? ' (coming soon)' : ''}
           </label>
         ))}
+        {tenderType === 'mpesa' && (
+          <input
+            className="till-mpesa-phone"
+            placeholder="Customer phone (e.g. 0712345678)"
+            value={mpesaPhone}
+            onChange={(e) => setMpesaPhone(e.currentTarget.value)}
+          />
+        )}
       </div>
 
       <div className="till-actions">
