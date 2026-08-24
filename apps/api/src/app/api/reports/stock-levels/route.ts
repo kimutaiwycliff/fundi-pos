@@ -1,5 +1,5 @@
 import config from '@payload-config';
-import { getPayload } from 'payload';
+import { getPayload, type Where } from 'payload';
 import { headers as nextHeaders } from 'next/headers';
 import { toID } from '@/lib/relations';
 
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   const storeId = new URL(request.url).searchParams.get('store');
   const tenantId = toID(user.tenant);
 
-  const where: Record<string, unknown> = { tenant: { equals: tenantId } };
+  const where: Where = { tenant: { equals: tenantId } };
   if (storeId) where.store = { equals: storeId };
 
   const [movements, products] = await Promise.all([

@@ -79,8 +79,9 @@ describe('Phase 6 - StockTransfers receiving + Shifts cash-up', () => {
 
     const product = await payload.create({
       collection: 'products',
-      data: { tenant: tenantId, sku: 'SKU-X', name: 'Widget', costPrice: 10, sellPrice: 100, taxRate: 0.16 },
+      data: { tenant: tenantId, sku: 'SKU-X', name: 'Widget', costPrice: 10, sellPrice: 100, taxRate: 0.16, reorderPoint: 0 },
       overrideAccess: true,
+      draft: false,
     });
     productId = product.id as number;
 
@@ -171,10 +172,11 @@ describe('Phase 6 - StockTransfers receiving + Shifts cash-up', () => {
         collection: 'shifts',
         data: {
           tenant: tenantId, store: storeA, terminal: 'till-1', cashier: cashierId,
-          openingFloat: 500,
+          openedAt: new Date().toISOString(), openingFloat: 500, status: 'open',
         },
         user: asUser({ id: cashierId, tenant: tenantId, role: 'cashier', store: storeA }),
         overrideAccess: false,
+        draft: false,
       });
 
       // Two cash sales and one card sale during the shift - only cash counts.
@@ -183,27 +185,30 @@ describe('Phase 6 - StockTransfers receiving + Shifts cash-up', () => {
         data: {
           id: crypto.randomUUID(), tenant: tenantId, store: storeA, terminal: 'till-1', cashier: cashierId,
           lineItems: [{ product: productId, quantity: 1, unitPrice: 100, discount: 0 }],
-          taxTotal: 0, discountTotal: 0, total: 0, tenderType: 'cash', status: 'completed',
+          taxTotal: 0, discountTotal: 0, total: 0, tenderType: 'cash', paymentStatus: 'paid', status: 'completed', kraSubmissionStatus: 'not_applicable',
         },
         overrideAccess: true,
+        draft: false,
       });
       await payload.create({
         collection: 'orders',
         data: {
           id: crypto.randomUUID(), tenant: tenantId, store: storeA, terminal: 'till-1', cashier: cashierId,
           lineItems: [{ product: productId, quantity: 1, unitPrice: 100, discount: 0 }],
-          taxTotal: 0, discountTotal: 0, total: 0, tenderType: 'cash', status: 'completed',
+          taxTotal: 0, discountTotal: 0, total: 0, tenderType: 'cash', paymentStatus: 'paid', status: 'completed', kraSubmissionStatus: 'not_applicable',
         },
         overrideAccess: true,
+        draft: false,
       });
       await payload.create({
         collection: 'orders',
         data: {
           id: crypto.randomUUID(), tenant: tenantId, store: storeA, terminal: 'till-1', cashier: cashierId,
           lineItems: [{ product: productId, quantity: 1, unitPrice: 100, discount: 0 }],
-          taxTotal: 0, discountTotal: 0, total: 0, tenderType: 'card', status: 'completed',
+          taxTotal: 0, discountTotal: 0, total: 0, tenderType: 'card', paymentStatus: 'paid', status: 'completed', kraSubmissionStatus: 'not_applicable',
         },
         overrideAccess: true,
+        draft: false,
       });
 
       // Cashier closes, claiming a bogus expectedCash/variance - server must
@@ -230,8 +235,12 @@ describe('Phase 6 - StockTransfers receiving + Shifts cash-up', () => {
 
       const shift = await payload.create({
         collection: 'shifts',
-        data: { tenant: tenantId, store: storeA, terminal: 'till-1', cashier: cashierId, openingFloat: 0 },
+        data: {
+          tenant: tenantId, store: storeA, terminal: 'till-1', cashier: cashierId,
+          openedAt: new Date().toISOString(), openingFloat: 0, status: 'open',
+        },
         overrideAccess: true,
+        draft: false,
       });
 
       await expect(
@@ -265,9 +274,10 @@ describe('Phase 6 - StockTransfers receiving + Shifts cash-up', () => {
           id: crypto.randomUUID(), tenant: tenantId, store: storeA, terminal: 'till-1', cashier: cashierId,
           customer: customer.id,
           lineItems: [{ product: productId, quantity: 3, unitPrice: 100, discount: 0 }],
-          taxTotal: 0, discountTotal: 0, total: 0, tenderType: 'cash', status: 'completed',
+          taxTotal: 0, discountTotal: 0, total: 0, tenderType: 'cash', paymentStatus: 'paid', status: 'completed', kraSubmissionStatus: 'not_applicable',
         },
         overrideAccess: true,
+        draft: false,
       });
       expect(order.loyaltyPointsEarned).toBe(3); // 300 total / 100
 
@@ -289,9 +299,10 @@ describe('Phase 6 - StockTransfers receiving + Shifts cash-up', () => {
         data: {
           id: crypto.randomUUID(), tenant: tenantId, store: storeA, terminal: 'till-1', cashier: cashierId,
           lineItems: [{ product: productId, quantity: 3, unitPrice: 100, discount: 0 }],
-          taxTotal: 0, discountTotal: 0, total: 0, tenderType: 'cash', status: 'completed',
+          taxTotal: 0, discountTotal: 0, total: 0, tenderType: 'cash', paymentStatus: 'paid', status: 'completed', kraSubmissionStatus: 'not_applicable',
         },
         overrideAccess: true,
+        draft: false,
       });
       expect(order.loyaltyPointsEarned).toBe(0);
     });

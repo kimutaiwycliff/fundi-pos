@@ -40,6 +40,15 @@ export const Users: CollectionConfig = {
       name: 'pinHash',
       type: 'text',
       admin: { readOnly: true, hidden: true },
+      // admin.hidden only hides it from the admin UI - without this, the
+      // scrypt hash of a 4-6 digit PIN (small enough to brute-force
+      // offline in seconds) was coming back in every REST/GraphQL response
+      // that includes a user, including a cashier's own /api/users/me.
+      // Caught live while smoke-testing the containerized web dashboard's
+      // login route. overrideAccess: true callers (the manager-PIN
+      // authorize-status route, PowerSync's direct-Postgres replication)
+      // are unaffected - this only governs the ordinary API.
+      access: { read: () => false },
     },
   ],
   hooks: {

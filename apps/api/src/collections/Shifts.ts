@@ -1,4 +1,4 @@
-import type { CollectionConfig } from 'payload';
+import type { CollectionConfig, Where } from 'payload';
 import { roundCurrency } from '@hardware-pos/business-logic';
 import { isAuthenticated, managerOrOwner } from '../access/index.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
@@ -8,7 +8,7 @@ export const Shifts: CollectionConfig = {
   slug: 'shifts',
   admin: { useAsTitle: 'id', defaultColumns: ['store', 'cashier', 'status', 'variance'] },
   access: {
-    read: ({ req }) => {
+    read: ({ req }): boolean | Where => {
       if (!req.user) return false;
       if (req.user.role === 'owner' || req.user.role === 'manager') {
         return { tenant: { equals: toID(req.user.tenant) } };
@@ -17,7 +17,7 @@ export const Shifts: CollectionConfig = {
       return { tenant: { equals: toID(req.user.tenant) }, cashier: { equals: toID(req.user.id) } };
     },
     create: isAuthenticated, // a cashier opens their own shift
-    update: ({ req }) => {
+    update: ({ req }): boolean | Where => {
       if (!req.user) return false;
       if (req.user.role === 'owner' || req.user.role === 'manager') {
         return { tenant: { equals: toID(req.user.tenant) } };

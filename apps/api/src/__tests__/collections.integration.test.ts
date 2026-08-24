@@ -81,9 +81,10 @@ describe('Payload collections - integration', () => {
         collection: 'products',
         data: {
           tenant: tenantId, sku: 'SKU-1', name: 'Test Widget',
-          costPrice: 10, sellPrice: 100, taxRate: 0.16,
+          costPrice: 10, sellPrice: 100, taxRate: 0.16, reorderPoint: 0,
         },
         overrideAccess: true,
+        draft: false,
       });
       productId = product.id as number;
 
@@ -108,10 +109,11 @@ describe('Payload collections - integration', () => {
           lineItems: [{ product: productId, quantity: 2, unitPrice: 100, discount: 0 }],
           // Tampered client values - server must override these.
           taxTotal: 999, discountTotal: 999, total: 1,
-          tenderType: 'cash', status: 'completed',
+          tenderType: 'cash', paymentStatus: 'paid', status: 'completed', kraSubmissionStatus: 'not_applicable',
         },
         user: asUser({ id: cashierId, tenant: tenantId, role: 'cashier' }),
         overrideAccess: false,
+        draft: false,
       });
 
       // 2 x 100 = 200 gross, 16% VAT-inclusive => net 172.41, tax 27.59
@@ -128,10 +130,11 @@ describe('Payload collections - integration', () => {
           cashier: cashierId,
           lineItems: [{ product: productId, quantity: 2, unitPrice: 100, discount: 0 }],
           taxTotal: 0, discountTotal: 0, total: 0,
-          tenderType: 'cash', status: 'completed',
+          tenderType: 'cash', paymentStatus: 'paid', status: 'completed', kraSubmissionStatus: 'not_applicable',
         },
         user: asUser({ id: cashierId, tenant: tenantId, role: 'cashier' }),
         overrideAccess: false,
+        draft: false,
       });
 
       const movements = await payload.find({
@@ -154,10 +157,11 @@ describe('Payload collections - integration', () => {
           cashier: cashierId,
           lineItems: [{ product: productId, quantity: 8, unitPrice: 100, discount: 0 }],
           taxTotal: 0, discountTotal: 0, total: 0,
-          tenderType: 'cash', status: 'completed',
+          tenderType: 'cash', paymentStatus: 'paid', status: 'completed', kraSubmissionStatus: 'not_applicable',
         },
         user: asUser({ id: cashierId, tenant: tenantId, role: 'cashier' }),
         overrideAccess: false,
+        draft: false,
       });
 
       const movements = await payload.find({
@@ -200,9 +204,10 @@ describe('Payload collections - integration', () => {
           cashier: cashierId,
           lineItems: [{ product: productId, quantity: 1, unitPrice: 100, discount: 0 }],
           taxTotal: 0, discountTotal: 0, total: 0,
-          tenderType: 'cash', status: 'completed',
+          tenderType: 'cash', paymentStatus: 'paid', status: 'completed', kraSubmissionStatus: 'not_applicable',
         },
         overrideAccess: true,
+        draft: false,
       });
 
       await expect(
@@ -233,9 +238,10 @@ describe('Payload collections - integration', () => {
           cashier: cashierId,
           lineItems: [{ product: productId, quantity: 2, unitPrice: 100, discount: 0 }],
           taxTotal: 0, discountTotal: 0, total: 0,
-          tenderType: 'cash', status: 'completed',
+          tenderType: 'cash', paymentStatus: 'paid', status: 'completed', kraSubmissionStatus: 'not_applicable',
         },
         overrideAccess: true,
+        draft: false,
       });
 
       const before = await payload.find({
@@ -271,9 +277,10 @@ describe('Payload collections - integration', () => {
           cashier: cashierId,
           lineItems: [{ product: productId, quantity: 1, unitPrice: 100, discount: 0 }],
           taxTotal: 0, discountTotal: 0, total: 0,
-          tenderType: 'cash', status: 'completed',
+          tenderType: 'cash', paymentStatus: 'paid', status: 'completed', kraSubmissionStatus: 'not_applicable',
         },
         overrideAccess: true,
+        draft: false,
       });
 
       await expect(

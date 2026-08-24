@@ -1,4 +1,4 @@
-import type { Payload, PayloadRequest } from 'payload';
+import type { Payload, PayloadRequest, Where } from 'payload';
 
 // Current stock for a product(+variant) at a store is ALWAYS a derived sum
 // over StockMovements — never a mutable counter. This is what prevents
@@ -16,7 +16,7 @@ export async function computeRunningBalance(
   args: { tenant: string; store: string; product: string; variant?: string | null },
   req?: PayloadRequest,
 ): Promise<number> {
-  const where: Record<string, unknown> = {
+  const where: Where = {
     tenant: { equals: args.tenant },
     store: { equals: args.store },
     product: { equals: args.product },

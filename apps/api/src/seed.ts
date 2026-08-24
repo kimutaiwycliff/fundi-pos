@@ -76,8 +76,10 @@ async function seed() {
       costPrice: 450,
       sellPrice: 799,
       taxRate: 0.16,
+      reorderPoint: 5,
     },
     overrideAccess: true,
+    draft: false,
   });
   const paint = await payload.create({
     collection: 'products',
@@ -90,8 +92,10 @@ async function seed() {
       costPrice: 1800,
       sellPrice: 2899,
       taxRate: 0.16,
+      reorderPoint: 3,
     },
     overrideAccess: true,
+    draft: false,
   });
   console.log(`Created products: ${hammer.id}, ${paint.id}`);
 
