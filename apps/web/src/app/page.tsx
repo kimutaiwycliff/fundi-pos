@@ -88,7 +88,7 @@ const PLANS = [
   {
     name: 'Starter',
     tagline: 'For a single till getting started.',
-    price: 'KES 2,500',
+    price: 'KES 1,000',
     priceNote: '/ month · 1 store',
     features: ['1 store, unlimited PIN logins', 'Offline till + M-Pesa payments', 'Core inventory & sales reports', 'Standard receipt printing'],
     featured: false,
@@ -96,7 +96,7 @@ const PLANS = [
   {
     name: 'Growth',
     tagline: 'For growing multi-branch stores.',
-    price: 'KES 6,500',
+    price: 'KES 2,800',
     priceNote: '/ month · up to 5 stores',
     features: [
       'Everything in Starter',
