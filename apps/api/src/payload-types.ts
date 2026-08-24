@@ -63,10 +63,12 @@ export type SupportedTimezones =
 
 export interface Config {
   auth: {
+    'platform-admins': PlatformAdminAuthOperations;
     users: UserAuthOperations;
   };
   blocks: {};
   collections: {
+    'platform-admins': PlatformAdmin;
     tenants: Tenant;
     stores: Store;
     users: User;
@@ -87,6 +89,7 @@ export interface Config {
   };
   collectionsJoins: {};
   collectionsSelect: {
+    'platform-admins': PlatformAdminsSelect<false> | PlatformAdminsSelect<true>;
     tenants: TenantsSelect<false> | TenantsSelect<true>;
     stores: StoresSelect<false> | StoresSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
@@ -115,10 +118,28 @@ export interface Config {
   widgets: {
     collections: CollectionsWidget;
   };
-  user: User;
+  user: PlatformAdmin | User;
   jobs: {
     tasks: unknown;
     workflows: unknown;
+  };
+}
+export interface PlatformAdminAuthOperations {
+  forgotPassword: {
+    email: string;
+    password: string;
+  };
+  login: {
+    email: string;
+    password: string;
+  };
+  registerFirstUser: {
+    email: string;
+    password: string;
+  };
+  unlock: {
+    email: string;
+    password: string;
   };
 }
 export interface UserAuthOperations {
@@ -138,6 +159,32 @@ export interface UserAuthOperations {
     email: string;
     password: string;
   };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-admins".
+ */
+export interface PlatformAdmin {
+  id: number;
+  name: string;
+  updatedAt: string;
+  createdAt: string;
+  email: string;
+  resetPasswordToken?: string | null;
+  resetPasswordExpiration?: string | null;
+  salt?: string | null;
+  hash?: string | null;
+  loginAttempts?: number | null;
+  lockUntil?: string | null;
+  sessions?:
+    | {
+        id: string;
+        createdAt?: string | null;
+        expiresAt: string;
+      }[]
+    | null;
+  password?: string | null;
+  collection: 'platform-admins';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -438,6 +485,10 @@ export interface PayloadLockedDocument {
   id: number;
   document?:
     | ({
+        relationTo: 'platform-admins';
+        value: number | PlatformAdmin;
+      } | null)
+    | ({
         relationTo: 'tenants';
         value: number | Tenant;
       } | null)
@@ -490,10 +541,15 @@ export interface PayloadLockedDocument {
         value: number | Shift;
       } | null);
   globalSlug?: string | null;
-  user: {
-    relationTo: 'users';
-    value: number | User;
-  };
+  user:
+    | {
+        relationTo: 'platform-admins';
+        value: number | PlatformAdmin;
+      }
+    | {
+        relationTo: 'users';
+        value: number | User;
+      };
   updatedAt: string;
   createdAt: string;
 }
@@ -503,10 +559,15 @@ export interface PayloadLockedDocument {
  */
 export interface PayloadPreference {
   id: number;
-  user: {
-    relationTo: 'users';
-    value: number | User;
-  };
+  user:
+    | {
+        relationTo: 'platform-admins';
+        value: number | PlatformAdmin;
+      }
+    | {
+        relationTo: 'users';
+        value: number | User;
+      };
   key?: string | null;
   value?:
     | {
@@ -530,6 +591,29 @@ export interface PayloadMigration {
   batch?: number | null;
   updatedAt: string;
   createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-admins_select".
+ */
+export interface PlatformAdminsSelect<T extends boolean = true> {
+  name?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  email?: T;
+  resetPasswordToken?: T;
+  resetPasswordExpiration?: T;
+  salt?: T;
+  hash?: T;
+  loginAttempts?: T;
+  lockUntil?: T;
+  sessions?:
+    | T
+    | {
+        id?: T;
+        createdAt?: T;
+        expiresAt?: T;
+      };
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

@@ -6,13 +6,15 @@ export const Tenants: CollectionConfig = {
   slug: 'tenants',
   admin: { useAsTitle: 'name' },
   access: {
-    // A user may only ever read their own tenant record - there is no
-    // superadmin bypass at this layer (ops access goes through direct DB
-    // access, not the API). req.user.tenant arrives populated (a full
-    // object) on a real request - must unwrap via toID(), same bug class
-    // already fixed in access/index.ts's shared helpers, but this
-    // collection has its own inline access fn that was missed the first time.
+    // A tenant user may only ever read their own tenant record. The one
+    // exception is a platform admin (collections/PlatformAdmins.ts) - the
+    // SaaS operator's own staff, a structurally separate auth collection -
+    // who can read every tenant, mirroring access/index.ts's isPlatformAdmin
+    // bypass since this collection has its own inline access fn rather than
+    // using the shared ownTenantOnly helper. req.user.tenant arrives
+    // populated (a full object) on a real request - must unwrap via toID().
     read: ({ req }) => {
+      if (req.user?.collection === 'platform-admins') return true;
       if (!req.user) return false;
       return { id: { equals: toID(req.user.tenant) } };
     },

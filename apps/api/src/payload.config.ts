@@ -16,18 +16,24 @@ import { StockTransfers } from './collections/StockTransfers.ts';
 import { Customers } from './collections/Customers.ts';
 import { SyncLog } from './collections/SyncLog.ts';
 import { Shifts } from './collections/Shifts.ts';
+import { PlatformAdmins } from './collections/PlatformAdmins.ts';
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
 
 export default buildConfig({
   admin: {
-    user: Users.slug,
+    // The admin panel's own session is tied to whichever collection is
+    // designated here - a platform admin, not a tenant user. Tenant staff
+    // never use this raw Payload UI at all (apps/web is their entire
+    // product surface); this is purely the SaaS operator's own console.
+    user: PlatformAdmins.slug,
     importMap: {
       baseDir: path.resolve(dirname, 'app/(payload)'),
     },
   },
   collections: [
+    PlatformAdmins,
     Tenants,
     Stores,
     Users,

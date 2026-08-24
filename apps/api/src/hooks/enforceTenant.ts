@@ -1,5 +1,5 @@
 import type { CollectionBeforeChangeHook } from 'payload';
-import { toID } from '../lib/relations.ts';
+import { isTenantUser, toID } from '../lib/relations.ts';
 
 // Never trust a client-submitted `tenant` (or, where applicable, `store`)
 // field - always derive it from the authenticated user. Access-control's
@@ -18,6 +18,9 @@ import { toID } from '../lib/relations.ts';
 export function enforceOwnTenant(options: { requireOwnStore?: boolean } = {}): CollectionBeforeChangeHook {
   return ({ data, req, operation }) => {
     if (operation === 'create' && req.user) {
+      if (!isTenantUser(req.user)) {
+        throw new Error('A platform admin cannot create tenant-scoped records directly - no tenant to attribute them to.');
+      }
       data.tenant = toID(req.user.tenant);
       if (options.requireOwnStore && req.user.store) {
         data.store = toID(req.user.store);

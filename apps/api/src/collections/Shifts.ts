@@ -9,6 +9,7 @@ export const Shifts: CollectionConfig = {
   admin: { useAsTitle: 'id', defaultColumns: ['store', 'cashier', 'status', 'variance'] },
   access: {
     read: ({ req }): boolean | Where => {
+      if (req.user?.collection === 'platform-admins') return true;
       if (!req.user) return false;
       if (req.user.role === 'owner' || req.user.role === 'manager') {
         return { tenant: { equals: toID(req.user.tenant) } };
@@ -18,6 +19,7 @@ export const Shifts: CollectionConfig = {
     },
     create: isAuthenticated, // a cashier opens their own shift
     update: ({ req }): boolean | Where => {
+      if (req.user?.collection === 'platform-admins') return true;
       if (!req.user) return false;
       if (req.user.role === 'owner' || req.user.role === 'manager') {
         return { tenant: { equals: toID(req.user.tenant) } };

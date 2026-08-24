@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import {
   Sidebar,
   SidebarContent,
@@ -16,11 +15,7 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { LogoutButton } from '@/components/logout-button';
-import { payloadFetch, PayloadApiError } from '@/lib/payload-client';
-
-type CurrentUser = {
-  user: { id: number; email: string; role: string; tenant: { name: string } | number } | null;
-};
+import { getCurrentUser } from '@/lib/current-user';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Overview' },
@@ -35,19 +30,7 @@ const NAV_ITEMS = [
 ];
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  let me: CurrentUser['user'] = null;
-  try {
-    const result = await payloadFetch<CurrentUser>('/api/users/me');
-    me = result.user;
-  } catch (err) {
-    if (err instanceof PayloadApiError && err.status === 401) {
-      redirect('/login');
-    }
-    throw err;
-  }
-
-  if (!me) redirect('/login');
-
+  const me = await getCurrentUser();
   const tenantName = typeof me.tenant === 'object' ? me.tenant.name : `Tenant #${me.tenant}`;
 
   return (

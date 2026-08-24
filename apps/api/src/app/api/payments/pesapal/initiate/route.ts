@@ -2,7 +2,7 @@ import config from '@payload-config';
 import { getPayload } from 'payload';
 import { headers as nextHeaders } from 'next/headers';
 import { pesapalProvider } from '@/lib/payments/pesapal';
-import { toID } from '@/lib/relations';
+import { isTenantUser, toID } from '@/lib/relations';
 
 // Card-present payment, provider-agnostic per lib/payments/types.ts -
 // Pesapal is the concrete adapter (research finding #3). UNVERIFIED against
@@ -10,7 +10,7 @@ import { toID } from '@/lib/relations';
 export async function POST(request: Request) {
   const payload = await getPayload({ config });
   const { user } = await payload.auth({ headers: await nextHeaders() });
-  if (!user) {
+  if (!isTenantUser(user)) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

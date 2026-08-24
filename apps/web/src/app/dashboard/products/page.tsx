@@ -8,6 +8,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
+import { getCurrentUser } from '@/lib/current-user';
 import { NewProductDialog } from './new-product-dialog';
 import { ImportProductsDialog } from './import-dialog';
 
@@ -19,16 +20,20 @@ type Product = {
   barcode: string | null;
   name: string;
   category: string | null;
-  costPrice: number;
+  // Absent entirely from the API response for non-owners (Products.ts's
+  // field-level access.read) - never assume it's there.
+  costPrice?: number;
   sellPrice: number;
   taxRate: number;
 };
 
 export default async function ProductsPage() {
-  const [{ docs: products }, { docs: stores }] = await Promise.all([
+  const [{ docs: products }, { docs: stores }, me] = await Promise.all([
     payloadFetch<{ docs: Product[] }>('/api/products?sort=-createdAt&limit=100'),
     payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
+    getCurrentUser(),
   ]);
+  const canSeeCost = me.role === 'owner';
 
   return (
     <div className="flex flex-col gap-4">
@@ -47,15 +52,16 @@ export default async function ProductsPage() {
               <TableHead>SKU</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Category</TableHead>
-              <TableHead className="text-right">Cost</TableHead>
+              {canSeeCost ? <TableHead className="text-right">Cost</TableHead> : null}
               <TableHead className="text-right">Sell</TableHead>
+              {canSeeCost ? <TableHead className="text-right">Margin</TableHead> : null}
               <TableHead className="text-right">Tax</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {products.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canSeeCost ? 7 : 5} className="text-center text-muted-foreground">
                   No products yet.
                 </TableCell>
               </TableRow>
@@ -67,8 +73,15 @@ export default async function ProductsPage() {
                   <TableCell>
                     {product.category ? <Badge variant="secondary">{product.category}</Badge> : '—'}
                   </TableCell>
-                  <TableCell className="text-right">{product.costPrice.toFixed(2)}</TableCell>
+                  {canSeeCost ? (
+                    <TableCell className="text-right">{(product.costPrice ?? 0).toFixed(2)}</TableCell>
+                  ) : null}
                   <TableCell className="text-right">{product.sellPrice.toFixed(2)}</TableCell>
+                  {canSeeCost ? (
+                    <TableCell className="text-right">
+                      {(product.sellPrice - (product.costPrice ?? 0)).toFixed(2)}
+                    </TableCell>
+                  ) : null}
                   <TableCell className="text-right">{(product.taxRate * 100).toFixed(0)}%</TableCell>
                 </TableRow>
               ))

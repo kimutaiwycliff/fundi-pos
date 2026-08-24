@@ -2,7 +2,7 @@ import config from '@payload-config';
 import { getPayload } from 'payload';
 import { headers as nextHeaders } from 'next/headers';
 import { parseInventoryWorkbook } from '@/lib/inventoryImport';
-import { toID } from '@/lib/relations';
+import { isTenantUser, toID } from '@/lib/relations';
 
 // Bulk product import from an uploaded spreadsheet - manager/owner only,
 // same as manually creating products. Idempotent by design: a row whose
@@ -13,7 +13,7 @@ import { toID } from '@/lib/relations';
 export async function POST(request: Request) {
   const payload = await getPayload({ config });
   const { user } = await payload.auth({ headers: await nextHeaders() });
-  if (!user || (user.role !== 'owner' && user.role !== 'manager')) {
+  if (!isTenantUser(user) || (user.role !== 'owner' && user.role !== 'manager')) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

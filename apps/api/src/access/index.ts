@@ -1,5 +1,5 @@
 import type { Access } from 'payload';
-import { toID } from '../lib/relations.ts';
+import { isTenantUser, toID } from '../lib/relations.ts';
 
 // Every collection in this app is tenant-scoped: a user only ever sees or
 // touches rows belonging to their own tenant, regardless of role. Role
@@ -17,21 +17,32 @@ import { toID } from '../lib/relations.ts';
 // ids, not Payload's actual populated shape - toID() must be used on every
 // req.user.tenant reference here, not just in collection hooks.
 
+// The SaaS operator's own staff (collections/PlatformAdmins.ts) - a
+// structurally separate auth collection with no tenant field at all, so
+// this check can never be spoofed by a tenant user's role/data. Every
+// tenant-scoping helper below bypasses entirely for this user type (via
+// isTenantUser's type guard, so TS also narrows req.user back to the
+// tenant User type for everything after); it's the one identity meant to
+// see across every tenant via Payload's own /admin panel.
+
 export const isAuthenticated: Access = ({ req }) => Boolean(req.user);
 
 export const ownTenantOnly: Access = ({ req }) => {
   if (!req.user) return false;
+  if (!isTenantUser(req.user)) return true;
   return { tenant: { equals: toID(req.user.tenant) } };
 };
 
 export const ownerOnly: Access = ({ req }) => {
   if (!req.user) return false;
+  if (!isTenantUser(req.user)) return true;
   if (req.user.role !== 'owner') return false;
   return { tenant: { equals: toID(req.user.tenant) } };
 };
 
 export const managerOrOwner: Access = ({ req }) => {
   if (!req.user) return false;
+  if (!isTenantUser(req.user)) return true;
   if (req.user.role !== 'owner' && req.user.role !== 'manager') return false;
   return { tenant: { equals: toID(req.user.tenant) } };
 };

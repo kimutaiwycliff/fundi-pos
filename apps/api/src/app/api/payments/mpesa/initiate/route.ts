@@ -2,7 +2,7 @@ import config from '@payload-config';
 import { getPayload } from 'payload';
 import { headers as nextHeaders } from 'next/headers';
 import { initiateStkPush } from '@/lib/daraja';
-import { toID } from '@/lib/relations';
+import { isTenantUser, toID } from '@/lib/relations';
 
 // spec Section 6.5: "M-Pesa STK Push... requires connectivity at time of
 // transaction". This route is only reachable when the till is online (it's
@@ -12,7 +12,7 @@ import { toID } from '@/lib/relations';
 export async function POST(request: Request) {
   const payload = await getPayload({ config });
   const { user } = await payload.auth({ headers: await nextHeaders() });
-  if (!user) {
+  if (!isTenantUser(user)) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

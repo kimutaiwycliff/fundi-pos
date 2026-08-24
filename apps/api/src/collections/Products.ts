@@ -26,7 +26,19 @@ export const Products: CollectionConfig = {
         { name: 'barcode', type: 'text' },
       ],
     },
-    { name: 'costPrice', type: 'number', required: true, defaultValue: 0, admin: { step: 0.01 } },
+    {
+      name: 'costPrice',
+      type: 'number',
+      required: true,
+      defaultValue: 0,
+      admin: { step: 0.01 },
+      // Cost (and therefore margin) is owner-only - a manager/cashier can
+      // still set it when receiving stock (collection-level create/update
+      // stays managerOrOwner below), but it never comes back in any
+      // response to their own session afterward. overrideAccess: true
+      // server-side code (reports, receipts) is unaffected.
+      access: { read: ({ req }) => req.user?.collection === 'platform-admins' || req.user?.role === 'owner' },
+    },
     { name: 'sellPrice', type: 'number', required: true, defaultValue: 0, admin: { step: 0.01 } },
     { name: 'taxRate', type: 'number', required: true, defaultValue: 0.16, admin: { step: 0.01 } },
     {

@@ -1,7 +1,7 @@
 import config from '@payload-config';
 import { getPayload, type Where } from 'payload';
 import { headers as nextHeaders } from 'next/headers';
-import { toID } from '@/lib/relations';
+import { isTenantUser, toID } from '@/lib/relations';
 
 // Payload's REST list endpoint has no SUM/GROUP BY - "current stock" is by
 // design never a stored column (spec Section 4: derived by summing the
@@ -10,7 +10,7 @@ import { toID } from '@/lib/relations';
 export async function GET(request: Request) {
   const payload = await getPayload({ config });
   const { user } = await payload.auth({ headers: await nextHeaders() });
-  if (!user) {
+  if (!isTenantUser(user)) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
