@@ -285,6 +285,10 @@ export interface Product {
   sellPrice: number;
   taxRate: number;
   /**
+   * Maximum % a cashier may discount this product at the till. 0 = no discount allowed.
+   */
+  maxDiscountPercent: number;
+  /**
    * Dashboard flags this product as low-stock per store once on-hand quantity drops to or below this.
    */
   reorderPoint: number;
@@ -736,6 +740,7 @@ export interface ProductsSelect<T extends boolean = true> {
   costPrice?: T;
   sellPrice?: T;
   taxRate?: T;
+  maxDiscountPercent?: T;
   reorderPoint?: T;
   isBundle?: T;
   bundleComponents?:

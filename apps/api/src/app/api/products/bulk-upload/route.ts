@@ -57,6 +57,7 @@ export async function POST(request: Request) {
         sellPrice: row.sellPrice,
         taxRate: row.taxRate,
         reorderPoint: row.reorderPoint,
+        maxDiscountPercent: row.maxDiscountPercent,
       },
       overrideAccess: true,
     });

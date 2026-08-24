@@ -43,6 +43,19 @@ export const Products: CollectionConfig = {
     { name: 'sellPrice', type: 'number', required: true, defaultValue: 0, admin: { step: 0.01 } },
     { name: 'taxRate', type: 'number', required: true, defaultValue: 0.16, admin: { step: 0.01 } },
     {
+      // Caps how much a cashier can knock off this specific product's line
+      // total at the till (see Till.tsx's discount input, clamped to this).
+      // Defaults to 0 - no discount is allowed unless a manager/owner
+      // explicitly opts a product into one, per the user's own instruction.
+      name: 'maxDiscountPercent',
+      type: 'number',
+      required: true,
+      defaultValue: 0,
+      min: 0,
+      max: 100,
+      admin: { step: 1, description: 'Maximum % a cashier may discount this product at the till. 0 = no discount allowed.' },
+    },
+    {
       name: 'reorderPoint',
       type: 'number',
       required: true,

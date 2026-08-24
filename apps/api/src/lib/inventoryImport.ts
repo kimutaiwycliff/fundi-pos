@@ -6,7 +6,17 @@ import ExcelJS from 'exceljs';
 // "what we tell them to fill in" and "what we actually read."
 export interface InventoryColumn {
   header: string;
-  key: 'sku' | 'barcode' | 'name' | 'category' | 'costPrice' | 'sellPrice' | 'taxRate' | 'reorderPoint' | 'openingStock';
+  key:
+    | 'sku'
+    | 'barcode'
+    | 'name'
+    | 'category'
+    | 'costPrice'
+    | 'sellPrice'
+    | 'taxRate'
+    | 'reorderPoint'
+    | 'maxDiscountPercent'
+    | 'openingStock';
   required: boolean;
   type: 'string' | 'number';
   example: string | number;
@@ -21,6 +31,7 @@ export const INVENTORY_COLUMNS: InventoryColumn[] = [
   { header: 'Sell Price (KES)', key: 'sellPrice', required: true, type: 'number', example: 799 },
   { header: 'Tax Rate', key: 'taxRate', required: false, type: 'number', example: 0.16 },
   { header: 'Reorder Point', key: 'reorderPoint', required: false, type: 'number', example: 5 },
+  { header: 'Max Discount %', key: 'maxDiscountPercent', required: false, type: 'number', example: 0 },
   { header: 'Opening Stock', key: 'openingStock', required: false, type: 'number', example: 25 },
 ];
 
@@ -34,6 +45,7 @@ export interface ParsedInventoryRow {
   sellPrice: number;
   taxRate: number;
   reorderPoint: number;
+  maxDiscountPercent: number;
   openingStock: number;
 }
 
@@ -78,8 +90,9 @@ export function buildTemplateWorkbook(): ExcelJS.Workbook {
     ['3. SKU must be unique within your business - a row whose SKU already exists is skipped, not overwritten.'],
     ['4. Tax Rate is a decimal, not a percentage - 16% VAT is 0.16. Leave blank to default to 0.16.'],
     ['5. Reorder Point triggers the low-stock alert once on-hand quantity drops to or below it. Leave blank to default to 0.'],
-    ['6. Opening Stock creates one initial stock movement per product for the store you pick when uploading. Leave blank or 0 for none.'],
-    ['7. This template only supports simple products - add variants or bundles afterward in the dashboard.'],
+    ['6. Max Discount % caps how much a cashier can discount this product at the till (0-100). Leave blank or 0 to disallow discounts entirely - this is the default unless you state otherwise.'],
+    ['7. Opening Stock creates one initial stock movement per product for the store you pick when uploading. Leave blank or 0 for none.'],
+    ['8. This template only supports simple products - add variants or bundles afterward in the dashboard.'],
   ]);
   instructions.getRow(1).font = { bold: true, size: 14 };
 
@@ -146,6 +159,12 @@ export async function parseInventoryWorkbook(buffer: Buffer): Promise<ParsedInve
       sellPrice,
       taxRate: values.taxRate != null && Number.isFinite(Number(values.taxRate)) ? Number(values.taxRate) : 0.16,
       reorderPoint: values.reorderPoint != null && Number.isFinite(Number(values.reorderPoint)) ? Number(values.reorderPoint) : 0,
+      // No discount unless the sheet explicitly says otherwise - matches
+      // the Products collection's own maxDiscountPercent default of 0.
+      maxDiscountPercent:
+        values.maxDiscountPercent != null && Number.isFinite(Number(values.maxDiscountPercent))
+          ? Math.min(100, Math.max(0, Number(values.maxDiscountPercent)))
+          : 0,
       openingStock: values.openingStock != null && Number.isFinite(Number(values.openingStock)) ? Number(values.openingStock) : 0,
     });
   });

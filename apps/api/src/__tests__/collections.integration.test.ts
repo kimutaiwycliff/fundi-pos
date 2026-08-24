@@ -81,7 +81,7 @@ describe('Payload collections - integration', () => {
         collection: 'products',
         data: {
           tenant: tenantId, sku: 'SKU-1', name: 'Test Widget',
-          costPrice: 10, sellPrice: 100, taxRate: 0.16, reorderPoint: 0,
+          costPrice: 10, sellPrice: 100, taxRate: 0.16, reorderPoint: 0, maxDiscountPercent: 0,
         },
         overrideAccess: true,
         draft: false,
