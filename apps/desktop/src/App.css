@@ -291,3 +291,18 @@ button {
 .shift-message {
   font-size: 0.9em;
 }
+
+.printer-settings {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 0.85em;
+  border-top: 1px solid #ccc;
+  padding-top: 8px;
+}
+
+.printer-status {
+  font-size: 0.85em;
+  color: #555;
+}

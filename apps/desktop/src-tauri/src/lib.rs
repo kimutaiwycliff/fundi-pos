@@ -1,4 +1,5 @@
 mod connector;
+mod escpos;
 mod pin;
 
 use std::collections::HashMap;
@@ -98,6 +99,60 @@ fn verify_manager_pin(pin: String, stored_hash: String) -> bool {
     pin::verify_pin(&pin, &stored_hash)
 }
 
+#[derive(serde::Deserialize)]
+struct ReceiptLineInput {
+    name: String,
+    quantity: f64,
+    #[serde(rename = "unitPrice")]
+    unit_price: f64,
+    #[serde(rename = "lineTotal")]
+    line_total: f64,
+}
+
+/// UNVERIFIED against real hardware (see escpos.rs's module doc) - builds
+/// and sends one receipt, kicking the cash drawer only for cash tenders
+/// (spec Section 6.5: cash always works offline; the print itself is
+/// attempted regardless of connectivity, since it's local network I/O to
+/// the printer, not a call to apps/api).
+#[tauri::command]
+fn print_receipt(
+    printer_host: String,
+    printer_port: u16,
+    store_name: String,
+    order_id: String,
+    lines: Vec<ReceiptLineInput>,
+    tax_total: f64,
+    total: f64,
+    tender_type: String,
+) -> Result<(), String> {
+    let data = escpos::ReceiptData {
+        store_name,
+        order_id,
+        lines: lines
+            .into_iter()
+            .map(|l| escpos::ReceiptLine {
+                name: l.name,
+                quantity: l.quantity,
+                unit_price: l.unit_price,
+                line_total: l.line_total,
+            })
+            .collect(),
+        tax_total,
+        total,
+        kick_drawer: tender_type == "cash",
+        tender_type,
+    };
+    let bytes = escpos::build_receipt(&data);
+    escpos::send_to_network_printer(&printer_host, printer_port, &bytes)
+}
+
+/// UNVERIFIED against real hardware - kicks the drawer without printing
+/// anything, for a manual "open drawer" action independent of a sale.
+#[tauri::command]
+fn kick_cash_drawer(printer_host: String, printer_port: u16) -> Result<(), String> {
+    escpos::send_to_network_printer(&printer_host, printer_port, &escpos::kick_cash_drawer())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -111,7 +166,9 @@ pub fn run() {
             powersync_connect,
             powersync_update_token,
             powersync_disconnect,
-            verify_manager_pin
+            verify_manager_pin,
+            print_receipt,
+            kick_cash_drawer
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

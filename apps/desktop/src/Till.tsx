@@ -6,6 +6,8 @@ import { VoidOrderPanel } from './VoidOrderPanel';
 import { ShiftPanel } from './ShiftPanel';
 import { CashierSwitcher } from './CashierSwitcher';
 import { deleteHeldSale, holdSale, listHeldSales, type HeldSale } from './heldSales';
+import { printReceipt } from './printer';
+import { PrinterSettings } from './PrinterSettings';
 
 interface LocalProduct {
   id: string;
@@ -201,6 +203,28 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       });
 
       setMessage(`Sale completed - order ${orderId.slice(0, 8)} (${tenderType}, ${totals.total.toFixed(2)})`);
+
+      // Printing is best-effort and must never undo or block a completed
+      // sale - the order above is already durably recorded regardless of
+      // whether a receipt can be printed (spec's offline-first premise
+      // would be undermined if the source of truth depended on a
+      // peripheral). UNVERIFIED against real hardware.
+      printReceipt({
+        storeName: 'Hardware POS', // TODO: pull the actual store name once synced locally
+        orderId,
+        lines: cart.map((line) => ({
+          name: line.product.name,
+          quantity: line.quantity,
+          unitPrice: line.product.sell_price,
+          lineTotal: line.quantity * line.product.sell_price - line.discount,
+        })),
+        taxTotal: totals.taxTotal,
+        total: totals.total,
+        tenderType,
+      }).catch((err) => {
+        setMessage((prev) => `${prev ?? ''} (receipt print failed: ${err instanceof Error ? err.message : String(err)})`);
+      });
+
       setCart([]);
     } catch (err) {
       setMessage(`ERROR completing sale: ${err instanceof Error ? err.message : String(err)}`);
@@ -337,6 +361,8 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       )}
 
       {storeId != null && <VoidOrderPanel storeId={storeId} payloadToken={payloadToken} />}
+
+      <PrinterSettings />
     </div>
   );
 }
