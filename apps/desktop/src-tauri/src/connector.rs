@@ -201,7 +201,7 @@ impl ApiConnector {
             "id": entry.id,
             "tenant": field("tenant_id"),
             "store": field("store_id"),
-            "product": field("product_id"),
+            "product": to_number(field("product_id")),
             "variant": field("variant"),
             "quantityDelta": field("quantity_delta"),
             "reason": field("reason"),
@@ -230,6 +230,25 @@ impl ApiConnector {
         }
 
         Ok(())
+    }
+}
+
+/// `orders_line_items.product_id` (and `stock_movements.product_id`) are
+/// declared `column.integer` in the local schema (schema.ts), mirroring
+/// Postgres's real INTEGER foreign key - but the value actually inserted at
+/// the till comes from a *different* local table's `id` column, which
+/// PowerSync always stores as TEXT (schema.ts's own documented rule: every
+/// table's implicit `id` is TEXT, Postgres integer PKs included). SQLite
+/// does not coerce that TEXT into the destination column's declared
+/// affinity for the CRUD-queue diff PowerSync uploads, so it round-trips
+/// here as a JSON string (confirmed live via direct sqlite3 inspection of
+/// a stuck ps_crud row: `"product_id":"275"`) - which Payload's `product`
+/// relationship field then rejects outright ("Line Items 1 > Product" is
+/// invalid), 500ing every retry and leaving the order permanently unsynced.
+fn to_number(value: Value) -> Value {
+    match value {
+        Value::String(s) => s.parse::<i64>().map(Value::from).unwrap_or(Value::String(s)),
+        other => other,
     }
 }
 
@@ -288,7 +307,7 @@ fn build_order_body(entry: &CrudEntry, line_items: &[&CrudEntry]) -> Result<Valu
             let li_data = li.data.as_ref()?;
             let li_field = |name: &str| li_data.get(name).cloned().unwrap_or(Value::Null);
             Some(json!({
-                "product": li_field("product_id"),
+                "product": to_number(li_field("product_id")),
                 "variant": li_field("variant"),
                 "quantity": li_field("quantity"),
                 "unitPrice": li_field("unit_price"),
@@ -348,15 +367,20 @@ mod tests {
         );
         // Inserted out of cart order on purpose - build_order_body must
         // re-sort by `_order`, not trust CrudEntry iteration order.
+        // product_id is a STRING here deliberately - that's what a real
+        // local ps_crud row actually contains (confirmed live via direct
+        // sqlite3 inspection: `"product_id":"275"`), since it's bound from
+        // another table's PowerSync-implicit TEXT id. A test fixture using a
+        // bare number here would not have caught the real bug.
         let line_b = entry(
             "orders_line_items",
             "li-b",
-            json!({ "_parent_id": "order-1", "_order": 1, "product_id": 2, "quantity": 1.0, "unit_price": 100.0, "discount": 0.0 }),
+            json!({ "_parent_id": "order-1", "_order": 1, "product_id": "2", "quantity": 1.0, "unit_price": 100.0, "discount": 0.0 }),
         );
         let line_a = entry(
             "orders_line_items",
             "li-a",
-            json!({ "_parent_id": "order-1", "_order": 0, "product_id": 1, "quantity": 2.0, "unit_price": 50.0, "discount": 0.0 }),
+            json!({ "_parent_id": "order-1", "_order": 0, "product_id": "1", "quantity": 2.0, "unit_price": 50.0, "discount": 0.0 }),
         );
 
         let crud = vec![order, line_b, line_a];
@@ -370,9 +394,24 @@ mod tests {
         assert_eq!(body["createdOffline"], true);
         let line_items = body["lineItems"].as_array().unwrap();
         assert_eq!(line_items.len(), 2);
-        // product_id 1 (order index 0) must come before product_id 2 (index 1).
+        // product_id "1" (order index 0) must come before "2" (index 1), and
+        // both must come out as real JSON numbers - Payload's `product`
+        // relationship field rejects a string outright.
         assert_eq!(line_items[0]["product"], 1);
+        assert!(line_items[0]["product"].is_number());
         assert_eq!(line_items[1]["product"], 2);
+        assert!(line_items[1]["product"].is_number());
+    }
+
+    #[test]
+    fn to_number_parses_numeric_strings_but_leaves_other_values_alone() {
+        assert_eq!(to_number(json!("275")), json!(275));
+        assert_eq!(to_number(json!(275)), json!(275));
+        assert_eq!(to_number(json!(null)), json!(null));
+        // Not silently dropped/nulled if it somehow isn't numeric - passed
+        // through as-is so Payload's own validation error stays legible
+        // instead of masking it as a different "missing field" error.
+        assert_eq!(to_number(json!("not-a-number")), json!("not-a-number"));
     }
 
     #[test]
