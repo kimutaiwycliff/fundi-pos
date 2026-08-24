@@ -24,6 +24,14 @@
 //   strings, as PowerSync's Postgres source connector serializes them).
 import { column, Schema, Table } from '@powersync/common';
 
+const tenants = new Table({
+  name: column.text,
+  receipt_header: column.text,
+  receipt_footer: column.text,
+  updated_at: column.text,
+  created_at: column.text,
+});
+
 const products = new Table(
   {
     tenant_id: column.integer,
@@ -160,6 +168,7 @@ const orders_line_items = new Table(
 );
 
 export const AppSchema = new Schema({
+  tenants,
   products,
   stores,
   users,

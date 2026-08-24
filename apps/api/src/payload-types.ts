@@ -195,6 +195,14 @@ export interface Tenant {
   name: string;
   subscriptionTier: 'trial' | 'starter' | 'growth' | 'enterprise';
   billingStatus: 'active' | 'trialing' | 'past_due' | 'canceled';
+  /**
+   * Printed at the top of every receipt, below the business name (e.g. address, phone).
+   */
+  receiptHeader?: string | null;
+  /**
+   * Printed at the bottom of every receipt (e.g. "Thank you for your business!", return policy).
+   */
+  receiptFooter?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -627,6 +635,8 @@ export interface TenantsSelect<T extends boolean = true> {
   name?: T;
   subscriptionTier?: T;
   billingStatus?: T;
+  receiptHeader?: T;
+  receiptFooter?: T;
   updatedAt?: T;
   createdAt?: T;
 }

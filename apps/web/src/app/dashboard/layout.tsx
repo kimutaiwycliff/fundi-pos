@@ -32,6 +32,7 @@ const NAV_ITEMS = [
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const me = await getCurrentUser();
   const tenantName = typeof me.tenant === 'object' ? me.tenant.name : `Tenant #${me.tenant}`;
+  const navItems = me.role === 'owner' ? [...NAV_ITEMS, { href: '/dashboard/settings', label: 'Settings' }] : NAV_ITEMS;
 
   return (
     <SidebarProvider>
@@ -45,7 +46,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <SidebarGroupLabel>Manage</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {NAV_ITEMS.map((item) => (
+                {navItems.map((item) => (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild>
                       <Link href={item.href}>{item.label}</Link>

@@ -12,6 +12,17 @@ config:
   edition: 3
 
 streams:
+  # Business name + receipt header/footer text - a till needs this synced
+  # down to print a receipt fully offline (spec's offline-first premise
+  # would be undermined if a receipt's own letterhead required a live call).
+  # Explicit column list: subscriptionTier/billingStatus are the SaaS
+  # operator's own billing internals, not something every till needs.
+  tenants:
+    auto_subscribe: true
+    query: |
+      SELECT id, name, receipt_header, receipt_footer, created_at, updated_at
+      FROM tenants WHERE id = auth.parameter('tenant_id')
+
   # Catalog data: shared across a tenant's stores, so it's tenant-scoped
   # only (spec Section 6.3: "centralized product catalog").
   products:

@@ -19,6 +19,12 @@ interface LocalProduct {
   tax_rate: number;
 }
 
+interface LocalTenant {
+  name: string;
+  receipt_header: string | null;
+  receipt_footer: string | null;
+}
+
 interface CartLine {
   product: LocalProduct;
   quantity: number;
@@ -79,6 +85,7 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
   const [isOnline, setIsOnline] = useState(true);
   const [activeCashier, setActiveCashier] = useState({ id: user.id, email: user.email });
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
+  const [tenant, setTenant] = useState<LocalTenant | null>(null);
 
   const storeId = typeof user.store === 'object' ? user.store?.id : user.store;
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
@@ -90,6 +97,17 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
   useEffect(() => {
     refreshHeldSales();
   }, []);
+
+  // Business name + receipt header/footer, synced down via PowerSync's
+  // tenants stream (docker/powersync/sync-config.yaml) - printing works
+  // fully offline once this has synced once, same as everything else here.
+  useEffect(() => {
+    if (tenantId == null) return;
+    const db = getDb();
+    db.getAll<LocalTenant>('SELECT name, receipt_header, receipt_footer FROM tenants WHERE id = ?', [
+      String(tenantId),
+    ]).then((rows) => setTenant(rows[0] ?? null));
+  }, [tenantId]);
 
   async function handleHoldSale() {
     if (cart.length === 0) return;
@@ -262,7 +280,7 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       // would be undermined if the source of truth depended on a
       // peripheral). UNVERIFIED against real hardware.
       printReceipt({
-        storeName: 'Hardware POS', // TODO: pull the actual store name once synced locally
+        storeName: tenant?.name ?? 'Hardware POS',
         orderId,
         lines: cart.map((line) => ({
           name: line.product.name,
@@ -273,6 +291,8 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
         taxTotal: totals.taxTotal,
         total: totals.total,
         tenderType,
+        header: tenant?.receipt_header,
+        footer: tenant?.receipt_footer,
       }).catch((err) => {
         setMessage((prev) => `${prev ?? ''} (receipt print failed: ${err instanceof Error ? err.message : String(err)})`);
       });

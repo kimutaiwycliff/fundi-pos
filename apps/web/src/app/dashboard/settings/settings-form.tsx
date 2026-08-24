@@ -1,0 +1,108 @@
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+
+interface Tenant {
+  id: number;
+  name: string;
+  receiptHeader: string | null;
+  receiptFooter: string | null;
+}
+
+export function SettingsForm({ tenant }: { tenant: Tenant }) {
+  const router = useRouter();
+  const [form, setForm] = useState({
+    name: tenant.name,
+    receiptHeader: tenant.receiptHeader ?? '',
+    receiptFooter: tenant.receiptFooter ?? '',
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSaved(false);
+
+    const response = await fetch(`/api/payload/tenants/${tenant.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: form.name,
+        receiptHeader: form.receiptHeader || null,
+        receiptFooter: form.receiptFooter || null,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      setError(body?.errors?.[0]?.message ?? 'Failed to save settings');
+      setLoading(false);
+      return;
+    }
+
+    setSaved(true);
+    setLoading(false);
+    router.refresh();
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <Card>
+        <CardHeader>
+          <CardDescription>Business identity</CardDescription>
+          <CardTitle className="text-base font-medium">Shown across the dashboard and the till</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="name">Business name</Label>
+            <Input id="name" required value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardDescription>Receipt</CardDescription>
+          <CardTitle className="text-base font-medium">Printed on every till receipt, once synced to the device</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="receiptHeader">Header (below the business name)</Label>
+            <Textarea
+              id="receiptHeader"
+              placeholder="e.g. Westlands, Nairobi &#10;0700 000 000"
+              rows={2}
+              value={form.receiptHeader}
+              onChange={(e) => setForm((f) => ({ ...f, receiptHeader: e.target.value }))}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="receiptFooter">Footer (bottom of the receipt)</Label>
+            <Textarea
+              id="receiptFooter"
+              placeholder="e.g. Thank you for your business!"
+              rows={2}
+              value={form.receiptFooter}
+              onChange={(e) => setForm((f) => ({ ...f, receiptFooter: e.target.value }))}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {saved ? <p className="text-sm text-muted-foreground">Saved.</p> : null}
+      <Button type="submit" disabled={loading} className="w-fit">
+        {loading ? 'Saving…' : 'Save settings'}
+      </Button>
+    </form>
+  );
+}

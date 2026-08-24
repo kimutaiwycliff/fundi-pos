@@ -42,6 +42,8 @@ export async function printReceipt(order: {
   taxTotal: number;
   total: number;
   tenderType: string;
+  header?: string | null;
+  footer?: string | null;
 }): Promise<void> {
   const settings = getPrinterSettings();
   if (!settings) {
@@ -56,6 +58,8 @@ export async function printReceipt(order: {
     taxTotal: order.taxTotal,
     total: order.total,
     tenderType: order.tenderType,
+    header: order.header ?? null,
+    footer: order.footer ?? null,
   });
 }
 

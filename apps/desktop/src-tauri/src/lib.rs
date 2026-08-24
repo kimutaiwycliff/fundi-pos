@@ -124,6 +124,8 @@ fn print_receipt(
     tax_total: f64,
     total: f64,
     tender_type: String,
+    header: Option<String>,
+    footer: Option<String>,
 ) -> Result<(), String> {
     let data = escpos::ReceiptData {
         store_name,
@@ -141,6 +143,8 @@ fn print_receipt(
         total,
         kick_drawer: tender_type == "cash",
         tender_type,
+        header,
+        footer,
     };
     let bytes = escpos::build_receipt(&data);
     escpos::send_to_network_printer(&printer_host, printer_port, &bytes)

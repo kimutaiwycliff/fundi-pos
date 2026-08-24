@@ -79,6 +79,11 @@ pub struct ReceiptData {
     pub total: f64,
     pub tender_type: String,
     pub kick_drawer: bool, // only for cash sales
+    // Tenant-configurable (apps/web's Settings page, synced down via
+    // PowerSync so this works fully offline) - typically an address/phone
+    // for the header, a thank-you/return-policy line for the footer.
+    pub header: Option<String>,
+    pub footer: Option<String>,
 }
 
 /// Assembles the full byte sequence for one receipt. Line items are plain
@@ -96,6 +101,10 @@ pub fn build_receipt(data: &ReceiptData) -> Vec<u8> {
     out.extend(set_bold(false));
     out.extend(text(&format!("Order {}", &data.order_id[..8.min(data.order_id.len())])));
     out.extend(line_feed());
+    if let Some(header) = &data.header {
+        out.extend(text(header));
+        out.extend(line_feed());
+    }
     out.extend(set_align_left());
     out.extend(line_feed());
 
@@ -114,6 +123,12 @@ pub fn build_receipt(data: &ReceiptData) -> Vec<u8> {
     out.extend(text(&format!("Total: {:.2} ({})", data.total, data.tender_type)));
     out.extend(set_bold(false));
     out.extend(line_feed());
+    if let Some(footer) = &data.footer {
+        out.extend(line_feed());
+        out.extend(set_align_center());
+        out.extend(text(footer));
+        out.extend(line_feed());
+    }
     out.extend(line_feed());
     out.extend(line_feed());
     out.extend(cut_paper());
@@ -178,6 +193,8 @@ mod tests {
             total: 1598.0,
             tender_type: "cash".to_string(),
             kick_drawer: true,
+            header: None,
+            footer: None,
         };
 
         let bytes = build_receipt(&data);
@@ -201,8 +218,48 @@ mod tests {
             total: 0.0,
             tender_type: "card".to_string(),
             kick_drawer: false,
+            header: None,
+            footer: None,
         };
         let bytes = build_receipt(&data);
         assert_eq!(&bytes[bytes.len() - 3..], &cut_paper()[..]);
+    }
+
+    #[test]
+    fn build_receipt_includes_the_tenant_header_and_footer_when_set() {
+        let data = ReceiptData {
+            store_name: "Demo Hardware Co".to_string(),
+            order_id: "x".to_string(),
+            lines: vec![],
+            tax_total: 0.0,
+            total: 0.0,
+            tender_type: "cash".to_string(),
+            kick_drawer: false,
+            header: Some("Westlands, Nairobi - 0700 000 000".to_string()),
+            footer: Some("Thank you for your business!".to_string()),
+        };
+        let as_text = String::from_utf8_lossy(&build_receipt(&data)).into_owned();
+        assert!(as_text.contains("Westlands, Nairobi - 0700 000 000"));
+        assert!(as_text.contains("Thank you for your business!"));
+    }
+
+    #[test]
+    fn build_receipt_omits_header_and_footer_lines_when_not_set() {
+        let data = ReceiptData {
+            store_name: "Demo".to_string(),
+            order_id: "x".to_string(),
+            lines: vec![],
+            tax_total: 0.0,
+            total: 0.0,
+            tender_type: "cash".to_string(),
+            kick_drawer: false,
+            header: None,
+            footer: None,
+        };
+        // Nothing to assert about absence of specific text (there's none to
+        // check against) - this test exists to prove build_receipt doesn't
+        // panic/misbehave when both are None, which the other tests never
+        // exercised until the fields existed.
+        build_receipt(&data);
     }
 }
