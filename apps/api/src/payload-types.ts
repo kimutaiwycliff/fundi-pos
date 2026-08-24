@@ -221,6 +221,10 @@ export interface User {
   store?: (number | null) | Store;
   role: 'owner' | 'manager' | 'cashier';
   /**
+   * e.g. 0712345678 - used for fast PIN login at the till.
+   */
+  phone?: string | null;
+  /**
    * Fast till PIN login (4-6 digits). Never stored in plaintext.
    */
   pin?: string | null;
@@ -646,6 +650,7 @@ export interface UsersSelect<T extends boolean = true> {
   tenant?: T;
   store?: T;
   role?: T;
+  phone?: T;
   pin?: T;
   pinHash?: T;
   updatedAt?: T;

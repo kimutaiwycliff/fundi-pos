@@ -8,6 +8,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
+import { StockAdjustmentDialog } from './stock-adjustment-dialog';
 
 interface StockLevel {
   store: number;
@@ -17,17 +18,29 @@ interface StockLevel {
   reorderPoint: number;
   lowStock: boolean;
 }
+type Product = { id: number; name: string; sku: string };
+type Store = { id: number; name: string };
 
 export default async function InventoryPage() {
-  const { levels } = await payloadFetch<{ levels: StockLevel[] }>('/api/reports/stock-levels');
+  const [{ levels }, { docs: products }, { docs: stores }] = await Promise.all([
+    payloadFetch<{ levels: StockLevel[] }>('/api/reports/stock-levels'),
+    payloadFetch<{ docs: Product[] }>('/api/products?sort=name&limit=200'),
+    payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
+  ]);
+  const storeName = new Map(stores.map((s) => [s.id, s.name]));
   const sorted = [...levels].sort((a, b) => Number(b.lowStock) - Number(a.lowStock));
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Inventory levels</h1>
-      <p className="text-sm text-muted-foreground">
-        Current stock is always a derived sum over the StockMovements ledger - never a stored count.
-      </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Inventory levels</h1>
+          <p className="text-sm text-muted-foreground">
+            Current stock is always a derived sum over the StockMovements ledger - never a stored count.
+          </p>
+        </div>
+        <StockAdjustmentDialog products={products} stores={stores} />
+      </div>
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -50,7 +63,7 @@ export default async function InventoryPage() {
               sorted.map((level) => (
                 <TableRow key={`${level.store}-${level.product}`}>
                   <TableCell>{level.productName}</TableCell>
-                  <TableCell>#{level.store}</TableCell>
+                  <TableCell>{storeName.get(level.store) ?? `#${level.store}`}</TableCell>
                   <TableCell className="text-right">{level.quantity}</TableCell>
                   <TableCell className="text-right">{level.reorderPoint}</TableCell>
                   <TableCell>
