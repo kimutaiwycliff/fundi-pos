@@ -1,7 +1,10 @@
 import type { CollectionConfig } from 'payload';
+import { APIError } from 'payload';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
 import { hashPin } from '../lib/pin.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
+import { checkBillingStatus } from '../lib/billing.ts';
+import { toID } from '../lib/relations.ts';
 
 export const Users: CollectionConfig = {
   slug: 'users',
@@ -63,6 +66,29 @@ export const Users: CollectionConfig = {
     },
   ],
   hooks: {
+    beforeLogin: [
+      // billingStatus was previously just a label - see lib/billing.ts.
+      // Blocking a canceled tenant's login here, not in access control,
+      // covers every route uniformly (dashboard AND till both call this
+      // same Payload auth strategy) without touching every collection.
+      async ({ user, req }) => {
+        const tenant = await req.payload.findByID({
+          collection: 'tenants',
+          id: toID(user.tenant),
+          overrideAccess: true,
+        });
+        const check = checkBillingStatus(tenant.billingStatus);
+        if (!check.allowed) {
+          // A plain Error gets masked as a generic 500 "Something went
+          // wrong" by Payload's error handler (only its own typed/
+          // "operational" errors are considered safe to show a client) -
+          // confirmed live: the real message never reached the caller
+          // until switched to APIError.
+          throw new APIError(check.message ?? 'This account is not active.', 403);
+        }
+        return user;
+      },
+    ],
     beforeChange: [
       // Every other collection already forces `tenant` from the requesting
       // user on create - this one never did, meaning a new staff member's

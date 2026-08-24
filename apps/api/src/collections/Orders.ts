@@ -4,6 +4,8 @@ import { isAuthenticated, managerOrOwner, neverDelete, ownTenantOnly } from '../
 import { toID } from '../lib/relations.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
+const REVERSAL_STATUSES = new Set(['refunded', 'voided']);
+
 export const Orders: CollectionConfig = {
   slug: 'orders',
   admin: { useAsTitle: 'id', defaultColumns: ['store', 'total', 'tenderType', 'status', 'createdAt'] },
@@ -209,6 +211,40 @@ export const Orders: CollectionConfig = {
           req,
         });
 
+        return doc;
+      },
+      // Multi-staff accountability: who actually approved this void/refund,
+      // not just whose session the HTTP request happened to run under. A
+      // cashier's own session can never pass Orders.access.update
+      // (managerOrOwner) on its own - the authorize-status route is the
+      // only path a cashier session can take, and it sets
+      // req.context.authorizedByManagerId to the PIN-verified manager
+      // before calling update() with overrideAccess. A manager/owner
+      // editing an order directly (no PIN step needed - already
+      // authorized by their own role) has no such context, so this falls
+      // back to req.user - correctly attributing to them instead.
+      async ({ doc, operation, req, previousDoc }) => {
+        const justReversed =
+          operation === 'update' && REVERSAL_STATUSES.has(doc.status) && !REVERSAL_STATUSES.has(previousDoc?.status ?? '');
+        if (!justReversed) return doc;
+
+        const actorId = (req.context?.authorizedByManagerId as number | undefined) ?? req.user?.id;
+        if (actorId == null) return doc;
+
+        await req.payload.create({
+          collection: 'audit-log',
+          data: {
+            tenant: Number(toID(doc.tenant)),
+            actor: Number(actorId),
+            action: doc.status === 'voided' ? 'order_voided' : 'order_refunded',
+            entityType: 'order',
+            entityId: String(doc.id),
+            summary: `Order ${String(doc.id).slice(0, 8)} ${doc.status} (${(doc.total as number).toFixed(2)})`,
+            metadata: { previousStatus: previousDoc?.status, total: doc.total },
+          },
+          overrideAccess: true,
+          req,
+        });
         return doc;
       },
     ],

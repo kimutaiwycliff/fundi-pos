@@ -69,6 +69,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     id,
     data: { status },
     overrideAccess: true,
+    // Read by Orders.ts's audit-log afterChange hook - the actual
+    // authorizing manager, not whoever's session (the cashier's) issued
+    // this HTTP request.
+    context: { authorizedByManagerId: manager.id },
   });
 
   return Response.json({ doc: updated });

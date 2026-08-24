@@ -17,6 +17,7 @@ import { Customers } from './collections/Customers.ts';
 import { SyncLog } from './collections/SyncLog.ts';
 import { Shifts } from './collections/Shifts.ts';
 import { PlatformAdmins } from './collections/PlatformAdmins.ts';
+import { AuditLog } from './collections/AuditLog.ts';
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
@@ -47,6 +48,7 @@ export default buildConfig({
     Customers,
     SyncLog,
     Shifts,
+    AuditLog,
   ],
   // apps/web talks to Payload through its own server-side route handlers
   // (same-origin from the browser's perspective, proxied server-to-server -

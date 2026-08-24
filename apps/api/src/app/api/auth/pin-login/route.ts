@@ -3,6 +3,8 @@ import { getPayload } from 'payload';
 import { addSessionToUser } from 'payload/shared';
 import { SignJWT } from 'jose';
 import { verifyPin } from '@/lib/pin';
+import { checkBillingStatus } from '@/lib/billing';
+import { toID } from '@/lib/relations';
 
 // Fast till login: phone + PIN instead of email + password (the web
 // dashboard keeps email/password - Payload's auth strategy is built around
@@ -57,6 +59,12 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Invalid phone or PIN' }, { status: 401 });
   }
   rateLimiter.delete(phone);
+
+  const tenant = await payload.findByID({ collection: 'tenants', id: toID(user.tenant), overrideAccess: true });
+  const billing = checkBillingStatus(tenant.billingStatus);
+  if (!billing.allowed) {
+    return Response.json({ error: billing.message }, { status: 403 });
+  }
 
   // Payload 3.x tracks sessions server-side (revocable, not just a
   // stateless JWT) - a session pushed via a normal payload.update() call is

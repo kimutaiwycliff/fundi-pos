@@ -5,7 +5,7 @@ export type CurrentUser = {
   id: number;
   email: string;
   role: 'owner' | 'manager' | 'cashier';
-  tenant: { id: number; name: string } | number;
+  tenant: { id: number; name: string; billingStatus: 'active' | 'trialing' | 'past_due' | 'canceled' } | number;
 };
 
 // Shared by the dashboard layout and any page that needs to branch on role

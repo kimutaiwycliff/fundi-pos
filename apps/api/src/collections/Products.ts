@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
+import { isTenantUser, toID } from '../lib/relations.ts';
 
 export const Products: CollectionConfig = {
   slug: 'products',
@@ -61,5 +62,42 @@ export const Products: CollectionConfig = {
   ],
   hooks: {
     beforeChange: [enforceOwnTenant()],
+    afterChange: [
+      // Multi-staff accountability: a manager quietly discounting or
+      // marking up a product should leave a trail. Only fires when a price
+      // actually changed on an update - never on create (nothing to
+      // compare against) and never a no-op edit of an unrelated field.
+      async ({ doc, previousDoc, operation, req }) => {
+        if (operation !== 'update' || !previousDoc || !isTenantUser(req.user)) return doc;
+
+        const changes: string[] = [];
+        const metadata: Record<string, { from: number; to: number }> = {};
+        if (previousDoc.costPrice !== doc.costPrice) {
+          changes.push(`cost ${previousDoc.costPrice} -> ${doc.costPrice}`);
+          metadata.costPrice = { from: previousDoc.costPrice, to: doc.costPrice };
+        }
+        if (previousDoc.sellPrice !== doc.sellPrice) {
+          changes.push(`sell ${previousDoc.sellPrice} -> ${doc.sellPrice}`);
+          metadata.sellPrice = { from: previousDoc.sellPrice, to: doc.sellPrice };
+        }
+        if (changes.length === 0) return doc;
+
+        await req.payload.create({
+          collection: 'audit-log',
+          data: {
+            tenant: Number(toID(doc.tenant)),
+            actor: Number(req.user.id),
+            action: 'price_changed',
+            entityType: 'product',
+            entityId: String(doc.id),
+            summary: `${doc.name}: ${changes.join(', ')}`,
+            metadata,
+          },
+          overrideAccess: true,
+          req,
+        });
+        return doc;
+      },
+    ],
   },
 };

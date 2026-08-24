@@ -1,4 +1,5 @@
-import { Wrench } from 'lucide-react';
+import { redirect } from 'next/navigation';
+import { AlertTriangle, Wrench } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -30,7 +31,17 @@ const NAV_ITEMS = [
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const me = await getCurrentUser();
   const tenantName = typeof me.tenant === 'object' ? me.tenant.name : `Tenant #${me.tenant}`;
-  const navItems = me.role === 'owner' ? [...NAV_ITEMS, { href: '/dashboard/settings', label: 'Settings' }] : NAV_ITEMS;
+  const billingStatus = typeof me.tenant === 'object' ? me.tenant.billingStatus : 'active';
+  // A tenant can go from active to canceled while an existing session's
+  // cookie is still valid (login itself already blocks a canceled tenant -
+  // see Users.ts's beforeLogin hook - this covers the "already logged in
+  // when it happened" case the login-time check can't).
+  if (billingStatus === 'canceled') redirect('/subscription-canceled');
+  const navItems = [
+    ...NAV_ITEMS,
+    ...(me.role === 'manager' || me.role === 'owner' ? [{ href: '/dashboard/audit-log', label: 'Audit Log' }] : []),
+    ...(me.role === 'owner' ? [{ href: '/dashboard/settings', label: 'Settings' }] : []),
+  ];
 
   return (
     <SidebarProvider>
@@ -63,6 +74,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <header className="flex h-14 items-center gap-2 border-b px-4">
           <SidebarTrigger />
         </header>
+        {billingStatus === 'past_due' ? (
+          <div className="flex items-center gap-2 border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span>Your subscription payment is past due. Please update billing to avoid service interruption.</span>
+          </div>
+        ) : null}
         <main className="flex-1 p-6">{children}</main>
       </SidebarInset>
     </SidebarProvider>

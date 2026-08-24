@@ -9,6 +9,7 @@ import {
   Boxes,
   LayoutDashboard,
   Package,
+  ScrollText,
   Settings as SettingsIcon,
   Store,
   Users,
@@ -27,6 +28,7 @@ const ICONS: Record<string, LucideIcon> = {
   '/dashboard/customers': Users,
   '/dashboard/stores': Store,
   '/dashboard/staff': UserCog,
+  '/dashboard/audit-log': ScrollText,
   '/dashboard/settings': SettingsIcon,
 };
 

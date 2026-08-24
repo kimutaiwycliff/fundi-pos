@@ -82,6 +82,7 @@ export interface Config {
     customers: Customer;
     'sync-log': SyncLog;
     shifts: Shift;
+    'audit-log': AuditLog;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -103,6 +104,7 @@ export interface Config {
     customers: CustomersSelect<false> | CustomersSelect<true>;
     'sync-log': SyncLogSelect<false> | SyncLogSelect<true>;
     shifts: ShiftsSelect<false> | ShiftsSelect<true>;
+    'audit-log': AuditLogSelect<false> | AuditLogSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -474,6 +476,30 @@ export interface Shift {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-log".
+ */
+export interface AuditLog {
+  id: number;
+  tenant: number | Tenant;
+  actor: number | User;
+  action: 'price_changed' | 'order_voided' | 'order_refunded';
+  entityType: 'product' | 'order';
+  entityId: string;
+  summary: string;
+  metadata?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -551,6 +577,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'shifts';
         value: number | Shift;
+      } | null)
+    | ({
+        relationTo: 'audit-log';
+        value: number | AuditLog;
       } | null);
   globalSlug?: string | null;
   user:
@@ -876,6 +906,21 @@ export interface ShiftsSelect<T extends boolean = true> {
   expectedCash?: T;
   variance?: T;
   status?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-log_select".
+ */
+export interface AuditLogSelect<T extends boolean = true> {
+  tenant?: T;
+  actor?: T;
+  action?: T;
+  entityType?: T;
+  entityId?: T;
+  summary?: T;
+  metadata?: T;
   updatedAt?: T;
   createdAt?: T;
 }
