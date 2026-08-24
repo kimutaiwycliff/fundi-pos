@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ProductCombobox } from '@/components/product-combobox';
 
 type Product = { id: number; name: string; sku: string };
 type Store = { id: number; name: string };
@@ -101,18 +102,12 @@ export function StockAdjustmentDialog({ products, stores }: { products: Product[
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="product">Product</Label>
-            <Select value={form.productId} onValueChange={(v) => setForm((f) => ({ ...f, productId: v }))}>
-              <SelectTrigger id="product">
-                <SelectValue placeholder="Choose a product" />
-              </SelectTrigger>
-              <SelectContent>
-                {products.map((p) => (
-                  <SelectItem key={p.id} value={String(p.id)}>
-                    {p.name} ({p.sku})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <ProductCombobox
+              products={products}
+              value={form.productId}
+              onValueChange={(v) => setForm((f) => ({ ...f, productId: v }))}
+              placeholder="Choose a product"
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="store">Store</Label>

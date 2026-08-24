@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -19,7 +18,7 @@ export default async function StoresPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Stores</h1>
-        <StoreDialog trigger={<Button>New store</Button>} />
+        <StoreDialog />
       </div>
       <div className="rounded-md border">
         <Table>
@@ -45,14 +44,7 @@ export default async function StoresPage() {
                   <TableCell>{store.address ?? '—'}</TableCell>
                   <TableCell>{store.timezone}</TableCell>
                   <TableCell>
-                    <StoreDialog
-                      store={store}
-                      trigger={
-                        <Button variant="ghost" size="sm">
-                          Edit
-                        </Button>
-                      }
-                    />
+                    <StoreDialog store={store} />
                   </TableCell>
                 </TableRow>
               ))

@@ -35,7 +35,7 @@ type Staff = {
 // something new, so leaving them blank never clobbers an existing
 // credential (a fresh scryptSync hash of an empty string would otherwise
 // silently lock the person out).
-export function StaffDialog({ stores, staff, trigger }: { stores: Store[]; staff?: Staff; trigger: React.ReactNode }) {
+export function StaffDialog({ stores, staff }: { stores: Store[]; staff?: Staff }) {
   const router = useRouter();
   const isEdit = Boolean(staff);
   const [open, setOpen] = useState(false);
@@ -94,7 +94,15 @@ export function StaffDialog({ stores, staff, trigger }: { stores: Store[]; staff
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogTrigger asChild>
+        {isEdit ? (
+          <Button variant="ghost" size="sm">
+            Edit
+          </Button>
+        ) : (
+          <Button>Add staff</Button>
+        )}
+      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit staff' : 'Add staff'}</DialogTitle>

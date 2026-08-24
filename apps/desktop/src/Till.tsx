@@ -41,13 +41,12 @@ interface TillProps {
 // Cash is first-class per spec Section 6.5 ("always available offline, no
 // queuing needed"). M-Pesa needs connectivity at time of transaction - the
 // STK push itself is a live call to Safaricom, initiated below once the
-// order has synced. Card stays disabled - only cash and mobile money were
-// asked for; the tender type itself already supports 'card' in the schema
-// if that changes later.
+// order has synced. Card was removed from the tender list at the user's
+// request - the tender type itself still supports 'card' in the schema if
+// that changes later.
 const TENDER_OPTIONS = [
-  { value: 'cash', label: 'Cash', enabled: true },
-  { value: 'mpesa', label: 'Mobile Money (M-Pesa)', enabled: true },
-  { value: 'card', label: 'Card', enabled: false },
+  { value: 'cash', label: 'Cash' },
+  { value: 'mpesa', label: 'M-Pesa' },
 ] as const;
 
 // UNVERIFIED against a real Safaricom sandbox (see lib/daraja.ts on the
@@ -397,12 +396,10 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
             <input
               type="radio"
               name="tender"
-              disabled={!option.enabled}
               checked={tenderType === option.value}
               onChange={() => setTenderType(option.value)}
             />
             {option.label}
-            {!option.enabled ? ' (coming soon)' : ''}
           </label>
         ))}
         {tenderType === 'mpesa' && (

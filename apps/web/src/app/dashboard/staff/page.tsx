@@ -1,5 +1,4 @@
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -24,7 +23,7 @@ export default async function StaffPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Staff</h1>
-        <StaffDialog stores={stores} trigger={<Button>Add staff</Button>} />
+        <StaffDialog stores={stores} />
       </div>
       <div className="rounded-md border">
         <Table>
@@ -53,15 +52,7 @@ export default async function StaffPage() {
                       : `#${person.store}`}
                 </TableCell>
                 <TableCell>
-                  <StaffDialog
-                    stores={stores}
-                    staff={person}
-                    trigger={
-                      <Button variant="ghost" size="sm">
-                        Edit
-                      </Button>
-                    }
-                  />
+                  <StaffDialog stores={stores} staff={person} />
                 </TableCell>
               </TableRow>
             ))}

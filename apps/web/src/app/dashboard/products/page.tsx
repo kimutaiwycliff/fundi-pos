@@ -1,15 +1,7 @@
-import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
-import { NewProductDialog } from './new-product-dialog';
+import { ProductDialog } from './product-dialog';
+import { ProductsTable } from './products-table';
 import { ImportProductsDialog } from './import-dialog';
 
 type Store = { id: number; name: string };
@@ -25,11 +17,12 @@ type Product = {
   costPrice?: number;
   sellPrice: number;
   taxRate: number;
+  reorderPoint?: number;
 };
 
 export default async function ProductsPage() {
   const [{ docs: products }, { docs: stores }, me] = await Promise.all([
-    payloadFetch<{ docs: Product[] }>('/api/products?sort=-createdAt&limit=100'),
+    payloadFetch<{ docs: Product[] }>('/api/products?sort=-createdAt&limit=500'),
     payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
     getCurrentUser(),
   ]);
@@ -41,54 +34,11 @@ export default async function ProductsPage() {
         <h1 className="text-2xl font-semibold">Products</h1>
         <div className="flex gap-2">
           <ImportProductsDialog stores={stores} />
-          <NewProductDialog />
+          <ProductDialog />
         </div>
       </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>SKU</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Category</TableHead>
-              {canSeeCost ? <TableHead className="text-right">Cost</TableHead> : null}
-              <TableHead className="text-right">Sell</TableHead>
-              {canSeeCost ? <TableHead className="text-right">Margin</TableHead> : null}
-              <TableHead className="text-right">Tax</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {products.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={canSeeCost ? 7 : 5} className="text-center text-muted-foreground">
-                  No products yet.
-                </TableCell>
-              </TableRow>
-            ) : (
-              products.map((product) => (
-                <TableRow key={product.id}>
-                  <TableCell className="font-mono text-xs">{product.sku}</TableCell>
-                  <TableCell>{product.name}</TableCell>
-                  <TableCell>
-                    {product.category ? <Badge variant="secondary">{product.category}</Badge> : '—'}
-                  </TableCell>
-                  {canSeeCost ? (
-                    <TableCell className="text-right">{(product.costPrice ?? 0).toFixed(2)}</TableCell>
-                  ) : null}
-                  <TableCell className="text-right">{product.sellPrice.toFixed(2)}</TableCell>
-                  {canSeeCost ? (
-                    <TableCell className="text-right">
-                      {(product.sellPrice - (product.costPrice ?? 0)).toFixed(2)}
-                    </TableCell>
-                  ) : null}
-                  <TableCell className="text-right">{(product.taxRate * 100).toFixed(0)}%</TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <ProductsTable products={products} canSeeCost={canSeeCost} />
     </div>
   );
 }

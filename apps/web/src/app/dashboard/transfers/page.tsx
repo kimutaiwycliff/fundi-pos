@@ -27,7 +27,7 @@ export default async function TransfersPage() {
   const [{ docs: transfers }, { docs: stores }, { docs: products }] = await Promise.all([
     payloadFetch<{ docs: Transfer[] }>('/api/stock-transfers?sort=-createdAt&limit=100&depth=1'),
     payloadFetch<{ docs: Array<{ id: number; name: string }> }>('/api/stores?limit=100'),
-    payloadFetch<{ docs: Array<{ id: number; name: string }> }>('/api/products?limit=200'),
+    payloadFetch<{ docs: Array<{ id: number; name: string; sku: string }> }>('/api/products?limit=200'),
   ]);
 
   return (

@@ -16,7 +16,7 @@ import {
 
 type Store = { id: number; name: string; address: string | null; timezone: string };
 
-export function StoreDialog({ store, trigger }: { store?: Store; trigger: React.ReactNode }) {
+export function StoreDialog({ store }: { store?: Store }) {
   const router = useRouter();
   const isEdit = Boolean(store);
   const [open, setOpen] = useState(false);
@@ -57,7 +57,15 @@ export function StoreDialog({ store, trigger }: { store?: Store; trigger: React.
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogTrigger asChild>
+        {isEdit ? (
+          <Button variant="ghost" size="sm">
+            Edit
+          </Button>
+        ) : (
+          <Button>New store</Button>
+        )}
+      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Edit store' : 'New store'}</DialogTitle>

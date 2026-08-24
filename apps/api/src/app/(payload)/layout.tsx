@@ -8,6 +8,12 @@ import { handleServerFunctions, metadata, RootLayout } from '@payloadcms/next/la
 import React from 'react'
 
 import { importMap } from './admin/importMap.js'
+// Payload's own base admin stylesheet - never actually imported (custom.css,
+// imported below it, is an empty placeholder for theme overrides only).
+// The admin panel has been rendering completely unstyled this whole time -
+// nothing caught it because every check of /admin so far only confirmed an
+// HTTP 200, never inspected the actual rendered/loaded CSS.
+import '@payloadcms/next/css'
 import './custom.css'
 
 export { metadata }
