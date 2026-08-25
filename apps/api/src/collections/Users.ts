@@ -119,11 +119,46 @@ export const Users: CollectionConfig = {
       // all - each has its own explicit status check alongside this one.
       // This one covers the standard email+password login every one of
       // those other paths still relies on for the initial connected login.
-      ({ user }) => {
+      async ({ user, req }) => {
         if (user.status === 'banned') {
+          await req.payload.create({
+            collection: 'audit-log',
+            overrideAccess: true,
+            data: {
+              tenant: Number(toID(user.tenant)),
+              actor: Number(user.id),
+              action: 'login_blocked',
+              entityType: 'user',
+              entityId: String(user.id),
+              summary: `${user.name || user.email} attempted to log in while banned`,
+            },
+            req,
+          });
           throw new APIError('This account has been disabled. Contact your manager or owner.', 403);
         }
         return user;
+      },
+    ],
+    afterLogin: [
+      // Covers the web dashboard's own email+password login (the only path
+      // that goes through payload.login()/this auth strategy) - the till's
+      // phone+PIN login has its own separate audit write in that route,
+      // and fully offline PIN-based cashier switching has no connection at
+      // the moment it happens to log anything at all.
+      async ({ user, req }) => {
+        await req.payload.create({
+          collection: 'audit-log',
+          overrideAccess: true,
+          data: {
+            tenant: Number(toID(user.tenant)),
+            actor: Number(user.id),
+            action: 'login',
+            entityType: 'user',
+            entityId: String(user.id),
+            summary: `${user.name || user.email} logged in`,
+          },
+          req,
+        });
       },
     ],
     beforeChange: [
@@ -150,6 +185,65 @@ export const Users: CollectionConfig = {
           throw new APIError('You cannot ban your own account.', 400);
         }
         return data;
+      },
+    ],
+    afterChange: [
+      // Staff creation and ban/reactivate are the two lifecycle events a
+      // tenant cares about auditing here - ordinary field edits (name,
+      // phone, role) aren't logged, matching the narrower scope of the
+      // existing price/order audit entries rather than a full version
+      // history of every field on every collection.
+      async ({ req, doc, previousDoc, operation }) => {
+        if (!req.user) return doc;
+        if (operation === 'create') {
+          await req.payload.create({
+            collection: 'audit-log',
+            overrideAccess: true,
+            data: {
+              tenant: Number(toID(doc.tenant)),
+              actor: Number(req.user.id),
+              action: 'staff_created',
+              entityType: 'user',
+              entityId: String(doc.id),
+              summary: `${doc.name || doc.email} added as ${doc.role}`,
+            },
+            req,
+          });
+        } else if (previousDoc && doc.status !== previousDoc.status) {
+          const banned = doc.status === 'banned';
+          await req.payload.create({
+            collection: 'audit-log',
+            overrideAccess: true,
+            data: {
+              tenant: Number(toID(doc.tenant)),
+              actor: Number(req.user.id),
+              action: banned ? 'staff_banned' : 'staff_reactivated',
+              entityType: 'user',
+              entityId: String(doc.id),
+              summary: `${doc.name || doc.email} ${banned ? 'banned' : 'reactivated'}`,
+            },
+            req,
+          });
+        }
+        return doc;
+      },
+    ],
+    afterDelete: [
+      async ({ req, doc }) => {
+        if (!req.user) return;
+        await req.payload.create({
+          collection: 'audit-log',
+          overrideAccess: true,
+          data: {
+            tenant: Number(toID(doc.tenant)),
+            actor: Number(req.user.id),
+            action: 'staff_deleted',
+            entityType: 'user',
+            entityId: String(doc.id),
+            summary: `${doc.name || doc.email} deleted`,
+          },
+          req,
+        });
       },
     ],
     beforeDelete: [

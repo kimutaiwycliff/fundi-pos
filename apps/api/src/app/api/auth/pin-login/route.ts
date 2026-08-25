@@ -59,9 +59,22 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Invalid phone or PIN' }, { status: 401 });
   }
   // This route mints a session directly rather than calling payload.login(),
-  // so Users.ts's own beforeLogin hook (which has this same check) never
-  // runs for it - has to be re-checked here explicitly.
+  // so Users.ts's own beforeLogin/afterLogin hooks (which have this same
+  // check, and the login audit write below) never run for it - both have
+  // to be re-done here explicitly.
   if (user.status === 'banned') {
+    await payload.create({
+      collection: 'audit-log',
+      overrideAccess: true,
+      data: {
+        tenant: Number(toID(user.tenant)),
+        actor: Number(user.id),
+        action: 'login_blocked',
+        entityType: 'user',
+        entityId: String(user.id),
+        summary: `${user.name || user.email} attempted to log in (till) while banned`,
+      },
+    });
     return Response.json({ error: 'This account has been disabled. Contact your manager or owner.' }, { status: 403 });
   }
   rateLimiter.delete(phone);
@@ -106,6 +119,19 @@ export async function POST(request: Request) {
     .setIssuedAt(issuedAt)
     .setExpirationTime(exp)
     .sign(secret);
+
+  await payload.create({
+    collection: 'audit-log',
+    overrideAccess: true,
+    data: {
+      tenant: Number(toID(user.tenant)),
+      actor: Number(user.id),
+      action: 'login',
+      entityType: 'user',
+      entityId: String(user.id),
+      summary: `${user.name || user.email} logged in (till)`,
+    },
+  });
 
   return Response.json({ token, exp, user });
 }

@@ -75,7 +75,7 @@ export default async function StaffPage() {
                   <div className="flex items-center gap-2">
                     <StaffDialog stores={stores} staff={person} />
                     {canManageStaff && person.id !== me.id && (
-                      <StaffStatusActions staffId={person.id} status={person.status} />
+                      <StaffStatusActions staffId={person.id} status={person.status} name={person.name ?? person.email} />
                     )}
                   </div>
                 </TableCell>

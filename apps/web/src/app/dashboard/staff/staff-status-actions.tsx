@@ -4,6 +4,17 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 // Ban is the always-safe, always-reversible action (Users.ts's own `status`
 // field comment: Orders/Shifts/AuditLog hold required relationships to a
@@ -11,8 +22,18 @@ import { Button } from '@/components/ui/button';
 // worked a shift). Delete is offered too, per the user's own instruction,
 // but a foreign-key-constrained delete fails server-side rather than
 // silently corrupting history - surfaced here as a plain-language nudge
-// toward banning instead, not a raw database error.
-export function StaffStatusActions({ staffId, status }: { staffId: number; status: 'active' | 'banned' }) {
+// toward banning instead, not a raw database error. Both actions confirm
+// via a real dialog rather than the browser's own window.confirm(), which
+// is unstyled, blocks the whole tab, and is easy to click through by habit.
+export function StaffStatusActions({
+  staffId,
+  status,
+  name,
+}: {
+  staffId: number;
+  status: 'active' | 'banned';
+  name: string;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -36,7 +57,6 @@ export function StaffStatusActions({ staffId, status }: { staffId: number; statu
   }
 
   async function handleDelete() {
-    if (!window.confirm('Delete this staff member permanently? This cannot be undone.')) return;
     setLoading(true);
     const response = await fetch(`/api/payload/users/${staffId}`, { method: 'DELETE' });
     if (!response.ok) {
@@ -56,12 +76,51 @@ export function StaffStatusActions({ staffId, status }: { staffId: number; statu
 
   return (
     <div className="flex items-center gap-2">
-      <Button variant="outline" size="sm" disabled={loading} onClick={handleToggleBan}>
-        {status === 'banned' ? 'Reactivate' : 'Ban'}
-      </Button>
-      <Button variant="destructive" size="sm" disabled={loading} onClick={handleDelete}>
-        Delete
-      </Button>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button variant="outline" size="sm" disabled={loading}>
+            {status === 'banned' ? 'Reactivate' : 'Ban'}
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{status === 'banned' ? `Reactivate ${name}?` : `Ban ${name}?`}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {status === 'banned'
+                ? 'They will be able to log in again on the web dashboard and at the till.'
+                : 'They will immediately lose access to the web dashboard and the till, on every device.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleToggleBan}>
+              {status === 'banned' ? 'Reactivate' : 'Ban'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button variant="destructive" size="sm" disabled={loading}>
+            Delete
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {name} permanently?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This cannot be undone. If they have any sales, shift, or audit history, this will fail and you should
+              ban them instead.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleDelete}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

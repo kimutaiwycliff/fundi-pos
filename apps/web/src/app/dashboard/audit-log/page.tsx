@@ -11,7 +11,19 @@ import { payloadFetch } from '@/lib/payload-client';
 
 interface AuditEntry {
   id: number;
-  action: 'price_changed' | 'order_voided' | 'order_refunded';
+  action:
+    | 'price_changed'
+    | 'order_voided'
+    | 'order_refunded'
+    | 'sale_settled'
+    | 'login'
+    | 'login_blocked'
+    | 'staff_created'
+    | 'staff_banned'
+    | 'staff_reactivated'
+    | 'staff_deleted'
+    | 'store_created'
+    | 'store_deleted';
   entityType: string;
   summary: string;
   actor: { email: string } | number;
@@ -22,11 +34,29 @@ const ACTION_LABELS: Record<AuditEntry['action'], string> = {
   price_changed: 'Price changed',
   order_voided: 'Order voided',
   order_refunded: 'Order refunded',
+  sale_settled: 'Credit sale settled',
+  login: 'Login',
+  login_blocked: 'Login blocked',
+  staff_created: 'Staff added',
+  staff_banned: 'Staff banned',
+  staff_reactivated: 'Staff reactivated',
+  staff_deleted: 'Staff deleted',
+  store_created: 'Branch created',
+  store_deleted: 'Branch deleted',
 };
 const ACTION_VARIANTS: Record<AuditEntry['action'], 'secondary' | 'destructive'> = {
   price_changed: 'secondary',
   order_voided: 'destructive',
   order_refunded: 'destructive',
+  sale_settled: 'secondary',
+  login: 'secondary',
+  login_blocked: 'destructive',
+  staff_created: 'secondary',
+  staff_banned: 'destructive',
+  staff_reactivated: 'secondary',
+  staff_deleted: 'destructive',
+  store_created: 'secondary',
+  store_deleted: 'destructive',
 };
 
 export default async function AuditLogPage() {
@@ -37,7 +67,8 @@ export default async function AuditLogPage() {
       <div>
         <h1 className="text-2xl font-semibold">Audit log</h1>
         <p className="text-sm text-muted-foreground">
-          Every price change and every voided/refunded sale, and who did it - never editable, same as the sales ledger itself.
+          Every price change, voided/refunded/settled sale, login attempt, and staff/branch change, and who did it -
+          never editable, same as the sales ledger itself.
         </p>
       </div>
       <div className="rounded-md border">

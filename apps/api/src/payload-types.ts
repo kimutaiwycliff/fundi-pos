@@ -497,8 +497,20 @@ export interface AuditLog {
   id: number;
   tenant: number | Tenant;
   actor: number | User;
-  action: 'price_changed' | 'order_voided' | 'order_refunded' | 'sale_settled';
-  entityType: 'product' | 'order';
+  action:
+    | 'price_changed'
+    | 'order_voided'
+    | 'order_refunded'
+    | 'sale_settled'
+    | 'login'
+    | 'login_blocked'
+    | 'staff_created'
+    | 'staff_banned'
+    | 'staff_reactivated'
+    | 'staff_deleted'
+    | 'store_created'
+    | 'store_deleted';
+  entityType: 'product' | 'order' | 'user' | 'store';
   entityId: string;
   summary: string;
   metadata?:

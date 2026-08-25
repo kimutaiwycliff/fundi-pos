@@ -7,12 +7,18 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
+import { getCurrentUser } from '@/lib/current-user';
 import { StoreDialog } from './store-dialog';
+import { StoreDeleteButton } from './store-delete-button';
 
 type Store = { id: number; name: string; address: string | null; timezone: string };
 
 export default async function StoresPage() {
-  const { docs: stores } = await payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100');
+  const [{ docs: stores }, me] = await Promise.all([
+    payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
+    getCurrentUser(),
+  ]);
+  const canManageStores = me.role === 'owner' || me.role === 'manager';
 
   return (
     <div className="flex flex-col gap-4">
@@ -44,7 +50,10 @@ export default async function StoresPage() {
                   <TableCell>{store.address ?? '—'}</TableCell>
                   <TableCell>{store.timezone}</TableCell>
                   <TableCell>
-                    <StoreDialog store={store} />
+                    <div className="flex items-center gap-2">
+                      <StoreDialog store={store} />
+                      {canManageStores && <StoreDeleteButton storeId={store.id} name={store.name} />}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
