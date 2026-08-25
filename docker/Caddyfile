@@ -5,13 +5,13 @@
 # with real ones before deploying; Caddy validates DNS ownership at startup
 # and will otherwise fail to issue a certificate.
 {$API_DOMAIN:api.example.com} {
-	reverse_proxy payload-api:3000
+	reverse_proxy fundi-payload-api:3000
 }
 
 {$WEB_DOMAIN:app.example.com} {
-	reverse_proxy web:3000
+	reverse_proxy fundi-web:3000
 }
 
 {$POWERSYNC_DOMAIN:sync.example.com} {
-	reverse_proxy powersync:8080
+	reverse_proxy fundi-powersync:8080
 }

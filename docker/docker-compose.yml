@@ -32,7 +32,16 @@ services:
       timeout: 5s
       retries: 10
 
-  payload-api:
+  # Named fundi-payload-api, not payload-api: this stack shares an external
+  # Docker network (pharmatrack_net, below) with a completely separate
+  # compose project on the same host. Compose always registers a service's
+  # own name as a network alias on EVERY network it joins - confirmed live,
+  # this is NOT suppressed by also setting `networks.<net>.aliases`, so the
+  # only reliable fix is giving the service itself a name that can't
+  # collide with anything on the other project's side. This one wouldn't
+  # have collided today, but is named consistently with fundi-web below,
+  # which did.
+  fundi-payload-api:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
@@ -58,6 +67,7 @@ services:
       POWERSYNC_JWT_PUBLIC_KEY: ${POWERSYNC_JWT_PUBLIC_KEY}
       POWERSYNC_JWT_KID: ${POWERSYNC_JWT_KID}
     ports: ["3001:3000"]
+    networks: [default, pharmatrack_net]
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,7 +75,9 @@ services:
   # journeyapps/powersync-service:1.24.0 confirmed current as of 2026-08 via
   # https://hub.docker.com/r/journeyapps/powersync-service/tags — re-check at
   # build time per POS_SAAS_SPEC.md's own note, since tags do move.
-  powersync:
+  #
+  # Named fundi-powersync - see fundi-payload-api's comment above for why.
+  fundi-powersync:
     image: journeyapps/powersync-service:1.24.0
     command: ["start", "-r", "unified"]
     environment:
@@ -78,18 +90,25 @@ services:
     volumes:
       - ./powersync:/config:ro
     ports: ["8080:8080"]
+    networks: [default, pharmatrack_net]
     depends_on:
       postgres:
         condition: service_healthy
       postgres-storage:
         condition: service_healthy
 
-  web:
+  # Named fundi-web, not web: pharmatrack's OWN compose project also has a
+  # service literally named `web` - this is the collision that actually
+  # happened live (pharmatrack.co.ke briefly served this app's landing page
+  # because Docker's embedded DNS had two containers registered under the
+  # same alias on the shared network). See fundi-payload-api's comment
+  # above for the full mechanism.
+  fundi-web:
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
     environment:
-      # See payload-api's identical HOSTNAME override above for why.
+      # See fundi-payload-api's identical HOSTNAME override above for why.
       HOSTNAME: 0.0.0.0
       # Browser-facing (client-side fetches) - the browser runs on the host,
       # so it must use the host-mapped port, not the container-internal one.
@@ -102,15 +121,28 @@ services:
       # as above.
       NEXT_PUBLIC_DOWNLOADS_BASE_URL: ${NEXT_PUBLIC_DOWNLOADS_BASE_URL:-}
       # Server-side (Next.js route handlers running inside this container) -
-      # reaches payload-api over the compose network's internal DNS/port,
-      # never the host-mapped 3001. Caught live: without this, every
-      # server-side call defaulted to apps/web's own hardcoded host-dev
-      # fallback (http://localhost:3011) and failed with ECONNREFUSED
-      # inside the container, since nothing listens on 3011 in this network.
-      PAYLOAD_API_URL: http://payload-api:3000
+      # reaches fundi-payload-api over the compose network's internal
+      # DNS/port, never the host-mapped 3001. Caught live: without this,
+      # every server-side call defaulted to apps/web's own hardcoded
+      # host-dev fallback (http://localhost:3011) and failed with
+      # ECONNREFUSED inside the container, since nothing listens on 3011 in
+      # this network.
+      PAYLOAD_API_URL: http://fundi-payload-api:3000
     ports: ["3000:3000"]
-    depends_on: [payload-api]
+    networks: [default, pharmatrack_net]
+    depends_on: [fundi-payload-api]
 
 volumes:
   pgdata:
   pgdata_storage:
+
+networks:
+  default: {}
+  # Pre-existing network pharmatrack's own Caddy container is already on -
+  # joining it (not replacing our own `default` network) is what lets that
+  # Caddy reach fundi-payload-api/fundi-web/fundi-powersync by container
+  # name, without this stack's Postgres instances ever being reachable from
+  # pharmatrack's side.
+  pharmatrack_net:
+    external: true
+    name: pharmatrack_default

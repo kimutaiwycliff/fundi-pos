@@ -29,7 +29,7 @@ services:
           cpus: '0.5'
           memory: 256M
 
-  payload-api:
+  fundi-payload-api:
     restart: unless-stopped
     # Not published directly in production - Caddy is the only public
     # entrypoint (see the caddy service below).
@@ -40,7 +40,7 @@ services:
           cpus: '1'
           memory: 512M
 
-  powersync:
+  fundi-powersync:
     restart: unless-stopped
     ports: !reset []
     deploy:
@@ -49,7 +49,7 @@ services:
           cpus: '1'
           memory: 512M
 
-  web:
+  fundi-web:
     restart: unless-stopped
     ports: !reset []
     deploy:
@@ -58,6 +58,10 @@ services:
           cpus: '1'
           memory: 512M
 
+  # This service is intentionally never actually brought up on a box that
+  # already has its own Caddy (e.g. pharmatrack's) - see docker/README.md.
+  # Kept here, correctly configured, for a genuinely standalone/dedicated
+  # VPS deployment.
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
@@ -71,7 +75,7 @@ services:
       - caddy_config:/config
     command: ["caddy", "run", "--config", "/etc/caddyfile"]
     ports: ["80:80", "443:443"]
-    depends_on: [payload-api, web, powersync]
+    depends_on: [fundi-payload-api, fundi-web, fundi-powersync]
 
   backup:
     image: postgres:16
