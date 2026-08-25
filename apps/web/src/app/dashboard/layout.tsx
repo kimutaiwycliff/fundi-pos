@@ -38,6 +38,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // see Users.ts's beforeLogin hook - this covers the "already logged in
   // when it happened" case the login-time check can't).
   if (billingStatus === 'canceled') redirect('/subscription-canceled');
+  // Same "already logged in when it happened" reasoning, for a staff
+  // member banned mid-session - getCurrentUser() re-fetches live on every
+  // dashboard navigation, so this takes effect on their very next page
+  // load rather than waiting for the JWT to naturally expire.
+  if (me.status === 'banned') redirect('/login');
   const navItems = [
     ...NAV_ITEMS,
     ...(me.role === 'manager' || me.role === 'owner' ? [{ href: '/dashboard/audit-log', label: 'Audit Log' }] : []),

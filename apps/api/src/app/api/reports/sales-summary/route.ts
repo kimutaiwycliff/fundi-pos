@@ -43,7 +43,7 @@ export async function GET(request: Request) {
   const orderCount = orders.docs.length;
   const revenueByProduct = new Map<string, { name: string; revenue: number; quantity: number }>();
   const revenueByStore = new Map<string, number>();
-  const totalsByTender = { cash: 0, mpesa: 0, card: 0 };
+  const totalsByTender = { cash: 0, mpesa: 0, card: 0, credit: 0 };
 
   for (const order of orders.docs) {
     const orderTotal = (order.total as number) ?? 0;
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     totalTax += (order.taxTotal as number) ?? 0;
     const storeKey = String(toID(order.store));
     revenueByStore.set(storeKey, (revenueByStore.get(storeKey) ?? 0) + orderTotal);
-    const tender = order.tenderType as 'cash' | 'mpesa' | 'card' | undefined;
+    const tender = order.tenderType as 'cash' | 'mpesa' | 'card' | 'credit' | undefined;
     if (tender && tender in totalsByTender) totalsByTender[tender] += orderTotal;
 
     const lineItems = (order.lineItems ?? []) as Array<{

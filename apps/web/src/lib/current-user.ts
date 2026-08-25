@@ -6,6 +6,7 @@ export type CurrentUser = {
   email: string;
   name: string | null;
   role: 'owner' | 'manager' | 'cashier';
+  status: 'active' | 'banned';
   tenant: { id: number; name: string; billingStatus: 'active' | 'trialing' | 'past_due' | 'canceled' } | number;
 };
 

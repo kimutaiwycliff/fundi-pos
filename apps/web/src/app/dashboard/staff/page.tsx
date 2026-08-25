@@ -8,7 +8,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
+import { getCurrentUser } from '@/lib/current-user';
 import { StaffDialog } from './staff-dialog';
+import { StaffStatusActions } from './staff-status-actions';
 
 type Store = { id: number; name: string };
 type Staff = {
@@ -17,14 +19,17 @@ type Staff = {
   name: string | null;
   phone: string | null;
   role: string;
+  status: 'active' | 'banned';
   store: { id: number; name: string } | number | null;
 };
 
 export default async function StaffPage() {
-  const [{ docs: staff }, { docs: stores }] = await Promise.all([
+  const [{ docs: staff }, { docs: stores }, me] = await Promise.all([
     payloadFetch<{ docs: Staff[] }>('/api/users?sort=name&limit=100'),
     payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
+    getCurrentUser(),
   ]);
+  const canManageStaff = me.role === 'owner' || me.role === 'manager';
 
   return (
     <div className="flex flex-col gap-4">
@@ -41,6 +46,7 @@ export default async function StaffPage() {
               <TableHead>Phone</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Store</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="w-0" />
             </TableRow>
           </TableHeader>
@@ -61,7 +67,17 @@ export default async function StaffPage() {
                       : `#${person.store}`}
                 </TableCell>
                 <TableCell>
-                  <StaffDialog stores={stores} staff={person} />
+                  <Badge variant={person.status === 'banned' ? 'destructive' : 'secondary'}>
+                    {person.status === 'banned' ? 'Banned' : 'Active'}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <StaffDialog stores={stores} staff={person} />
+                    {canManageStaff && person.id !== me.id && (
+                      <StaffStatusActions staffId={person.id} status={person.status} />
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

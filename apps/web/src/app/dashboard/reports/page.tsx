@@ -18,7 +18,7 @@ interface SalesSummary {
   totalTax: number;
   orderCount: number;
   profitTotal: number | null;
-  paymentBreakdown: { cash: number; mpesa: number; card: number };
+  paymentBreakdown: { cash: number; mpesa: number; card: number; credit: number };
   topProducts: Array<{ name: string; revenue: number; quantity: number }>;
   byStore: Array<{ store: number; revenue: number }>;
 }
