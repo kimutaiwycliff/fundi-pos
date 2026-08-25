@@ -59,6 +59,10 @@ services:
       HOSTNAME: 0.0.0.0
       DATABASE_URI: postgres://${POSTGRES_USER:-pos_admin}:${POSTGRES_PASSWORD:-dev_only_change_me}@postgres:5432/${POSTGRES_DB:-pos_saas}
       PAYLOAD_SECRET: ${PAYLOAD_SECRET:-dev_only_change_me_to_a_long_random_string}
+      # Real deployed domains that need CORS/CSRF allowlisted - see
+      # payload.config.ts's own comment for why the admin panel's own
+      # origin has to be in this list too, not just apps/web's.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       # Required by apps/api/src/lib/powersyncAuth.ts - signs/serves the
       # PowerSync client-auth JWT and its JWKS. No dev default: a missing
       # value should fail loudly (requireEnv throws) rather than silently
