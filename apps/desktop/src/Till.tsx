@@ -51,14 +51,21 @@ interface LocalTenant {
 interface CartLine {
   product: LocalProduct;
   quantity: number;
-  // A percentage (0-100, clamped to the product's own max_discount_percent),
-  // not the flat currency amount business-logic's LineInput expects - see
-  // lineDiscountAmount below for the conversion at the point of use.
-  discountPercent: number;
+  // A flat currency amount off this line's subtotal (not a percentage) -
+  // cashiers think in "how many shillings off", not percentages. The
+  // product's own max_discount_percent is still what a manager configures
+  // (scales sensibly regardless of price/quantity) - maxDiscountAmount
+  // below converts that cap into the equivalent shilling ceiling for
+  // whatever's actually in the cart right now.
+  discountAmount: number;
 }
 
 function lineDiscountAmount(line: CartLine): number {
-  return (line.quantity * line.product.sell_price * line.discountPercent) / 100;
+  return line.discountAmount;
+}
+
+function maxDiscountAmountForLine(line: Pick<CartLine, 'quantity' | 'product'>): number {
+  return (line.quantity * line.product.sell_price * line.product.max_discount_percent) / 100;
 }
 
 interface TillProps {
@@ -298,7 +305,7 @@ export function Till({
       if (existing) {
         return prev.map((l) => (l.product.id === product.id ? { ...l, quantity: l.quantity + 1 } : l));
       }
-      return [...prev, { product, quantity: 1, discountPercent: 0 }];
+      return [...prev, { product, quantity: 1, discountAmount: 0 }];
     });
     setQuery('');
     setResults([]);
@@ -313,19 +320,27 @@ export function Till({
     setCart((prev) =>
       quantity <= 0
         ? prev.filter((l) => l.product.id !== productId)
-        : prev.map((l) => (l.product.id === productId ? { ...l, quantity } : l)),
+        : prev.map((l) => {
+            if (l.product.id !== productId) return l;
+            // A quantity decrease can shrink the discount ceiling below
+            // whatever flat amount was already entered - re-clamp so the
+            // cart never ends up implying a bigger discount % than the
+            // product actually allows.
+            const max = maxDiscountAmountForLine({ quantity, product: l.product });
+            return { ...l, quantity, discountAmount: Math.min(l.discountAmount, max) };
+          }),
     );
   }
 
-  function updateDiscountPercent(productId: string, rawValue: number) {
+  function updateDiscountAmount(productId: string, rawValue: number) {
     const line = cart.find((l) => l.product.id === productId);
     if (!line) return;
-    const max = line.product.max_discount_percent;
+    const max = maxDiscountAmountForLine(line);
     const clamped = Math.min(Math.max(rawValue, 0), max);
     if (rawValue > max) {
-      showToast(`Max discount for ${line.product.name} is ${max}%`, 'error');
+      showToast(`Max discount for ${line.product.name} is ${max.toFixed(2)}`, 'error');
     }
-    setCart((prev) => prev.map((l) => (l.product.id === productId ? { ...l, discountPercent: clamped } : l)));
+    setCart((prev) => prev.map((l) => (l.product.id === productId ? { ...l, discountAmount: clamped } : l)));
   }
 
   async function completeSale() {
@@ -658,13 +673,18 @@ export function Till({
                       Discount
                       <input
                         type="number"
+                        inputMode="decimal"
                         min={0}
-                        max={line.product.max_discount_percent}
-                        step={1}
-                        value={line.discountPercent}
-                        onChange={(e) => updateDiscountPercent(line.product.id, Number(e.currentTarget.value) || 0)}
+                        max={maxDiscountAmountForLine(line)}
+                        step={0.01}
+                        placeholder="0.00"
+                        // '' instead of a literal 0 when there's no discount
+                        // yet - otherwise a real "0" sits in the box and has
+                        // to be selected/deleted before typing a value.
+                        value={line.discountAmount === 0 ? '' : line.discountAmount}
+                        onChange={(e) => updateDiscountAmount(line.product.id, Number(e.currentTarget.value) || 0)}
                       />
-                      <span>% (max {line.product.max_discount_percent}%)</span>
+                      <span>(max {maxDiscountAmountForLine(line).toFixed(2)})</span>
                     </label>
                   )}
                 </div>
