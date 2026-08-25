@@ -26,8 +26,15 @@ async function findUserAndCheckPinLocally(
 ): Promise<{ userId: number; role: string; name: string | null; valid: boolean } | null> {
   const db = getDb();
   const placeholders = allowedRoles.map(() => '?').join(', ');
+  // status = 'active' excludes a banned staff member from the candidate
+  // pool entirely, the same way a not-found email would - this is the
+  // offline half of banning someone; the online half (blocking password/
+  // PIN login, and kicking an already-connected till within its token's
+  // ~1hr lifetime) lives server-side in Users.ts and the powersync/token
+  // and pin-login routes. Takes effect here as soon as this till's `users`
+  // bucket has synced since the ban, same latency as everything else synced.
   const rows = await db.getAll<LocalUserCandidate>(
-    `SELECT id, email, name, role, pin_hash FROM users WHERE email = ? AND role IN (${placeholders})`,
+    `SELECT id, email, name, role, pin_hash FROM users WHERE email = ? AND role IN (${placeholders}) AND status = 'active'`,
     [email, ...allowedRoles],
   );
   const candidate = rows[0];
