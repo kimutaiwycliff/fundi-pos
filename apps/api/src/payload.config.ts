@@ -55,8 +55,15 @@ export default buildConfig({
   // sidesteps cross-origin cookie SameSite/Secure complications entirely
   // for local http dev). CORS/CSRF are still opened for localhost:3000 for
   // any direct browser calls (e.g. public reads) and for local admin-panel access.
-  cors: ['http://localhost:3000'],
-  csrf: ['http://localhost:3000'],
+  //
+  // The admin panel itself (served FROM this same app) also needs its own
+  // origin in this list - Payload's CSRF check is a strict allowlist
+  // match, not an automatic same-origin exception. Caught live: logging
+  // out of /admin on the real deployed domain silently failed with only
+  // localhost:3000 allowed, since that request's Origin (the admin UI's
+  // own real domain) was never in the list.
+  cors: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:3000'],
+  csrf: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:3000'],
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),

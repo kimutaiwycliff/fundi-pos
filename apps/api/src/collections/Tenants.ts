@@ -25,7 +25,13 @@ export const Tenants: CollectionConfig = {
       if (!req.user || req.user.role !== 'owner') return false;
       return { id: { equals: toID(req.user.tenant) } };
     },
-    create: () => false, // tenants are created by the signup/billing flow, not via the API
+    // Self-serve signup (apps/web's /signup) creates tenants via
+    // overrideAccess: true, bypassing this entirely - this specifically
+    // governs the OTHER path, a platform admin manually onboarding a
+    // client through /admin (e.g. someone who paid before ever visiting
+    // the signup page). Still blocked for tenant users themselves; a
+    // tenant can never create another tenant.
+    create: ({ req }) => req.user?.collection === 'platform-admins',
     delete: () => false,
   },
   fields: [
