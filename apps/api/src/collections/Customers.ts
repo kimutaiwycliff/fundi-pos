@@ -1,4 +1,6 @@
 import type { CollectionConfig } from 'payload';
+import { APIError } from 'payload';
+import { normalizeKenyanPhone } from '@hardware-pos/business-logic';
 import { isAuthenticated, ownTenantOnly } from '../access/index.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
@@ -20,6 +22,21 @@ export const Customers: CollectionConfig = {
     { name: 'loyaltyPoints', type: 'number', required: true, defaultValue: 0 },
   ],
   hooks: {
-    beforeChange: [enforceOwnTenant()],
+    beforeChange: [
+      enforceOwnTenant(),
+      // Applies wherever a customer is created/updated (desktop till quick-add,
+      // web dashboard's New customer dialog, any future caller) so none of
+      // them can drift out of sync with each other on what counts as valid.
+      ({ data }) => {
+        if (data?.phone) {
+          const normalized = normalizeKenyanPhone(String(data.phone));
+          if (!normalized) {
+            throw new APIError('Enter a valid Kenyan phone number, e.g. 0712345678.', 400);
+          }
+          data.phone = normalized;
+        }
+        return data;
+      },
+    ],
   },
 };

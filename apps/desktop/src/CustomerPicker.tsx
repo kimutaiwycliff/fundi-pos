@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+import { normalizeKenyanPhone } from '@hardware-pos/business-logic';
 import { getDb } from './database';
 import { API_BASE_URL } from './auth';
 import { useToast } from './Toast';
@@ -55,12 +56,17 @@ export function CustomerPicker({ tenantId, payloadToken, value, onChange }: Cust
 
   async function handleCreate() {
     if (!query.trim()) return;
+    const normalizedPhone = normalizeKenyanPhone(newPhone.trim());
+    if (!normalizedPhone) {
+      showToast('Enter a valid Kenyan phone number, e.g. 0712345678.', 'error');
+      return;
+    }
     setSaving(true);
     try {
       const res = await tauriFetch(`${API_BASE_URL}/api/customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-        body: JSON.stringify({ name: query.trim(), phone: newPhone.trim() || null }),
+        body: JSON.stringify({ name: query.trim(), phone: normalizedPhone }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -124,11 +130,16 @@ export function CustomerPicker({ tenantId, payloadToken, value, onChange }: Cust
       {creating && (
         <div className="customer-picker-create">
           <input
-            placeholder="Phone (optional)"
+            placeholder="Phone e.g. 0712345678"
             value={newPhone}
             onChange={(e) => setNewPhone(e.currentTarget.value)}
           />
-          <button type="button" className="btn btn-primary btn-sm" onClick={handleCreate} disabled={saving}>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={handleCreate}
+            disabled={saving || !newPhone.trim()}
+          >
             {saving ? 'Adding...' : 'Add customer'}
           </button>
           <p className="pane-empty-state-hint">Requires an internet connection.</p>
