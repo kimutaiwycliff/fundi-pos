@@ -13,6 +13,32 @@ permissions:
 jobs:
   main:
     runs-on: ubuntu-latest
+    # apps/api's own integration tests (collections.integration.test.ts,
+    # phase6.integration.test.ts) call getPayload({config}) against a real
+    # Postgres - this job never provisioned one, so `nx run-many -t test`
+    # has been failing with "cannot connect to Postgres" since this
+    # workflow was first generated, unrelated to any app code change.
+    # payload.config.ts's db adapter has no explicit `push` setting, so it
+    # uses Payload's own default (schema auto-push whenever NODE_ENV isn't
+    # 'production', which it isn't here) - no separate migration step
+    # needed, just a real reachable database.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: pos_saas_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URI: postgres://postgres:postgres@localhost:5432/pos_saas_test
+      PAYLOAD_SECRET: ci-test-secret-never-used-outside-this-job
     steps:
       - uses: actions/checkout@v5
         with:
