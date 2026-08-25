@@ -130,12 +130,15 @@ const orders = new Table(
     tenant_id: column.integer,
     store_id: column.integer,
     terminal: column.text,
+    terminal_name: column.text,
     cashier_id: column.integer,
+    customer_id: column.integer,
     tax_total: column.real,
     discount_total: column.real,
     total: column.real,
     tender_type: column.text,
     payment_status: column.text,
+    settled_at: column.text,
     status: column.text,
     created_offline: column.integer,
     synced_at: column.text,
@@ -146,7 +149,7 @@ const orders = new Table(
     updated_at: column.text,
     created_at: column.text,
   },
-  { indexes: { tenant: ['tenant_id'], store: ['store_id'] } },
+  { indexes: { tenant: ['tenant_id'], store: ['store_id'], customer: ['customer_id'] } },
 );
 
 // Payload normalizes Orders.lineItems into its own Postgres child table

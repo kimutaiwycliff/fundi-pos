@@ -44,6 +44,10 @@ export async function printReceipt(order: {
   tenderType: string;
   header?: string | null;
   footer?: string | null;
+  // Set only for a credit sale still awaiting payment - see escpos.rs's
+  // ReceiptData.unpaid_notice. Left unset/null for every other reprint,
+  // including a credit sale that's since been settled.
+  unpaidNotice?: string | null;
 }): Promise<void> {
   const settings = getPrinterSettings();
   if (!settings) {
@@ -60,6 +64,7 @@ export async function printReceipt(order: {
     tenderType: order.tenderType,
     header: order.header ?? null,
     footer: order.footer ?? null,
+    unpaidNotice: order.unpaidNotice ?? null,
   });
 }
 

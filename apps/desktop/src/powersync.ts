@@ -32,20 +32,28 @@ export async function ensureAppDataDir(): Promise<string> {
  * credential the Rust connector will use (and re-use on every
  * fetch_credentials() call) to mint fresh PowerSync JWTs from
  * GET /api/powersync/token.
+ *
+ * `storeId` is only meaningful for a user with no fixed store (an owner/
+ * manager overseeing multiple branches) picking which one this till should
+ * sync stock_movements/orders for right now - see /api/powersync/token's own
+ * comment. Switching branches means calling disconnectPowerSync() then this
+ * again with the new id, exactly like a fresh login - there is no "hot"
+ * reparameterization of an already-connected sync session.
  */
-export async function connectPowerSync(payloadToken: string): Promise<void> {
+export async function connectPowerSync(payloadToken: string, storeId?: number | null): Promise<void> {
   const db = getDb();
   await db.init();
 
   // Validate the full credential chain from JS too (fail fast with a
   // readable error before asking Rust to connect).
-  await fetchPowerSyncToken(payloadToken);
+  await fetchPowerSyncToken(payloadToken, storeId);
 
   await invoke('powersync_connect', {
     rustHandle: db.rustHandle,
     apiBaseUrl: API_BASE_URL,
     powersyncUrl: POWERSYNC_URL,
     payloadToken,
+    storeId: storeId ?? null,
   });
 }
 

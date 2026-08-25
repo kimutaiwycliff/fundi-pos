@@ -2,25 +2,13 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { getDb } from "./database";
 import { loginToPayload, loginWithPin, type PayloadUser } from "./auth";
 import { connectPowerSync, disconnectPowerSync, ensureAppDataDir } from "./powersync";
+import { getTerminalId, getTerminalName, setTerminalName } from "./terminal";
 import { Till } from "./Till";
 import { WrenchIcon } from "./icons";
 import "./App.css";
 
 type ConnectionState = "idle" | "logging-in" | "connecting" | "connected" | "error";
 type LoginMode = "pin" | "password";
-
-// Persisted per-installation so the same till keeps the same identity
-// across restarts (used as StockMovements/Orders.sourceTerminal/terminal
-// for audit/debug, per spec Section 4).
-function getTerminalId(): string {
-  const key = "hardware-pos-terminal-id";
-  let id = localStorage.getItem(key);
-  if (!id) {
-    id = `till-${crypto.randomUUID().slice(0, 8)}`;
-    localStorage.setItem(key, id);
-  }
-  return id;
-}
 
 function App() {
   // PIN is the default - the fast path for day-to-day till login. Password
@@ -34,6 +22,13 @@ function App() {
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<PayloadUser | null>(null);
+  const [terminalName, setTerminalNameState] = useState(() => getTerminalName());
+  const [nameDraft, setNameDraft] = useState("");
+  // null while no branch has been picked yet for a multi-store user (see
+  // Till.tsx's own comment on canSelectStore) - a fixed-store user's actual
+  // store id lives on `user` itself and never touches this.
+  const [activeStoreId, setActiveStoreId] = useState<number | null>(null);
+  const [switchingStore, setSwitchingStore] = useState(false);
   const payloadTokenRef = useRef<string | null>(null);
   const terminalId = useRef(getTerminalId()).current;
 
@@ -59,8 +54,9 @@ function App() {
       payloadTokenRef.current = payloadToken;
       setUser(loggedInUser);
 
+      const fixedStoreId = typeof loggedInUser.store === "object" ? loggedInUser.store?.id : loggedInUser.store;
       setState("connecting");
-      await connectPowerSync(payloadToken);
+      await connectPowerSync(payloadToken, fixedStoreId ?? null);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -71,16 +67,88 @@ function App() {
   async function handleDisconnect() {
     await disconnectPowerSync();
     setUser(null);
+    setActiveStoreId(null);
     setState("idle");
   }
 
+  // Full disconnect + reconnect, exactly like login - PowerSync has no
+  // "hot" way to reparameterize an already-connected session's store scope
+  // (see connectPowerSync's own comment), so switching branches means
+  // asking for a fresh token scoped to the new store and starting over.
+  async function handleSwitchStore(storeId: number) {
+    if (!payloadTokenRef.current) return;
+    setSwitchingStore(true);
+    try {
+      await disconnectPowerSync();
+      await connectPowerSync(payloadTokenRef.current, storeId);
+      setActiveStoreId(storeId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSwitchingStore(false);
+    }
+  }
+
+  function handleSaveTerminalName(e: FormEvent) {
+    e.preventDefault();
+    if (!nameDraft.trim()) return;
+    setTerminalName(nameDraft);
+    setTerminalNameState(nameDraft.trim());
+  }
+
+  // One-time, before even the login screen - guarantees every till gets a
+  // real audit-friendly name from day one rather than relying on someone
+  // remembering to set it later via Till.tsx's settings drawer.
+  if (!terminalName) {
+    return (
+      <main className="login-shell">
+        <div className="login-card">
+          <div className="login-brand">
+            <span className="brand-mark">
+              <WrenchIcon />
+            </span>
+            <div className="login-brand-text">
+              <h1>Name this till</h1>
+              <p>Shown on receipts and in audit history - e.g. "Front Counter"</p>
+            </div>
+          </div>
+          <form onSubmit={handleSaveTerminalName} className="login-form">
+            <div className="field">
+              <span className="field-label">Till name</span>
+              <input
+                autoFocus
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.currentTarget.value)}
+                placeholder="e.g. Front Counter"
+              />
+            </div>
+            <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={!nameDraft.trim()}>
+              Continue
+            </button>
+          </form>
+          <p className="terminal-tag">You can rename this later from the till's settings.</p>
+        </div>
+      </main>
+    );
+  }
+
   if (state === "connected" && user && payloadTokenRef.current) {
+    const fixedStoreId = typeof user.store === "object" ? user.store?.id : user.store;
     return (
       <Till
         user={user}
         terminalId={terminalId}
+        terminalName={terminalName}
+        onRenameTerminal={(name) => {
+          setTerminalName(name);
+          setTerminalNameState(name.trim());
+        }}
         payloadToken={payloadTokenRef.current}
         onDisconnect={handleDisconnect}
+        activeStoreId={fixedStoreId ?? activeStoreId}
+        canSelectStore={fixedStoreId == null}
+        onSwitchStore={handleSwitchStore}
+        switchingStore={switchingStore}
       />
     );
   }
@@ -167,7 +235,7 @@ function App() {
         <p className="status-line" data-testid="connection-state">
           Status: <strong>{state}</strong>
         </p>
-        <p className="terminal-tag">Terminal {terminalId}</p>
+        <p className="terminal-tag">{terminalName} · {terminalId}</p>
       </div>
     </main>
   );

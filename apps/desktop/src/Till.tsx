@@ -6,6 +6,9 @@ import { API_BASE_URL, type PayloadUser } from './auth';
 import { VoidOrderPanel } from './VoidOrderPanel';
 import { ShiftPanel } from './ShiftPanel';
 import { CashierSwitcher } from './CashierSwitcher';
+import { BranchSwitcher } from './BranchSwitcher';
+import { CustomerPicker, type LocalCustomer } from './CustomerPicker';
+import { FindSalePanel } from './FindSalePanel';
 import { deleteHeldSale, holdSale, listHeldSales, type HeldSale } from './heldSales';
 import { printReceipt } from './printer';
 import { PrinterSettings } from './PrinterSettings';
@@ -19,6 +22,7 @@ import {
   MinusIcon,
   PlusIcon,
   PrinterIcon,
+  ReceiptIcon,
   SearchIcon,
   ShieldIcon,
   UndoIcon,
@@ -60,8 +64,24 @@ function lineDiscountAmount(line: CartLine): number {
 interface TillProps {
   user: PayloadUser;
   terminalId: string;
+  terminalName: string | null;
+  onRenameTerminal: (name: string) => void;
   payloadToken: string;
   onDisconnect: () => void;
+  // Whichever store this till is currently scoped to for stock_movements/
+  // orders sync (see /api/powersync/token) - null only while a multi-store
+  // user hasn't picked a branch yet.
+  activeStoreId: number | null;
+  // True only for an owner/manager overseeing multiple stores (Users.store
+  // is null) - a cashier/manager with one fixed store never sees a toggle.
+  canSelectStore: boolean;
+  onSwitchStore: (storeId: number) => void;
+  switchingStore: boolean;
+}
+
+interface LocalStore {
+  id: number;
+  name: string;
 }
 
 // Cash is first-class per spec Section 6.5 ("always available offline, no
@@ -69,10 +89,12 @@ interface TillProps {
 // STK push itself is a live call to Safaricom, initiated below once the
 // order has synced. Card was removed from the tender list at the user's
 // request - the tender type itself still supports 'card' in the schema if
-// that changes later.
+// that changes later. Credit is a "pay later" tab, tied to a customer -
+// always starts pending, settled later via FindSalePanel.
 const TENDER_OPTIONS = [
   { value: 'cash', label: 'Cash' },
   { value: 'mpesa', label: 'M-Pesa' },
+  { value: 'credit', label: 'Credit' },
 ] as const;
 
 // UNVERIFIED against a real Safaricom sandbox (see lib/daraja.ts on the
@@ -98,27 +120,42 @@ async function initiateMpesaPayment(payloadToken: string, orderId: string, phone
   throw new Error(lastError ?? 'M-Pesa STK push failed');
 }
 
-export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps) {
+export function Till({
+  user,
+  terminalId,
+  terminalName,
+  onRenameTerminal,
+  payloadToken,
+  onDisconnect,
+  activeStoreId,
+  canSelectStore,
+  onSwitchStore,
+  switchingStore,
+}: TillProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LocalProduct[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [tenderType, setTenderType] = useState<(typeof TENDER_OPTIONS)[number]['value']>('cash');
   const [mpesaPhone, setMpesaPhone] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState<LocalCustomer | null>(null);
   const [completing, setCompleting] = useState(false);
   const [pendingSyncCount, setPendingSyncCount] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [activeCashier, setActiveCashier] = useState({ id: user.id, email: user.email, name: user.name ?? null });
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
   const [tenant, setTenant] = useState<LocalTenant | null>(null);
+  const [stores, setStores] = useState<LocalStore[]>([]);
   const [heldSalesOpen, setHeldSalesOpen] = useState(false);
   const [voidPanelOpen, setVoidPanelOpen] = useState(false);
-  const [printerSettingsOpen, setPrinterSettingsOpen] = useState(false);
+  const [findSaleOpen, setFindSaleOpen] = useState(false);
+  const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false);
+  const [terminalNameDraft, setTerminalNameDraft] = useState(terminalName ?? '');
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [shiftBlockOpen, setShiftBlockOpen] = useState(false);
   const showToast = useToast();
 
-  const storeId = typeof user.store === 'object' ? user.store?.id : user.store;
+  const storeId = activeStoreId;
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
 
   async function refreshHeldSales() {
@@ -139,6 +176,28 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       String(tenantId),
     ]).then((rows) => setTenant(rows[0] ?? null));
   }, [tenantId]);
+
+  // stores is tenant-wide (not store-scoped) per sync-config.yaml, so this
+  // is always available regardless of which branch is currently active -
+  // exactly what lets a multi-store user see every branch to switch to
+  // before/without having picked one yet.
+  useEffect(() => {
+    if (tenantId == null) return;
+    const db = getDb();
+    db.getAll<{ id: string; name: string }>('SELECT id, name FROM stores WHERE tenant_id = ? ORDER BY name', [tenantId]).then(
+      (rows) => setStores(rows.map((r) => ({ id: Number(r.id), name: r.name }))),
+    );
+  }, [tenantId]);
+
+  // A cart built against one store's stock/prices can't carry over to
+  // another - cleared on every branch switch (including the initial one,
+  // a harmless no-op since it starts empty anyway).
+  useEffect(() => {
+    setCart([]);
+    setSelectedCustomer(null);
+    setQuery('');
+    setResults([]);
+  }, [storeId]);
 
   async function handleHoldSale() {
     if (cart.length === 0) return;
@@ -279,6 +338,10 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       showToast("Enter the customer's phone number for the M-Pesa prompt", 'error');
       return;
     }
+    if (tenderType === 'credit' && !selectedCustomer) {
+      showToast('Select a customer for a credit sale', 'error');
+      return;
+    }
     // Final authoritative check right before committing - a line's snapshot
     // stock could be stale if it sat in the cart a while (another till
     // selling the same product, a manual stock adjustment, etc.).
@@ -294,9 +357,11 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       const now = new Date().toISOString();
       // Cash is settled the moment it's handed over - 'paid' immediately.
       // Mobile money isn't settled until the customer approves the STK
-      // prompt on their phone, which the (unverified) Daraja callback
-      // resolves later - starts 'pending', same as the server-side schema.
-      const paymentStatus = tenderType === 'mpesa' ? 'pending' : 'paid';
+      // prompt on their phone (unverified Daraja callback resolves it
+      // later). Credit is the same "not actually paid yet" shape, just
+      // resolved by a manager/owner marking it settled later (see
+      // FindSalePanel/authorizeSettlement) instead of an automatic callback.
+      const paymentStatus = tenderType === 'mpesa' || tenderType === 'credit' ? 'pending' : 'paid';
 
       // One local transaction for the order + all its line items, so
       // PowerSync's upload queue drains them together and the Rust
@@ -305,15 +370,17 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       await db.writeTransaction(async (tx) => {
         await tx.execute(
           `INSERT INTO orders
-             (id, tenant_id, store_id, terminal, cashier_id, tax_total, discount_total, total,
+             (id, tenant_id, store_id, terminal, terminal_name, cashier_id, customer_id, tax_total, discount_total, total,
               tender_type, payment_status, status, created_offline, synced_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', 1, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', 1, ?)`,
           [
             orderId,
             tenantId,
             storeId,
             terminalId,
+            terminalName,
             activeCashier.id,
+            selectedCustomer ? Number(selectedCustomer.id) : null,
             totals.taxTotal,
             totals.discountTotal,
             totals.total,
@@ -349,7 +416,8 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
         }
       });
 
-      showToast(`Sale completed - ${tenderType === 'mpesa' ? 'M-Pesa' : 'Cash'} ${totals.total.toFixed(2)}`, 'success');
+      const tenderLabel = TENDER_OPTIONS.find((t) => t.value === tenderType)?.label ?? tenderType;
+      showToast(`Sale completed - ${tenderLabel} ${totals.total.toFixed(2)}`, 'success');
 
       if (tenderType === 'mpesa') {
         // Best-effort, same as printing below - the sale is already
@@ -383,11 +451,13 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
         tenderType,
         header: tenant?.receipt_header,
         footer: tenant?.receipt_footer,
+        unpaidNotice: tenderType === 'credit' ? 'UNPAID - PAY LATER' : null,
       }).catch((err) => {
         showToast(`Receipt print failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
       });
 
       setCart([]);
+      setSelectedCustomer(null);
     } catch (err) {
       showToast(`Error completing sale: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
@@ -407,10 +477,20 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
           <div className="till-identity-text">
             <p className="till-identity-title">{tenant?.name ?? 'Fundi Till'}</p>
             <p className="till-identity-sub">
-              {user.name || user.email} · {user.role} · terminal {terminalId}
+              {user.name || user.email} · {user.role} · {terminalName ?? terminalId}
             </p>
           </div>
         </div>
+
+        <BranchSwitcher
+          stores={stores}
+          activeStoreId={activeStoreId}
+          canSelectStore={canSelectStore}
+          shiftOpen={activeShift != null}
+          switching={switchingStore}
+          onSwitch={onSwitchStore}
+          onBlocked={() => setShiftBlockOpen(true)}
+        />
 
         <div className="till-topbar-spacer" />
 
@@ -462,7 +542,20 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
               Void / refund
             </button>
           )}
-          <button className="btn btn-ghost btn-icon" onClick={() => setPrinterSettingsOpen(true)} aria-label="Printer settings">
+          {storeId != null && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setFindSaleOpen(true)}>
+              <ReceiptIcon />
+              Find a sale
+            </button>
+          )}
+          <button
+            className="btn btn-ghost btn-icon"
+            onClick={() => {
+              setTerminalNameDraft(terminalName ?? '');
+              setTerminalSettingsOpen(true);
+            }}
+            aria-label="Terminal settings"
+          >
             <PrinterIcon />
           </button>
         </div>
@@ -483,7 +576,13 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
             />
           </div>
 
-          {results.length > 0 ? (
+          {storeId == null ? (
+            <div className="pane-empty-state">
+              <WrenchIcon />
+              <p className="pane-empty-state-title">Select a branch to start selling</p>
+              <p className="pane-empty-state-hint">Use the branch switcher at the top of the screen to pick a store.</p>
+            </div>
+          ) : results.length > 0 ? (
             <div className="search-results-grid">
               {results.map((product) => {
                 const outOfStock = product.stock_on_hand <= 0;
@@ -610,14 +709,33 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
                 onChange={(e) => setMpesaPhone(e.currentTarget.value)}
               />
             )}
+            {tenderType === 'credit' && tenantId != null && (
+              <CustomerPicker
+                tenantId={tenantId}
+                payloadToken={payloadToken}
+                value={selectedCustomer}
+                onChange={setSelectedCustomer}
+              />
+            )}
 
             <div className="cart-actions">
               <button
                 className="btn btn-primary btn-lg btn-block"
-                disabled={cart.length === 0 || completing || activeShift == null}
+                disabled={
+                  cart.length === 0 ||
+                  completing ||
+                  activeShift == null ||
+                  (tenderType === 'credit' && !selectedCustomer)
+                }
                 onClick={completeSale}
               >
-                {completing ? 'Completing...' : activeShift == null ? 'Open a shift to sell' : 'Complete sale'}
+                {completing
+                  ? 'Completing...'
+                  : activeShift == null
+                    ? 'Open a shift to sell'
+                    : tenderType === 'credit' && !selectedCustomer
+                      ? 'Select a customer'
+                      : 'Complete sale'}
               </button>
               <button className="btn btn-secondary btn-block" disabled={cart.length === 0} onClick={handleHoldSale}>
                 Hold sale
@@ -655,7 +773,28 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
         {storeId != null && <VoidOrderPanel storeId={storeId} payloadToken={payloadToken} />}
       </Drawer>
 
-      <Drawer open={printerSettingsOpen} onClose={() => setPrinterSettingsOpen(false)} title="Printer settings">
+      <Drawer open={findSaleOpen} onClose={() => setFindSaleOpen(false)} title="Find a sale">
+        {storeId != null && <FindSalePanel storeId={storeId} payloadToken={payloadToken} tenant={tenant} />}
+      </Drawer>
+
+      <Drawer open={terminalSettingsOpen} onClose={() => setTerminalSettingsOpen(false)} title="Terminal settings">
+        <div className="field">
+          <span className="field-label">Till name</span>
+          <div className="terminal-name-form">
+            <input value={terminalNameDraft} onChange={(e) => setTerminalNameDraft(e.currentTarget.value)} />
+            <button
+              className="btn btn-primary btn-sm"
+              disabled={!terminalNameDraft.trim()}
+              onClick={() => {
+                onRenameTerminal(terminalNameDraft);
+                showToast('Till name updated', 'success');
+              }}
+            >
+              Save
+            </button>
+          </div>
+          <p className="pane-empty-state-hint">Shown on receipts and used to identify this machine in audit history.</p>
+        </div>
         <PrinterSettings />
       </Drawer>
 
@@ -675,7 +814,7 @@ export function Till({ user, terminalId, payloadToken, onDisconnect }: TillProps
       <ConfirmDialog
         open={shiftBlockOpen}
         title="Close your shift first"
-        message="You have an open shift on this terminal. Close it below before switching cashiers or logging out."
+        message="You have an open shift on this terminal. Close it below before switching cashiers, switching branches, or logging out."
         confirmLabel="Got it"
         onConfirm={() => setShiftBlockOpen(false)}
       />

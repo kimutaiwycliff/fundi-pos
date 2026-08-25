@@ -84,6 +84,12 @@ pub struct ReceiptData {
     // for the header, a thank-you/return-policy line for the footer.
     pub header: Option<String>,
     pub footer: Option<String>,
+    // Set only for a credit sale still awaiting payment - printed bold and
+    // centered right after the total so a reprint of an unpaid tab can never
+    // be mistaken for a settled one. Left None for every other sale,
+    // including a credit sale that HAS since been settled - a settled
+    // receipt is meant to look exactly like a normal one, that's the point.
+    pub unpaid_notice: Option<String>,
 }
 
 /// Assembles the full byte sequence for one receipt. Line items are plain
@@ -123,6 +129,14 @@ pub fn build_receipt(data: &ReceiptData) -> Vec<u8> {
     out.extend(text(&format!("Total: {:.2} ({})", data.total, data.tender_type)));
     out.extend(set_bold(false));
     out.extend(line_feed());
+    if let Some(notice) = &data.unpaid_notice {
+        out.extend(set_align_center());
+        out.extend(set_bold(true));
+        out.extend(text(notice));
+        out.extend(set_bold(false));
+        out.extend(line_feed());
+        out.extend(set_align_left());
+    }
     if let Some(footer) = &data.footer {
         out.extend(line_feed());
         out.extend(set_align_center());
@@ -195,6 +209,7 @@ mod tests {
             kick_drawer: true,
             header: None,
             footer: None,
+            unpaid_notice: None,
         };
 
         let bytes = build_receipt(&data);
@@ -220,6 +235,7 @@ mod tests {
             kick_drawer: false,
             header: None,
             footer: None,
+            unpaid_notice: None,
         };
         let bytes = build_receipt(&data);
         assert_eq!(&bytes[bytes.len() - 3..], &cut_paper()[..]);
@@ -237,10 +253,29 @@ mod tests {
             kick_drawer: false,
             header: Some("Westlands, Nairobi - 0700 000 000".to_string()),
             footer: Some("Thank you for your business!".to_string()),
+            unpaid_notice: None,
         };
         let as_text = String::from_utf8_lossy(&build_receipt(&data)).into_owned();
         assert!(as_text.contains("Westlands, Nairobi - 0700 000 000"));
         assert!(as_text.contains("Thank you for your business!"));
+    }
+
+    #[test]
+    fn build_receipt_prints_the_unpaid_notice_when_a_credit_sale_is_still_pending() {
+        let data = ReceiptData {
+            store_name: "Demo".to_string(),
+            order_id: "x".to_string(),
+            lines: vec![],
+            tax_total: 0.0,
+            total: 500.0,
+            tender_type: "credit".to_string(),
+            kick_drawer: false,
+            header: None,
+            footer: None,
+            unpaid_notice: Some("UNPAID - PAY LATER".to_string()),
+        };
+        let as_text = String::from_utf8_lossy(&build_receipt(&data)).into_owned();
+        assert!(as_text.contains("UNPAID - PAY LATER"));
     }
 
     #[test]
@@ -255,6 +290,7 @@ mod tests {
             kick_drawer: false,
             header: None,
             footer: None,
+            unpaid_notice: None,
         };
         // Nothing to assert about absence of specific text (there's none to
         // check against) - this test exists to prove build_receipt doesn't

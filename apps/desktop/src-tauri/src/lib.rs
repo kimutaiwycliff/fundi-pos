@@ -53,13 +53,14 @@ async fn powersync_connect(
     api_base_url: String,
     powersync_url: String,
     payload_token: String,
+    store_id: Option<i64>,
 ) -> Result<(), String> {
     let db = app
         .powersync()
         .database_from_javascript_handle(rust_handle)
         .map_err(|e| e.to_string())?;
 
-    let connector = Arc::new(ApiConnector::new(db.clone(), api_base_url, powersync_url, payload_token));
+    let connector = Arc::new(ApiConnector::new(db.clone(), api_base_url, powersync_url, payload_token, store_id));
     registry.0.lock().unwrap().insert(rust_handle, connector.clone());
 
     db.connect(SyncOptions::new(ConnectorHandle(connector))).await;
@@ -126,6 +127,7 @@ fn print_receipt(
     tender_type: String,
     header: Option<String>,
     footer: Option<String>,
+    unpaid_notice: Option<String>,
 ) -> Result<(), String> {
     let data = escpos::ReceiptData {
         store_name,
@@ -145,6 +147,7 @@ fn print_receipt(
         tender_type,
         header,
         footer,
+        unpaid_notice,
     };
     let bytes = escpos::build_receipt(&data);
     escpos::send_to_network_printer(&printer_host, printer_port, &bytes)

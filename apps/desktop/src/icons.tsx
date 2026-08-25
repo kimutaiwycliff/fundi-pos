@@ -98,6 +98,13 @@ export const UndoIcon = base(
   </>,
 );
 
+export const ReceiptIcon = base(
+  <>
+    <path d="M6 3.5h12v17l-2.5-1.6L13 20.5l-2.5-1.6L8 20.5l-2-1.6z" />
+    <path d="M9 8h6M9 11.5h6M9 15h4" />
+  </>,
+);
+
 export const WrenchIcon = base(
   <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" />,
 );

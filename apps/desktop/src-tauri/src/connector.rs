@@ -45,16 +45,30 @@ pub struct ApiConnector {
     api_base_url: String,
     powersync_url: String,
     payload_token: Mutex<String>,
+    // Only ever meaningful for a user with NO fixed store (Users.store is
+    // nullable for an owner/manager overseeing multiple branches) - a
+    // cashier's own fixed store is derived server-side from their session
+    // regardless of what's sent here (see /api/powersync/token's own
+    // comment). None means "let the server decide" (their fixed store, or
+    // no store scope yet if they haven't picked a branch).
+    store_id: Mutex<Option<i64>>,
     http: Client,
 }
 
 impl ApiConnector {
-    pub fn new(db: PowerSyncDatabase, api_base_url: String, powersync_url: String, payload_token: String) -> Self {
+    pub fn new(
+        db: PowerSyncDatabase,
+        api_base_url: String,
+        powersync_url: String,
+        payload_token: String,
+        store_id: Option<i64>,
+    ) -> Self {
         Self {
             db,
             api_base_url,
             powersync_url,
             payload_token: Mutex::new(payload_token),
+            store_id: Mutex::new(store_id),
             http: Client::new(),
         }
     }
@@ -70,7 +84,11 @@ impl ApiConnector {
     }
 
     async fn fetch_credentials_impl(&self) -> Result<PowerSyncCredentials, PowerSyncError> {
-        let url = format!("{}/api/powersync/token", self.api_base_url);
+        let store_id = *self.store_id.lock().unwrap();
+        let mut url = format!("{}/api/powersync/token", self.api_base_url);
+        if let Some(id) = store_id {
+            url = format!("{url}?storeId={id}");
+        }
         let resp = self
             .http
             .get(&url)
@@ -326,12 +344,20 @@ fn build_order_body(entry: &CrudEntry, line_items: &[&CrudEntry]) -> Result<Valu
         "tenant": field("tenant_id"),
         "store": field("store_id"),
         "terminal": field("terminal"),
+        "terminalName": field("terminal_name"),
         "cashier": field("cashier_id"),
+        "customer": to_number(field("customer_id")),
         "lineItems": line_items_json,
         "taxTotal": field("tax_total"),
         "discountTotal": field("discount_total"),
         "total": field("total"),
         "tenderType": field("tender_type"),
+        // Previously omitted entirely - every synced order silently landed
+        // as Payload's default 'paid' regardless of what the till decided
+        // locally (checked live: an mpesa sale's local 'pending' never
+        // survived the sync round-trip). A credit sale depends on this
+        // actually reaching the server as 'pending', not just cash/mpesa.
+        "paymentStatus": field("payment_status"),
         "status": field("status"),
         "createdOffline": created_offline,
     }))
@@ -401,6 +427,30 @@ mod tests {
         assert!(line_items[0]["product"].is_number());
         assert_eq!(line_items[1]["product"], 2);
         assert!(line_items[1]["product"].is_number());
+    }
+
+    #[test]
+    fn assembles_a_credit_sale_with_customer_terminal_name_and_pending_payment_status() {
+        let order = entry(
+            "orders",
+            "order-2",
+            json!({
+                "tenant_id": 1, "store_id": 1, "terminal": "till-1", "terminal_name": "Front Counter",
+                "cashier_id": 3, "customer_id": "42", "tax_total": 0.0, "discount_total": 0.0, "total": 500.0,
+                "tender_type": "credit", "payment_status": "pending", "status": "completed", "created_offline": 1
+            }),
+        );
+        let crud = vec![order];
+        let order = crud.iter().find(|e| e.table == "orders").unwrap();
+        let body = build_order_body(order, &[]).expect("order has data");
+
+        assert_eq!(body["terminalName"], "Front Counter");
+        assert_eq!(body["tenderType"], "credit");
+        assert_eq!(body["paymentStatus"], "pending");
+        // customer_id round-trips as a string the same way product_id does -
+        // must come out as a real number for Payload's relationship field.
+        assert_eq!(body["customer"], 42);
+        assert!(body["customer"].is_number());
     }
 
     #[test]

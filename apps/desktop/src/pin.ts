@@ -90,3 +90,27 @@ export async function authorizeOrderStatusChange(
   }
   return { ok: true };
 }
+
+/**
+ * Marks a credit sale as settled - manager/owner only, per the user's own
+ * instruction. Same Option-A shape as authorizeOrderStatusChange above (a
+ * cashier's local PIN check is only ever a fast pre-check; the server
+ * re-verifies the PIN itself and is the actual authority).
+ */
+export async function authorizeSettlement(
+  payloadToken: string,
+  orderId: string,
+  managerId: number,
+  pin: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await tauriFetch(`${API_BASE_URL}/api/orders/${orderId}/settle`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+    body: JSON.stringify({ managerId, pin }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
+  }
+  return { ok: true };
+}

@@ -88,8 +88,9 @@ export async function loginWithPin(phone: string, pin: string): Promise<LoginRes
  * expiry is handled: PowerSync re-invokes fetch_credentials() on
  * reconnect/expiry, so the connector just re-fetches a new token then.
  */
-export async function fetchPowerSyncToken(payloadToken: string): Promise<string> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/powersync/token`, {
+export async function fetchPowerSyncToken(payloadToken: string, storeId?: number | null): Promise<string> {
+  const url = storeId != null ? `${API_BASE_URL}/api/powersync/token?storeId=${storeId}` : `${API_BASE_URL}/api/powersync/token`;
+  const res = await tauriFetch(url, {
     method: 'GET',
     headers: { Authorization: `JWT ${payloadToken}` },
   });

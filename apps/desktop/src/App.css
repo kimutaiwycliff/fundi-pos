@@ -762,7 +762,7 @@ label {
 
 .tender-toggle {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 .tender-toggle button {
@@ -1077,4 +1077,182 @@ label {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 8px;
+}
+
+/* ---------------------------------------------------------------------
+   BranchSwitcher
+   --------------------------------------------------------------------- */
+.branch-tag {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.branch-switcher {
+  position: relative;
+}
+.branch-switcher-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 200px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.branch-switcher-item {
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.branch-switcher-item:hover {
+  background: var(--canvas-alt);
+}
+.branch-switcher-item.is-active {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+/* ---------------------------------------------------------------------
+   FindSalePanel
+   --------------------------------------------------------------------- */
+.find-sale-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.find-sale-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.find-sale-row {
+  background: var(--canvas-alt);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.find-sale-row-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.find-sale-row-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.find-sale-row-meta {
+  font-size: 0.76rem;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+.find-sale-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.badge-unpaid {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.badge-void {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+/* ---------------------------------------------------------------------
+   CustomerPicker (credit sales)
+   --------------------------------------------------------------------- */
+.customer-picker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.customer-picker-results {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  max-height: 160px;
+  overflow-y: auto;
+}
+.customer-picker-results button {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.customer-picker-results button:hover {
+  background: var(--canvas-alt);
+}
+.customer-picker-create {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.customer-picker-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--primary-soft);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 0.85rem;
+}
+
+/* ---------------------------------------------------------------------
+   Terminal settings drawer
+   --------------------------------------------------------------------- */
+.terminal-name-form {
+  display: flex;
+  gap: 8px;
+}
+.terminal-name-form input {
+  flex: 1;
 }
