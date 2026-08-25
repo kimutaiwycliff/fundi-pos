@@ -22,7 +22,7 @@ export const AuditLog: CollectionConfig = {
       name: 'action',
       type: 'select',
       required: true,
-      options: ['price_changed', 'order_voided', 'order_refunded'],
+      options: ['price_changed', 'order_voided', 'order_refunded', 'sale_settled'],
     },
     { name: 'entityType', type: 'select', required: true, options: ['product', 'order'] },
     { name: 'entityId', type: 'text', required: true, index: true },

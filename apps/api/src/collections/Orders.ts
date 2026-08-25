@@ -23,6 +23,12 @@ export const Orders: CollectionConfig = {
     { name: 'tenant', type: 'relationship', relationTo: 'tenants', required: true, index: true },
     { name: 'store', type: 'relationship', relationTo: 'stores', required: true, index: true },
     { name: 'terminal', type: 'text', required: true },
+    // Point-in-time display name for whichever physical till rang this up
+    // (apps/desktop's own local setting, never renamed retroactively on
+    // past orders) - `terminal` above stays the stable id every lookup
+    // (shift status, sync scoping) keys off, so renaming a till later can
+    // never break those; this is purely "what was it called at the time."
+    { name: 'terminalName', type: 'text' },
     { name: 'cashier', type: 'relationship', relationTo: 'users', required: true },
     // Optional - not every sale is tied to a known customer. Not in the
     // spec's original Orders field list, but needed to actually implement
@@ -62,7 +68,7 @@ export const Orders: CollectionConfig = {
       name: 'tenderType',
       type: 'select',
       required: true,
-      options: ['cash', 'mpesa', 'card'],
+      options: ['cash', 'mpesa', 'card', 'credit'],
     },
     {
       name: 'paymentStatus',
@@ -71,6 +77,12 @@ export const Orders: CollectionConfig = {
       defaultValue: 'paid',
       options: ['paid', 'pending', 'failed'],
     },
+    // Credit ("pay later") sales only - who authorized marking this paid,
+    // and when. Left null for every other tender type; used by the audit
+    // hook below to tell a genuine settlement apart from M-Pesa's own
+    // pending->paid transition (which never sets this).
+    { name: 'settledAt', type: 'date' },
+    { name: 'settledBy', type: 'relationship', relationTo: 'users' },
     // Correlates Safaricom's asynchronous STK Push callback (which has no
     // other way to reference back to this order) - spec Section 6.5:
     // "M-Pesa STK Push... queue as pending if attempted offline and confirm
@@ -241,6 +253,40 @@ export const Orders: CollectionConfig = {
             entityId: String(doc.id),
             summary: `Order ${String(doc.id).slice(0, 8)} ${doc.status} (${(doc.total as number).toFixed(2)})`,
             metadata: { previousStatus: previousDoc?.status, total: doc.total },
+          },
+          overrideAccess: true,
+          req,
+        });
+        return doc;
+      },
+      // Same "context wins over session" reasoning as the void/refund hook
+      // above, for the other manager-gated transition: settling a credit
+      // sale (see /api/orders/[id]/settle). Guarded on settledAt actually
+      // having just been set, not just paymentStatus flipping to 'paid' -
+      // M-Pesa's own callback-driven pending->paid transition never sets
+      // settledAt, so it never fires this.
+      async ({ doc, operation, req, previousDoc }) => {
+        const justSettled =
+          operation === 'update' &&
+          doc.paymentStatus === 'paid' &&
+          previousDoc?.paymentStatus === 'pending' &&
+          Boolean(doc.settledAt) &&
+          !previousDoc?.settledAt;
+        if (!justSettled) return doc;
+
+        const actorId = (req.context?.authorizedByManagerId as number | undefined) ?? req.user?.id;
+        if (actorId == null) return doc;
+
+        await req.payload.create({
+          collection: 'audit-log',
+          data: {
+            tenant: Number(toID(doc.tenant)),
+            actor: Number(actorId),
+            action: 'sale_settled',
+            entityType: 'order',
+            entityId: String(doc.id),
+            summary: `Order ${String(doc.id).slice(0, 8)} settled (${(doc.total as number).toFixed(2)})`,
+            metadata: { total: doc.total, customer: doc.customer },
           },
           overrideAccess: true,
           req,

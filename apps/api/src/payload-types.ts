@@ -349,6 +349,7 @@ export interface Order {
   tenant: number | Tenant;
   store: number | Store;
   terminal: string;
+  terminalName?: string | null;
   cashier: number | User;
   customer?: (number | null) | Customer;
   /**
@@ -366,8 +367,10 @@ export interface Order {
   taxTotal: number;
   discountTotal: number;
   total: number;
-  tenderType: 'cash' | 'mpesa' | 'card';
+  tenderType: 'cash' | 'mpesa' | 'card' | 'credit';
   paymentStatus: 'paid' | 'pending' | 'failed';
+  settledAt?: string | null;
+  settledBy?: (number | null) | User;
   mpesaCheckoutRequestId?: string | null;
   pesapalOrderTrackingId?: string | null;
   status: 'completed' | 'refunded' | 'voided';
@@ -490,7 +493,7 @@ export interface AuditLog {
   id: number;
   tenant: number | Tenant;
   actor: number | User;
-  action: 'price_changed' | 'order_voided' | 'order_refunded';
+  action: 'price_changed' | 'order_voided' | 'order_refunded' | 'sale_settled';
   entityType: 'product' | 'order';
   entityId: string;
   summary: string;
@@ -795,6 +798,7 @@ export interface OrdersSelect<T extends boolean = true> {
   tenant?: T;
   store?: T;
   terminal?: T;
+  terminalName?: T;
   cashier?: T;
   customer?: T;
   loyaltyPointsEarned?: T;
@@ -813,6 +817,8 @@ export interface OrdersSelect<T extends boolean = true> {
   total?: T;
   tenderType?: T;
   paymentStatus?: T;
+  settledAt?: T;
+  settledBy?: T;
   mpesaCheckoutRequestId?: T;
   pesapalOrderTrackingId?: T;
   status?: T;
