@@ -1,0 +1,138 @@
+name: Build and release desktop app
+
+# Deliberately not using tauri-apps/tauri-action's GitHub Release flow - the
+# repo is private and downloads need to be public, so built installers go
+# to a public Cloudflare R2 bucket instead (see docker/backup.sh for the
+# same aws-cli-against-R2 pattern already used for DB backups).
+#
+# Windows and macOS only, per the app's current scope - no Linux target.
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  workflow_dispatch: {}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+
+      # tauri.windows.conf.json narrows bundle.targets to nsis only, so
+      # this produces exactly one .exe, not also an .msi.
+      - name: Build (Windows x64)
+        working-directory: apps/desktop
+        run: npm run tauri -- build
+
+      - name: Rename artifact to a stable filename
+        shell: bash
+        run: |
+          set -euo pipefail
+          src=$(find apps/desktop/src-tauri/target/release/bundle/nsis -name '*-setup.exe' | head -1)
+          mkdir -p dist-upload
+          cp "$src" dist-upload/FundiTill-Setup.exe
+
+      - name: Upload to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#desktop-v}"
+          aws s3 cp dist-upload/FundiTill-Setup.exe \
+            "s3://${{ secrets.R2_RELEASES_BUCKET }}/latest/FundiTill-Setup.exe" \
+            --endpoint-url "${{ secrets.R2_RELEASES_ENDPOINT }}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            aws s3 cp dist-upload/FundiTill-Setup.exe \
+              "s3://${{ secrets.R2_RELEASES_BUCKET }}/v${VERSION}/FundiTill-Setup.exe" \
+              --endpoint-url "${{ secrets.R2_RELEASES_ENDPOINT }}"
+          fi
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # Universal binary - macos-latest runners are Apple Silicon, but
+          # a plain build would only run natively on arm64 Macs. Building
+          # both targets and letting Tauri lipo them together covers Intel
+          # Macs too, without needing a second, Intel-only runner/job.
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+
+      # tauri.macos.conf.json narrows bundle.targets to dmg only.
+      - name: Build (universal macOS binary)
+        working-directory: apps/desktop
+        run: npm run tauri -- build --target universal-apple-darwin
+
+      - name: Rename artifact to a stable filename
+        run: |
+          set -euo pipefail
+          src=$(find apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' | head -1)
+          mkdir -p dist-upload
+          cp "$src" dist-upload/FundiTill.dmg
+
+      - name: Upload to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#desktop-v}"
+          aws s3 cp dist-upload/FundiTill.dmg \
+            "s3://${{ secrets.R2_RELEASES_BUCKET }}/latest/FundiTill.dmg" \
+            --endpoint-url "${{ secrets.R2_RELEASES_ENDPOINT }}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            aws s3 cp dist-upload/FundiTill.dmg \
+              "s3://${{ secrets.R2_RELEASES_BUCKET }}/v${VERSION}/FundiTill.dmg" \
+              --endpoint-url "${{ secrets.R2_RELEASES_ENDPOINT }}"
+          fi
+
+  publish-manifest:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write and upload version manifest
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#desktop-v}"
+          cat > version.json <<EOF
+          {"version": "${VERSION}", "windows": "FundiTill-Setup.exe", "macos": "FundiTill.dmg"}
+          EOF
+          aws s3 cp version.json \
+            "s3://${{ secrets.R2_RELEASES_BUCKET }}/latest/version.json" \
+            --endpoint-url "${{ secrets.R2_RELEASES_ENDPOINT }}"

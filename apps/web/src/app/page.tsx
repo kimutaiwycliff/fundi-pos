@@ -16,10 +16,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LogoMark } from '@/components/marketing/logo-mark';
 import { MobileNav } from '@/components/marketing/mobile-nav';
+import { DownloadButtons } from '@/components/marketing/download-buttons';
 
 const NAV_LINKS = [
   { href: '#features', label: 'Features' },
   { href: '#how-it-works', label: 'How it works' },
+  { href: '#download', label: 'Download' },
   { href: '#pricing', label: 'Pricing' },
   { href: '#faq', label: 'FAQ' },
 ];
@@ -308,6 +310,22 @@ export default function LandingPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* Download */}
+        <section id="download" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
+              Get the Fundi Till app
+            </h2>
+            <p className="mt-4 text-muted-foreground text-pretty">
+              This is the offline-capable till your cashiers actually ring up sales on. Install it on the computer
+              at each till — your team logs in there with a fast PIN once your account is set up.
+            </p>
+          </div>
+          <div className="mt-8 flex justify-center">
+            <DownloadButtons />
           </div>
         </section>
 

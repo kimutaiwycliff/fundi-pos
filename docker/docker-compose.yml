@@ -97,6 +97,10 @@ services:
       # API domain instead - Next.js inlines NEXT_PUBLIC_* at build time, so
       # changing this always requires a rebuild, not just a restart.
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      # Public R2 bucket desktop-release.yml (GitHub Actions) uploads
+      # Windows/macOS installers to - same NEXT_PUBLIC_* build-time caveat
+      # as above.
+      NEXT_PUBLIC_DOWNLOADS_BASE_URL: ${NEXT_PUBLIC_DOWNLOADS_BASE_URL:-}
       # Server-side (Next.js route handlers running inside this container) -
       # reaches payload-api over the compose network's internal DNS/port,
       # never the host-mapped 3001. Caught live: without this, every
