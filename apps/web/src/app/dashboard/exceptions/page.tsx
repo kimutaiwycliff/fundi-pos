@@ -28,7 +28,7 @@ export default async function ExceptionsPage() {
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">Stock exceptions</h1>
       <p className="text-sm text-muted-foreground">
-        Movements that drove a product's stock negative - never auto-corrected (spec Section 5). Review and
+        Movements that drove a product&apos;s stock negative - never auto-corrected (spec Section 5). Review and
         resolve manually (backorder, apology, substitute, or a compensating adjustment).
       </p>
       <div className="rounded-md border">

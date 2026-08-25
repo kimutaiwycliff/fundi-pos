@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# tsc --build (Nx's inferred typecheck target, tsconfig.node.json) emits
+# declarations next to vite.config.ts since that config has no outDir.
+vite.config.d.ts
+vite.config.d.ts.map
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

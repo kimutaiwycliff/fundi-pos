@@ -33,6 +33,11 @@ export function DownloadButtons() {
   const [os, setOs] = useState<DetectedOs>('other');
 
   useEffect(() => {
+    // navigator isn't available during SSR, so this has to run post-mount;
+    // deferring it (rather than reading it as the initial state) is what
+    // keeps the server-rendered button order from mismatching the client's
+    // real OS-based order during hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOs(detectOs());
   }, []);
 

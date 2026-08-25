@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "build": "tsc --build tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {

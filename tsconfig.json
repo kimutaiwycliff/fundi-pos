@@ -4,16 +4,16 @@
   "files": [],
   "references": [
     {
-      "path": "./packages/strings"
+      "path": "./packages/business-logic"
     },
     {
-      "path": "./packages/colors"
+      "path": "./packages/shared-types"
     },
     {
-      "path": "./packages/async"
+      "path": "./packages/shared-ui"
     },
     {
-      "path": "./packages/utils"
+      "path": "./apps/desktop"
     }
   ],
   "compilerOptions": {}

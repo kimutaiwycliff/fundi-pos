@@ -11,7 +11,15 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
+    /* Nx's inferred typecheck target runs `tsc --build --emitDeclarationOnly`,
+       which requires every project in the reference graph (this one included,
+       since it has its own `include` alongside `references`) to be a valid
+       composite project - `noEmit` conflicts with that, so declaration-only
+       emission is used instead (vite/esbuild does the real transpilation;
+       these .d.ts files land in the same gitignored dist/ vite build clears). */
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
     "jsx": "react-jsx",
 
     /* Mirrors vite.config.ts's resolve.alias workaround for an npm hoisting
@@ -30,5 +38,15 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "references": [
+    {
+      "path": "../../packages/shared-types"
+    },
+    {
+      "path": "../../packages/business-logic"
+    },
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ]
 }
