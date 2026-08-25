@@ -81,5 +81,5 @@ streams:
   users:
     auto_subscribe: true
     query: |
-      SELECT id, tenant_id, store_id, role, pin_hash, email, name, created_at, updated_at
+      SELECT id, tenant_id, store_id, role, pin_hash, email, name, status, created_at, updated_at
       FROM users WHERE tenant_id = auth.parameter('tenant_id')

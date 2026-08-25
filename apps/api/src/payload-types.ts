@@ -231,6 +231,10 @@ export interface User {
   store?: (number | null) | Store;
   role: 'owner' | 'manager' | 'cashier';
   /**
+   * A banned staff member cannot log in - password or till PIN - anywhere, on any device.
+   */
+  status: 'active' | 'banned';
+  /**
    * Displayed at the till instead of the staff member's email.
    */
   name?: string | null;
@@ -701,6 +705,7 @@ export interface UsersSelect<T extends boolean = true> {
   tenant?: T;
   store?: T;
   role?: T;
+  status?: T;
   name?: T;
   phone?: T;
   pin?: T;

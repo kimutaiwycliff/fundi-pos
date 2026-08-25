@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   try {
     owner = await payload.create({
       collection: 'users',
-      data: { tenant: tenant.id, role: 'owner', email: email.trim(), password },
+      data: { tenant: tenant.id, role: 'owner', status: 'active', email: email.trim(), password },
       overrideAccess: true,
     });
   } catch (err) {

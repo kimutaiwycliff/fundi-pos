@@ -65,14 +65,14 @@ describe('Phase 6 - StockTransfers receiving + Shifts cash-up', () => {
 
     const cashier = await payload.create({
       collection: 'users',
-      data: { tenant: tenantId, store: storeA, role: 'cashier', email: 'c@test.local', password: 'pw123456' },
+      data: { tenant: tenantId, store: storeA, role: 'cashier', status: 'active', email: 'c@test.local', password: 'pw123456' },
       overrideAccess: true,
     });
     cashierId = cashier.id as number;
 
     const manager = await payload.create({
       collection: 'users',
-      data: { tenant: tenantId, store: storeA, role: 'manager', email: 'm@test.local', password: 'pw123456' },
+      data: { tenant: tenantId, store: storeA, role: 'manager', status: 'active', email: 'm@test.local', password: 'pw123456' },
       overrideAccess: true,
     });
     managerId = manager.id as number;
@@ -229,7 +229,7 @@ describe('Phase 6 - StockTransfers receiving + Shifts cash-up', () => {
     it('lets a cashier close only their own shift, not a colleague\'s', async () => {
       const otherCashier = await payload.create({
         collection: 'users',
-        data: { tenant: tenantId, store: storeA, role: 'cashier', email: 'c2@test.local', password: 'pw123456' },
+        data: { tenant: tenantId, store: storeA, role: 'cashier', status: 'active', email: 'c2@test.local', password: 'pw123456' },
         overrideAccess: true,
       });
 

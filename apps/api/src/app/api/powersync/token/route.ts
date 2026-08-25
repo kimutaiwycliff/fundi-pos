@@ -34,6 +34,14 @@ export async function GET(request: Request) {
   if (!billing.allowed) {
     return Response.json({ error: billing.message }, { status: 403 });
   }
+  // Same re-check pattern as billing status just above, for the same
+  // reason: a till already mid-session keeps this token indefinitely
+  // otherwise, even after a manager bans the person using it. Re-checked
+  // here (not just at login) since a ban should take effect within this
+  // token's ~1hr lifetime, not only on the next fresh login.
+  if (user.status === 'banned') {
+    return Response.json({ error: 'This account has been disabled.' }, { status: 403 });
+  }
 
   let storeId: string | number | null = user.store ? (toID(user.store) as string | number) : null;
   if (user.store == null) {

@@ -65,14 +65,14 @@ describe('Payload collections - integration', () => {
 
       const cashier = await payload.create({
         collection: 'users',
-        data: { tenant: tenantId, store: storeId, role: 'cashier', email: 'c@test.local', password: 'pw123456' },
+        data: { tenant: tenantId, store: storeId, role: 'cashier', status: 'active', email: 'c@test.local', password: 'pw123456' },
         overrideAccess: true,
       });
       cashierId = cashier.id as number;
 
       const manager = await payload.create({
         collection: 'users',
-        data: { tenant: tenantId, store: storeId, role: 'manager', email: 'm@test.local', password: 'pw123456' },
+        data: { tenant: tenantId, store: storeId, role: 'manager', status: 'active', email: 'm@test.local', password: 'pw123456' },
         overrideAccess: true,
       });
       managerId = manager.id as number;
@@ -315,7 +315,7 @@ describe('Payload collections - integration', () => {
       });
       const ownerA = await payload.create({
         collection: 'users',
-        data: { tenant: tenantA.id, role: 'owner', email: 'ownerA@test.local', password: 'pw123456' },
+        data: { tenant: tenantA.id, role: 'owner', status: 'active', email: 'ownerA@test.local', password: 'pw123456' },
         overrideAccess: true,
       });
 
@@ -341,7 +341,7 @@ describe('Payload collections - integration', () => {
       });
       const managerA = await payload.create({
         collection: 'users',
-        data: { tenant: tenantA.id, role: 'manager', email: 'managerA2@test.local', password: 'pw123456' },
+        data: { tenant: tenantA.id, role: 'manager', status: 'active', email: 'managerA2@test.local', password: 'pw123456' },
         overrideAccess: true,
       });
 

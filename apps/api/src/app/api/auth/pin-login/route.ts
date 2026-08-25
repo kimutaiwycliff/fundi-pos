@@ -58,6 +58,12 @@ export async function POST(request: Request) {
   if (!user || !user.pinHash || !verifyPin(pin, user.pinHash)) {
     return Response.json({ error: 'Invalid phone or PIN' }, { status: 401 });
   }
+  // This route mints a session directly rather than calling payload.login(),
+  // so Users.ts's own beforeLogin hook (which has this same check) never
+  // runs for it - has to be re-checked here explicitly.
+  if (user.status === 'banned') {
+    return Response.json({ error: 'This account has been disabled. Contact your manager or owner.' }, { status: 403 });
+  }
   rateLimiter.delete(phone);
 
   const tenant = await payload.findByID({ collection: 'tenants', id: toID(user.tenant), overrideAccess: true });

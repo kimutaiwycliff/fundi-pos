@@ -35,6 +35,7 @@ async function seed() {
     data: {
       tenant: tenant.id,
       role: 'owner',
+      status: 'active',
       email: 'owner@demo-hardware.test',
       password: 'demo-password-123',
     },
@@ -46,6 +47,7 @@ async function seed() {
       tenant: tenant.id,
       store: storeA.id,
       role: 'manager',
+      status: 'active',
       email: 'manager@demo-hardware.test',
       password: 'demo-password-123',
     },
@@ -57,6 +59,7 @@ async function seed() {
       tenant: tenant.id,
       store: storeA.id,
       role: 'cashier',
+      status: 'active',
       email: 'cashier@demo-hardware.test',
       password: 'demo-password-123',
       pin: '1234',

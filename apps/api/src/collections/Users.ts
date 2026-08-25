@@ -33,6 +33,20 @@ export const Users: CollectionConfig = {
       options: ['owner', 'manager', 'cashier'],
     },
     {
+      // A tenant's own way to "ban" a staff member (per the user's own
+      // instruction) without losing their history - Orders/Shifts/AuditLog
+      // all hold required relationships to a user, so an outright delete is
+      // often impossible once someone has actually worked a shift (see this
+      // collection's own `delete` access below). Banning is always
+      // available and always reversible.
+      name: 'status',
+      type: 'select',
+      required: true,
+      defaultValue: 'active',
+      options: ['active', 'banned'],
+      admin: { description: 'A banned staff member cannot log in - password or till PIN - anywhere, on any device.' },
+    },
+    {
       // Shown at the till (and everywhere else in the dashboard) instead of
       // email once set - a cashier's own login email is rarely what a
       // shopkeeper wants printed on a receipt or shown on a shared terminal.
@@ -98,6 +112,19 @@ export const Users: CollectionConfig = {
         }
         return user;
       },
+      // Blocks the till's fast phone+PIN login as well, since both it
+      // (apps/api/src/app/api/auth/pin-login/route.ts) and the till's
+      // fully-offline cashier-switch/manager-authorize PIN checks go
+      // through separate code paths that don't call payload.login() at
+      // all - each has its own explicit status check alongside this one.
+      // This one covers the standard email+password login every one of
+      // those other paths still relies on for the initial connected login.
+      ({ user }) => {
+        if (user.status === 'banned') {
+          throw new APIError('This account has been disabled. Contact your manager or owner.', 403);
+        }
+        return user;
+      },
     ],
     beforeChange: [
       // Every other collection already forces `tenant` from the requesting
@@ -114,6 +141,46 @@ export const Users: CollectionConfig = {
           delete data.pin;
         }
         return data;
+      },
+      // Can't ban yourself - the most common way this would otherwise go
+      // wrong is an owner/manager locking themselves out of their own
+      // tenant by mistake, with no other session left to undo it.
+      ({ req, data, originalDoc }) => {
+        if (data?.status === 'banned' && req.user && String(req.user.id) === String(originalDoc?.id)) {
+          throw new APIError('You cannot ban your own account.', 400);
+        }
+        return data;
+      },
+    ],
+    beforeDelete: [
+      // Same reasoning as the self-ban guard above, for the more permanent
+      // action.
+      ({ req, id }) => {
+        if (req.user && String(req.user.id) === String(id)) {
+          throw new APIError('You cannot delete your own account.', 400);
+        }
+      },
+      // Orders/Shifts/AuditLog all hold required relationships to a user
+      // (cashier/actor/settledBy) - Postgres's own foreign-key constraint
+      // already refuses a delete that would orphan them, which is correct,
+      // but Payload's error handler masks the real reason as a generic
+      // "Something went wrong." (confirmed live: deleting a cashier with
+      // real order history 500'd with no useful detail at all). Checking
+      // first and throwing a real APIError turns that into an actionable
+      // message instead of a dead end.
+      async ({ req, id }) => {
+        const [orders, shifts, auditLog, settled] = await Promise.all([
+          req.payload.find({ collection: 'orders', where: { cashier: { equals: id } }, limit: 1, overrideAccess: true }),
+          req.payload.find({ collection: 'shifts', where: { cashier: { equals: id } }, limit: 1, overrideAccess: true }),
+          req.payload.find({ collection: 'audit-log', where: { actor: { equals: id } }, limit: 1, overrideAccess: true }),
+          req.payload.find({ collection: 'orders', where: { settledBy: { equals: id } }, limit: 1, overrideAccess: true }),
+        ]);
+        if (orders.totalDocs > 0 || shifts.totalDocs > 0 || auditLog.totalDocs > 0 || settled.totalDocs > 0) {
+          throw new APIError(
+            'This staff member has sales, shift, or audit history and cannot be deleted. Ban them instead to revoke access while keeping records intact.',
+            400,
+          );
+        }
       },
     ],
   },
