@@ -27,7 +27,17 @@ type Product = {
   maxDiscountPercent?: number;
 };
 
-export function ProductsTable({ products, canSeeCost }: { products: Product[]; canSeeCost: boolean }) {
+export function ProductsTable({
+  products,
+  canSeeCost,
+  branchStock = null,
+  branchName = null,
+}: {
+  products: Product[];
+  canSeeCost: boolean;
+  branchStock?: Record<number, number> | null;
+  branchName?: string | null;
+}) {
   const [query, setQuery] = useState('');
 
   const filtered = useMemo(() => {
@@ -66,13 +76,17 @@ export function ProductsTable({ products, canSeeCost }: { products: Product[]; c
               {canSeeCost ? <TableHead className="text-right">Margin</TableHead> : null}
               <TableHead className="text-right">Tax</TableHead>
               <TableHead className="text-right">Max discount</TableHead>
+              {branchStock ? <TableHead className="text-right">Stock at {branchName ?? 'branch'}</TableHead> : null}
               <TableHead className="w-0" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={canSeeCost ? 9 : 7} className="text-center text-muted-foreground">
+                <TableCell
+                  colSpan={(canSeeCost ? 9 : 7) + (branchStock ? 1 : 0)}
+                  className="text-center text-muted-foreground"
+                >
                   {products.length === 0 ? 'No products yet.' : 'No products match your search.'}
                 </TableCell>
               </TableRow>
@@ -97,6 +111,9 @@ export function ProductsTable({ products, canSeeCost }: { products: Product[]; c
                   <TableCell className="text-right">
                     {product.maxDiscountPercent ? `${product.maxDiscountPercent}%` : '—'}
                   </TableCell>
+                  {branchStock ? (
+                    <TableCell className="text-right">{branchStock[product.id] ?? 0}</TableCell>
+                  ) : null}
                   <TableCell>
                     <ProductDialog product={product} />
                   </TableCell>

@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -8,6 +9,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
+import { BranchFilter } from '@/components/branch-filter';
 import { StockAdjustmentDialog } from './stock-adjustment-dialog';
 
 interface StockLevel {
@@ -21,9 +23,14 @@ interface StockLevel {
 type Product = { id: number; name: string; sku: string };
 type Store = { id: number; name: string };
 
-export default async function InventoryPage() {
+export default async function InventoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ store?: string }>;
+}) {
+  const { store } = await searchParams;
   const [{ levels }, { docs: products }, { docs: stores }] = await Promise.all([
-    payloadFetch<{ levels: StockLevel[] }>('/api/reports/stock-levels'),
+    payloadFetch<{ levels: StockLevel[] }>(`/api/reports/stock-levels${store ? `?store=${store}` : ''}`),
     payloadFetch<{ docs: Product[] }>('/api/products?sort=name&limit=200'),
     payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
   ]);
@@ -39,7 +46,12 @@ export default async function InventoryPage() {
             Current stock is always a derived sum over the StockMovements ledger - never a stored count.
           </p>
         </div>
-        <StockAdjustmentDialog products={products} stores={stores} />
+        <div className="flex flex-wrap items-center gap-2">
+          <Suspense fallback={null}>
+            <BranchFilter stores={stores} />
+          </Suspense>
+          <StockAdjustmentDialog products={products} stores={stores} />
+        </div>
       </div>
       <div className="rounded-md border">
         <Table>
