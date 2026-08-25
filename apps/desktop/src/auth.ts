@@ -11,10 +11,18 @@
 // Fetch-API-shaped call proxied through a Tauri command.
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 
-// apps/api (Payload) and the docker-compose PowerSync service, per the
-// project brief's fixed dev ports.
-export const API_BASE_URL = 'http://localhost:3011';
-export const POWERSYNC_URL = 'http://localhost:8080';
+// apps/api (Payload) and the PowerSync service. Vite-env-driven so a real
+// distributed build points at the real production domains instead of a
+// dev machine's own localhost - caught live: every installed till was
+// silently trying to reach localhost:3011 on the CASHIER'S OWN computer,
+// since these were plain hardcoded string literals before. `.env.production`
+// (committed, not secret - these are public URLs, same as apps/web's own
+// NEXT_PUBLIC_API_URL) supplies the real values; `vite build` (what
+// `tauri build` runs via beforeBuildCommand) loads it automatically since
+// production is its default mode. Falls back to the original dev ports
+// when no .env.production is picked up (plain `vite dev`/`npm run dev`).
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3011';
+export const POWERSYNC_URL = import.meta.env.VITE_POWERSYNC_URL ?? 'http://localhost:8080';
 
 export interface PayloadUser {
   id: number;

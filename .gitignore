@@ -70,6 +70,11 @@ apps/desktop/src-tauri/gen/
 .env.*
 !.env.example
 !docker/.env.example
+# Not a secret: real public production URLs baked into every distributed
+# desktop build (same class as apps/web's own NEXT_PUBLIC_API_URL) - must
+# actually be committed, or CI never sees it and every release silently
+# reverts to the localhost dev default.
+!apps/desktop/.env.production
 
 # Postgres data volume (bind-mounted locally, if ever used instead of a named volume)
 docker/pgdata/
