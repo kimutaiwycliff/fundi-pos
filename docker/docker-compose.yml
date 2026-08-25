@@ -37,8 +37,26 @@ services:
       context: ..
       dockerfile: apps/api/Dockerfile
     environment:
+      # Next.js standalone's server.js binds to process.env.HOSTNAME, and
+      # Docker auto-injects HOSTNAME=<container id> into every container -
+      # without this override the server only accepts connections on that
+      # specific container IP, never on localhost/127.0.0.1 (confirmed live:
+      # a request from inside this same container to its own localhost:3000
+      # got ECONNREFUSED, while the same request to the container's real
+      # bridge IP succeeded). Harmless for container-name-based access
+      # (Caddy's reverse_proxy resolves the real IP via Docker DNS anyway),
+      # but any localhost-based healthcheck or same-container tooling needs
+      # this to work at all.
+      HOSTNAME: 0.0.0.0
       DATABASE_URI: postgres://${POSTGRES_USER:-pos_admin}:${POSTGRES_PASSWORD:-dev_only_change_me}@postgres:5432/${POSTGRES_DB:-pos_saas}
       PAYLOAD_SECRET: ${PAYLOAD_SECRET:-dev_only_change_me_to_a_long_random_string}
+      # Required by apps/api/src/lib/powersyncAuth.ts - signs/serves the
+      # PowerSync client-auth JWT and its JWKS. No dev default: a missing
+      # value should fail loudly (requireEnv throws) rather than silently
+      # run with a key nobody generated.
+      POWERSYNC_JWT_PRIVATE_KEY: ${POWERSYNC_JWT_PRIVATE_KEY}
+      POWERSYNC_JWT_PUBLIC_KEY: ${POWERSYNC_JWT_PUBLIC_KEY}
+      POWERSYNC_JWT_KID: ${POWERSYNC_JWT_KID}
     ports: ["3001:3000"]
     depends_on:
       postgres:
@@ -56,6 +74,7 @@ services:
       PS_DATA_SOURCE_URI: ${PS_DATA_SOURCE_URI}
       PS_STORAGE_SOURCE_URI: ${PS_STORAGE_SOURCE_URI}
       PS_JWKS_URL: ${PS_JWKS_URL}
+      PS_ADMIN_TOKEN: ${PS_ADMIN_TOKEN}
     volumes:
       - ./powersync:/config:ro
     ports: ["8080:8080"]
@@ -70,9 +89,14 @@ services:
       context: ..
       dockerfile: apps/web/Dockerfile
     environment:
+      # See payload-api's identical HOSTNAME override above for why.
+      HOSTNAME: 0.0.0.0
       # Browser-facing (client-side fetches) - the browser runs on the host,
       # so it must use the host-mapped port, not the container-internal one.
-      NEXT_PUBLIC_API_URL: http://localhost:3001
+      # Overridable so a production .env can point this at the real public
+      # API domain instead - Next.js inlines NEXT_PUBLIC_* at build time, so
+      # changing this always requires a rebuild, not just a restart.
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
       # Server-side (Next.js route handlers running inside this container) -
       # reaches payload-api over the compose network's internal DNS/port,
       # never the host-mapped 3001. Caught live: without this, every

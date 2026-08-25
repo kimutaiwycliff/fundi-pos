@@ -11,11 +11,15 @@
 services:
   postgres:
     restart: unless-stopped
+    # Never expose raw Postgres to the host/internet in production - only
+    # other containers on this compose's own network need to reach it.
+    # (The base file's 5433:5432 mapping is dev-only, for psql from the host.)
+    ports: !reset []
     deploy:
       resources:
         limits:
           cpus: '1'
-          memory: 1G
+          memory: 512M
 
   postgres-storage:
     restart: unless-stopped
@@ -23,7 +27,7 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 512M
+          memory: 256M
 
   payload-api:
     restart: unless-stopped
@@ -34,7 +38,7 @@ services:
       resources:
         limits:
           cpus: '1'
-          memory: 1G
+          memory: 512M
 
   powersync:
     restart: unless-stopped
@@ -43,7 +47,7 @@ services:
       resources:
         limits:
           cpus: '1'
-          memory: 1G
+          memory: 512M
 
   web:
     restart: unless-stopped
@@ -52,7 +56,7 @@ services:
       resources:
         limits:
           cpus: '1'
-          memory: 1G
+          memory: 512M
 
   caddy:
     image: caddy:2-alpine
@@ -89,6 +93,9 @@ services:
       BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      # aws-cli requires some region even for S3-compatible providers that
+      # don't have real AWS regions - Cloudflare R2's own docs specify "auto".
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-auto}
     volumes:
       - ./backup.sh:/backup.sh:ro
       - pgbackups:/backups

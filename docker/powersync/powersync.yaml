@@ -27,4 +27,8 @@ client_auth:
 
 api:
   tokens:
-    - dev_only_change_me_admin_token
+    # Only PS_-prefixed env vars can be substituted here (enforced by the
+    # service itself - confirmed live: POWERSYNC_ADMIN_TOKEN was rejected
+    # with "Variables must start with PS_", exactly what docker/.env.example's
+    # own header comment already said, before this file was made to comply).
+    - !env PS_ADMIN_TOKEN
