@@ -16,10 +16,18 @@ export default defineConfig({
     fileParallelism: false,
     // Deliberately a separate database from dev (pos_saas) - integration
     // tests truncate all tables between runs, and must never touch
-    // hand-seeded dev data.
+    // hand-seeded dev data. Falls back to the local dev docker-compose
+    // port (5433) when nothing else sets these - CI provides its own
+    // DATABASE_URI (a plain postgres:16 service container, no host-port
+    // remapping, so port 5432) via .github/workflows/ci.yml's job-level
+    // env. Hardcoding this unconditionally previously overrode whatever
+    // CI set, so `cannot connect to Postgres` kept happening even after
+    // CI's own Postgres service was added - caught live via the actual
+    // "ECONNREFUSED ...:5433" error once CI had a real, reachable
+    // Postgres on 5432 that this config was never even trying to use.
     env: {
-      DATABASE_URI: 'postgres://pos_admin:dev_only_change_me@localhost:5433/pos_saas_test',
-      PAYLOAD_SECRET: 'test_only_secret',
+      DATABASE_URI: process.env.DATABASE_URI ?? 'postgres://pos_admin:dev_only_change_me@localhost:5433/pos_saas_test',
+      PAYLOAD_SECRET: process.env.PAYLOAD_SECRET ?? 'test_only_secret',
     },
   },
   resolve: {
