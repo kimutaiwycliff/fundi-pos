@@ -51,15 +51,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <SidebarProvider>
-      <Sidebar>
-        <SidebarHeader className="gap-2 px-4 py-4">
+      <Sidebar collapsible="icon">
+        <SidebarHeader className="gap-2 px-4 py-4 group-data-[collapsible=icon]:px-2">
           <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
               <Wrench className="size-4" />
             </div>
-            <p className="text-sm font-semibold">Fundi</p>
+            <p className="text-sm font-semibold group-data-[collapsible=icon]:hidden">Fundi</p>
           </div>
-          <p className="truncate text-xs text-sidebar-foreground/60">{tenantName}</p>
+          <p className="truncate text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
+            {tenantName}
+          </p>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
@@ -69,11 +71,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-        <SidebarFooter className="gap-2 px-4 py-3">
-          <p className="text-xs text-muted-foreground">
+        <SidebarFooter className="gap-2 px-4 py-3 group-data-[collapsible=icon]:px-2">
+          <p className="text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
             {me.name || me.email} · {me.role}
           </p>
-          <LogoutButton />
+          <LogoutButton className="w-full justify-start group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2!" />
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
