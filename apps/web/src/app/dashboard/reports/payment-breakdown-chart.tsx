@@ -11,30 +11,28 @@ import {
 const config: ChartConfig = {
   cash: { label: 'Cash', color: 'var(--chart-1)' },
   mpesa: { label: 'M-Pesa', color: 'var(--chart-2)' },
-  card: { label: 'Card', color: 'var(--chart-3)' },
   credit: { label: 'Credit', color: 'var(--chart-4)' },
 };
 
 // So an owner can glance at this and know how much cash SHOULD be in the
-// till drawer vs how much landed in the M-Pesa/bank account - the two
-// numbers get reconciled completely differently at end of day. Credit
+// till drawer vs how much landed in the M-Pesa paybill/till number - the
+// two numbers get reconciled completely differently at end of day. Credit
 // (pay-later) sales are money not yet collected at all - worth seeing
-// separately from cash/mpesa/card, which are already settled.
+// separately from cash/mpesa, which are already settled. Card was
+// dropped from the tender list at the till (Till.tsx) at the user's
+// request, so it's dropped here too rather than always showing an empty bar.
 export function PaymentBreakdownChart({
   cash,
   mpesa,
-  card,
   credit,
 }: {
   cash: number;
   mpesa: number;
-  card: number;
   credit: number;
 }) {
   const data = [
     { method: 'cash', amount: cash, fill: 'var(--color-cash)' },
     { method: 'mpesa', amount: mpesa, fill: 'var(--color-mpesa)' },
-    { method: 'card', amount: card, fill: 'var(--color-card)' },
     { method: 'credit', amount: credit, fill: 'var(--color-credit)' },
   ];
 

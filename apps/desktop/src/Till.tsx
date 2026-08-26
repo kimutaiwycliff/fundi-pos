@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
 import { getDb } from './database';
-import { API_BASE_URL, type PayloadUser } from './auth';
+import { type PayloadUser } from './auth';
 import { VoidOrderPanel } from './VoidOrderPanel';
 import { ShiftPanel } from './ShiftPanel';
 import { CashierSwitcher } from './CashierSwitcher';
@@ -92,40 +91,21 @@ interface LocalStore {
 }
 
 // Cash is first-class per spec Section 6.5 ("always available offline, no
-// queuing needed"). M-Pesa needs connectivity at time of transaction - the
-// STK push itself is a live call to Safaricom, initiated below once the
-// order has synced. Card was removed from the tender list at the user's
-// request - the tender type itself still supports 'card' in the schema if
-// that changes later. Credit is a "pay later" tab, tied to a customer -
+// queuing needed"). M-Pesa is purely a tender-type label for how the
+// customer actually paid (they pay the till/paybill number directly,
+// outside this app) - per the user's own explicit instruction, this is
+// deliberately NOT an STK-push integration; no phone number capture, no
+// live call to Safaricom, no "pending until the customer approves"
+// state. It behaves exactly like cash: settled the instant the sale is
+// rung up. Card was removed from the tender list at the user's request -
+// the tender type itself still supports 'card' in the schema if that
+// changes later. Credit is a "pay later" tab, tied to a customer -
 // always starts pending, settled later via FindSalePanel.
 const TENDER_OPTIONS = [
   { value: 'cash', label: 'Cash' },
   { value: 'mpesa', label: 'M-Pesa' },
   { value: 'credit', label: 'Credit' },
 ] as const;
-
-// UNVERIFIED against a real Safaricom sandbox (see lib/daraja.ts on the
-// server) - the order write below is durable regardless of whether this
-// succeeds. The retry exists because the local write and the PowerSync
-// upload aren't atomic: /api/payments/mpesa/initiate looks the order up
-// server-side, which only works once it's actually synced up, typically
-// sub-second but not instant.
-async function initiateMpesaPayment(payloadToken: string, orderId: string, phone: string): Promise<void> {
-  let lastError: string | null = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const res = await tauriFetch(`${API_BASE_URL}/api/payments/mpesa/initiate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-      body: JSON.stringify({ orderId, phone }),
-    });
-    if (res.ok) return;
-    const body = await res.json().catch(() => ({}));
-    lastError = body?.error ?? `HTTP ${res.status}`;
-    if (res.status !== 404) break; // only retry "order not synced yet" - not e.g. a real Daraja rejection
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-  }
-  throw new Error(lastError ?? 'M-Pesa STK push failed');
-}
 
 export function Till({
   user,
@@ -143,7 +123,6 @@ export function Till({
   const [results, setResults] = useState<LocalProduct[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [tenderType, setTenderType] = useState<(typeof TENDER_OPTIONS)[number]['value']>('cash');
-  const [mpesaPhone, setMpesaPhone] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<LocalCustomer | null>(null);
   const [completing, setCompleting] = useState(false);
   const [pendingSyncCount, setPendingSyncCount] = useState<number | null>(null);
@@ -283,13 +262,27 @@ export function Till({
     };
   }, [query, tenantId, storeId]);
 
+  // navigator.onLine (+ the browser's online/offline events) instead of
+  // PowerSync's own status.connected: that reflects the sync protocol's
+  // own connection state, which only updates once PowerSync notices and
+  // successfully reconnects - the same reconnect path already found to
+  // silently get stuck (see the auto-select-store fix above). The OS-level
+  // network interface signal is unconditionally reliable and updates the
+  // instant the adapter actually goes up/down, regardless of whether
+  // PowerSync's own sync stream has caught up yet.
+  useEffect(() => {
+    const updateOnlineStatus = () => setIsOnline(navigator.onLine);
+    updateOnlineStatus();
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+    };
+  }, []);
+
   useEffect(() => {
     const db = getDb();
-    const dispose = db.registerListener({
-      statusChanged: (status) => {
-        setIsOnline(Boolean(status.connected));
-      },
-    });
     const interval = setInterval(async () => {
       // ps_crud is PowerSync's own local upload-queue table (confirmed via
       // direct sqlite3 inspection during the Phase 0 spike) - counting it
@@ -303,7 +296,6 @@ export function Till({
       }
     }, 2000);
     return () => {
-      dispose();
       clearInterval(interval);
     };
   }, []);
@@ -379,10 +371,6 @@ export function Till({
       showToast('Open a shift before completing a sale', 'error');
       return;
     }
-    if (tenderType === 'mpesa' && !mpesaPhone.trim()) {
-      showToast("Enter the customer's phone number for the M-Pesa prompt", 'error');
-      return;
-    }
     if (tenderType === 'credit' && !selectedCustomer) {
       showToast('Select a customer for a credit sale', 'error');
       return;
@@ -400,13 +388,15 @@ export function Till({
       const db = getDb();
       const orderId = crypto.randomUUID();
       const now = new Date().toISOString();
-      // Cash is settled the moment it's handed over - 'paid' immediately.
-      // Mobile money isn't settled until the customer approves the STK
-      // prompt on their phone (unverified Daraja callback resolves it
-      // later). Credit is the same "not actually paid yet" shape, just
+      // Cash and M-Pesa are both settled the moment the sale is rung up -
+      // M-Pesa here is purely a tender-type label for how the customer
+      // paid (they pay the till/paybill directly, outside this app), not
+      // an integration that pushes a live payment request - per the
+      // user's own explicit instruction, no STK push, no phone number
+      // capture. Credit is the one real "not actually paid yet" case,
       // resolved by a manager/owner marking it settled later (see
-      // FindSalePanel/authorizeSettlement) instead of an automatic callback.
-      const paymentStatus = tenderType === 'mpesa' || tenderType === 'credit' ? 'pending' : 'paid';
+      // FindSalePanel/authorizeSettlement).
+      const paymentStatus = tenderType === 'credit' ? 'pending' : 'paid';
 
       // One local transaction for the order + all its line items, so
       // PowerSync's upload queue drains them together and the Rust
@@ -463,19 +453,6 @@ export function Till({
 
       const tenderLabel = TENDER_OPTIONS.find((t) => t.value === tenderType)?.label ?? tenderType;
       showToast(`Sale completed - ${tenderLabel} ${totals.total.toFixed(2)}`, 'success');
-
-      if (tenderType === 'mpesa') {
-        // Best-effort, same as printing below - the sale is already
-        // durably recorded regardless of whether the STK push itself
-        // succeeds. A failure here just means the cashier has to retry
-        // the push or fall back to cash - it never undoes the sale.
-        const phone = mpesaPhone.trim();
-        initiateMpesaPayment(payloadToken, orderId, phone).then(
-          () => showToast(`M-Pesa prompt sent to ${phone}`, 'success'),
-          (err) => showToast(`M-Pesa prompt failed: ${err instanceof Error ? err.message : String(err)}`, 'error'),
-        );
-        setMpesaPhone('');
-      }
 
       // Printing is best-effort and must never undo or block a completed
       // sale - the order above is already durably recorded regardless of
@@ -759,13 +736,6 @@ export function Till({
                 </button>
               ))}
             </div>
-            {tenderType === 'mpesa' && (
-              <input
-                placeholder="Customer phone (e.g. 0712345678)"
-                value={mpesaPhone}
-                onChange={(e) => setMpesaPhone(e.currentTarget.value)}
-              />
-            )}
             {tenderType === 'credit' && tenantId != null && (
               <CustomerPicker
                 tenantId={tenantId}
