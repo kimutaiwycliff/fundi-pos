@@ -32,6 +32,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # apps/desktop/tsconfig.json has a real TS project reference to
+      # business-logic (composite since it gained a build script - see the
+      # apps/api Dockerfile's identical fix) - `tsc` (run as part of `npm
+      # run tauri -- build`'s `beforeBuildCommand`) expects its dist/*.d.ts
+      # to already exist rather than building it on demand. build-deps is
+      # Nx's own inferred target for exactly this (dependsOn: ["^build"]),
+      # so this builds business-logic (and shared-types transitively)
+      # through their real build scripts instead of hand-rolling the order.
+      - name: Build workspace dependencies
+        run: npx nx run @hardware-pos/desktop:build-deps
+
       # tauri.windows.conf.json narrows bundle.targets to nsis only, so
       # this produces exactly one .exe, not also an .msi.
       - name: Build (Windows x64)
@@ -88,6 +99,17 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # apps/desktop/tsconfig.json has a real TS project reference to
+      # business-logic (composite since it gained a build script - see the
+      # apps/api Dockerfile's identical fix) - `tsc` (run as part of `npm
+      # run tauri -- build`'s `beforeBuildCommand`) expects its dist/*.d.ts
+      # to already exist rather than building it on demand. build-deps is
+      # Nx's own inferred target for exactly this (dependsOn: ["^build"]),
+      # so this builds business-logic (and shared-types transitively)
+      # through their real build scripts instead of hand-rolling the order.
+      - name: Build workspace dependencies
+        run: npx nx run @hardware-pos/desktop:build-deps
 
       # tauri.macos.conf.json narrows bundle.targets to dmg only.
       - name: Build (universal macOS binary)
