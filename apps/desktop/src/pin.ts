@@ -5,22 +5,29 @@ import { API_BASE_URL } from './auth';
 
 interface LocalUserCandidate {
   id: number;
-  email: string;
+  phone: string | null;
   name: string | null;
   role: string;
   pin_hash: string | null;
 }
 
+// phone, not id: findUserAndCheckPinLocally's other identifier option
+// (below). userId is what App.tsx's offline-resume flow uses - it already
+// knows exactly who from the cached session, no identifier gets typed at
+// all there, unlike cashier switching/manager authorization below.
+type Identifier = { phone: string } | { userId: number };
+
 /**
  * Fully-offline PIN check against a specific role subset's pin_hash,
  * already synced down locally (spec Section 6.1: PIN login must be
  * instant, zero network). Shared by the manager-authorization pre-check
- * (findManagerAndCheckPinLocally) and fast cashier switching
- * (findStaffAndCheckPinLocally) below - same mechanism, different role
- * filter, so it's factored out once rather than duplicated.
+ * (findManagerAndCheckPinLocally), fast cashier switching
+ * (findStaffAndCheckPinLocally), and offline session resume
+ * (checkPinLocallyById) below - same mechanism, different role filter/
+ * identifier, so it's factored out once rather than duplicated.
  */
 async function findUserAndCheckPinLocally(
-  email: string,
+  identifier: Identifier,
   pin: string,
   allowedRoles: string[],
 ): Promise<{ userId: number; role: string; name: string | null; valid: boolean } | null> {
@@ -32,16 +39,17 @@ async function findUserAndCheckPinLocally(
   // and therefore db.init() - has necessarily run yet this session.
   await db.init();
   const placeholders = allowedRoles.map(() => '?').join(', ');
+  const [whereColumn, whereValue] = 'phone' in identifier ? ['phone', identifier.phone] : ['id', identifier.userId];
   // status = 'active' excludes a banned staff member from the candidate
-  // pool entirely, the same way a not-found email would - this is the
+  // pool entirely, the same way a not-found phone would - this is the
   // offline half of banning someone; the online half (blocking password/
   // PIN login, and kicking an already-connected till within its token's
   // ~1hr lifetime) lives server-side in Users.ts and the powersync/token
   // and pin-login routes. Takes effect here as soon as this till's `users`
   // bucket has synced since the ban, same latency as everything else synced.
   const rows = await db.getAll<LocalUserCandidate>(
-    `SELECT id, email, name, role, pin_hash FROM users WHERE email = ? AND role IN (${placeholders}) AND status = 'active'`,
-    [email, ...allowedRoles],
+    `SELECT id, phone, name, role, pin_hash FROM users WHERE ${whereColumn} = ? AND role IN (${placeholders}) AND status = 'active'`,
+    [whereValue, ...allowedRoles],
   );
   const candidate = rows[0];
   if (!candidate || !candidate.pin_hash) return null;
@@ -58,10 +66,10 @@ async function findUserAndCheckPinLocally(
  * for immediate UX feedback on a wrong PIN.
  */
 export async function findManagerAndCheckPinLocally(
-  managerEmail: string,
+  managerPhone: string,
   pin: string,
 ): Promise<{ managerId: number; name: string | null; valid: boolean } | null> {
-  const result = await findUserAndCheckPinLocally(managerEmail, pin, ['manager', 'owner']);
+  const result = await findUserAndCheckPinLocally({ phone: managerPhone }, pin, ['manager', 'owner']);
   return result ? { managerId: result.userId, name: result.name, valid: result.valid } : null;
 }
 
@@ -70,13 +78,30 @@ export async function findManagerAndCheckPinLocally(
  * manager, or owner - can "clock in" as the active cashier for subsequent
  * sales via PIN alone, without a full logout/login cycle or losing the
  * underlying PowerSync connection (which stays authenticated as whoever
- * did the original login).
+ * did the original login). Identified by phone (the till's fast-login
+ * identifier everywhere else), not email - a cashier at the till doesn't
+ * necessarily know their own email offhand the way they know their phone.
  */
 export async function findStaffAndCheckPinLocally(
-  email: string,
+  phone: string,
   pin: string,
 ): Promise<{ userId: number; role: string; name: string | null; valid: boolean } | null> {
-  return findUserAndCheckPinLocally(email, pin, ['cashier', 'manager', 'owner']);
+  return findUserAndCheckPinLocally({ phone }, pin, ['cashier', 'manager', 'owner']);
+}
+
+/**
+ * Offline session resume (App.tsx/session.ts) - re-verifies the specific
+ * cached user's own PIN on a cold start, not a general "who is this"
+ * lookup like the two functions above (which take an identifier someone
+ * typed in). No identifier gets typed here at all, so there's no
+ * email-vs-phone question to begin with - the userId is already known
+ * from the persisted session.
+ */
+export async function checkPinLocallyById(
+  userId: number,
+  pin: string,
+): Promise<{ userId: number; role: string; name: string | null; valid: boolean } | null> {
+  return findUserAndCheckPinLocally({ userId }, pin, ['cashier', 'manager', 'owner']);
 }
 
 /**

@@ -148,7 +148,7 @@ export function Till({
   const [completing, setCompleting] = useState(false);
   const [pendingSyncCount, setPendingSyncCount] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
-  const [activeCashier, setActiveCashier] = useState({ id: user.id, email: user.email, name: user.name ?? null });
+  const [activeCashier, setActiveCashier] = useState({ id: user.id, phone: user.phone ?? null, name: user.name ?? null });
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
   const [tenant, setTenant] = useState<LocalTenant | null>(null);
   const [stores, setStores] = useState<LocalStore[]>([]);
@@ -195,6 +195,21 @@ export function Till({
       (rows) => setStores(rows.map((r) => ({ id: Number(r.id), name: r.name }))),
     );
   }, [tenantId]);
+
+  // A store-eligible user (owner/manager with no fixed store) who hasn't
+  // picked a branch yet is connected with store_id: null in their
+  // PowerSync token - every store-scoped stream (stock_movements, orders,
+  // store_product_overrides - see sync-config.yaml) then matches zero
+  // rows, while products still shows fine (tenant-wide, no store filter).
+  // Caught live: every product searched fine but showed as out of stock,
+  // with nothing in the UI explaining why - the till was sitting in this
+  // exact unpicked-branch state the whole time. With only one store to
+  // choose from there's no real decision to make, so pick it
+  // automatically rather than leaving that choice for someone to notice.
+  useEffect(() => {
+    if (!canSelectStore || activeStoreId != null || switchingStore || stores.length !== 1) return;
+    onSwitchStore(stores[0].id);
+  }, [canSelectStore, activeStoreId, switchingStore, stores, onSwitchStore]);
 
   // A cart built against one store's stock/prices can't carry over to
   // another - cleared on every branch switch (including the initial one,

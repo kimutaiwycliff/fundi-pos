@@ -27,6 +27,7 @@ export const POWERSYNC_URL = import.meta.env.VITE_POWERSYNC_URL ?? 'http://local
 export interface PayloadUser {
   id: number;
   email: string;
+  phone?: string | null;
   name?: string | null;
   role: string;
   tenant: number | { id: number };

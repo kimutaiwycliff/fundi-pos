@@ -3,7 +3,7 @@ import { getDb } from "./database";
 import { loginToPayload, loginWithPin, type PayloadUser } from "./auth";
 import { connectPowerSync, disconnectPowerSync, ensureAppDataDir } from "./powersync";
 import { getTerminalId, getTerminalName, setTerminalName } from "./terminal";
-import { findStaffAndCheckPinLocally } from "./pin";
+import { checkPinLocallyById } from "./pin";
 import { loadSession, saveSession, clearSession, updateSessionStore, type PersistedSession } from "./session";
 import { Till } from "./Till";
 import { WrenchIcon } from "./icons";
@@ -76,17 +76,18 @@ function App() {
 
   // Re-entry for a till that already logged in online at least once
   // (session.ts, up to 24h old) - gated by the same local, zero-network PIN
-  // check fast cashier switching already uses, not a bare "was logged in
-  // before". Deliberately checks only resumeCandidate's own email: this is
-  // "resume MY session", not a general login - a different staff member
-  // starting fresh still needs connectivity via "Use a different account".
+  // mechanism fast cashier switching uses (pin.ts's checkPinLocallyById),
+  // not a bare "was logged in before". Deliberately checks only
+  // resumeCandidate's own user id: this is "resume MY session", not a
+  // general login - a different staff member starting fresh still needs
+  // connectivity via "Use a different account".
   async function handleResume(e: FormEvent) {
     e.preventDefault();
     if (!resumeCandidate) return;
     setResumeError(null);
     try {
       setState("logging-in");
-      const result = await findStaffAndCheckPinLocally(resumeCandidate.user.email, resumePin);
+      const result = await checkPinLocallyById(resumeCandidate.user.id, resumePin);
       if (!result || !result.valid) {
         setResumeError("Incorrect PIN");
         setState("idle");

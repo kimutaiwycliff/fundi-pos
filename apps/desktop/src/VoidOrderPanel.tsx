@@ -23,7 +23,7 @@ interface VoidOrderPanelProps {
 export function VoidOrderPanel({ storeId, payloadToken }: VoidOrderPanelProps) {
   const [orders, setOrders] = useState<RecentOrder[]>([]);
   const [targetOrderId, setTargetOrderId] = useState<string | null>(null);
-  const [managerEmail, setManagerEmail] = useState('');
+  const [managerPhone, setManagerPhone] = useState('');
   const [pin, setPin] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -47,7 +47,7 @@ export function VoidOrderPanel({ storeId, payloadToken }: VoidOrderPanelProps) {
     setBusy(true);
     setStatus(null);
     try {
-      const localCheck = await findManagerAndCheckPinLocally(managerEmail, pin);
+      const localCheck = await findManagerAndCheckPinLocally(managerPhone, pin);
       if (!localCheck || !localCheck.valid) {
         setStatus('Manager PIN incorrect.');
         setBusy(false);
@@ -60,7 +60,7 @@ export function VoidOrderPanel({ storeId, payloadToken }: VoidOrderPanelProps) {
       } else {
         setStatus('Order voided - stock restored.');
         setTargetOrderId(null);
-        setManagerEmail('');
+        setManagerPhone('');
         setPin('');
         await refresh();
       }
@@ -85,9 +85,9 @@ export function VoidOrderPanel({ storeId, payloadToken }: VoidOrderPanelProps) {
             {targetOrderId === order.id ? (
               <form onSubmit={(e) => handleVoid(order.id, e)} className="void-form">
                 <input
-                  placeholder="Manager email"
-                  value={managerEmail}
-                  onChange={(e) => setManagerEmail(e.currentTarget.value)}
+                  placeholder="Manager phone"
+                  value={managerPhone}
+                  onChange={(e) => setManagerPhone(e.currentTarget.value)}
                 />
                 <input
                   type="password"

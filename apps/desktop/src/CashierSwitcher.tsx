@@ -3,7 +3,7 @@ import { findStaffAndCheckPinLocally } from './pin';
 
 interface ActiveCashier {
   id: number;
-  email: string;
+  phone: string | null;
   name: string | null;
 }
 
@@ -25,21 +25,21 @@ interface CashierSwitcherProps {
 // register. PIN check is instant and fully offline.
 export function CashierSwitcher({ active, onSwitch, canSwitch, onBlocked }: CashierSwitcherProps) {
   const [switching, setSwitching] = useState(false);
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   async function handleSwitch(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    const result = await findStaffAndCheckPinLocally(email, pin);
+    const result = await findStaffAndCheckPinLocally(phone, pin);
     if (!result || !result.valid) {
-      setError('Incorrect email or PIN.');
+      setError('Incorrect phone number or PIN.');
       return;
     }
-    onSwitch({ id: result.userId, email, name: result.name });
+    onSwitch({ id: result.userId, phone, name: result.name });
     setSwitching(false);
-    setEmail('');
+    setPhone('');
     setPin('');
   }
 
@@ -54,7 +54,7 @@ export function CashierSwitcher({ active, onSwitch, canSwitch, onBlocked }: Cash
   if (!switching) {
     return (
       <div className="cashier-switcher">
-        <span>Cashier: {active.name || active.email}</span>
+        <span>Cashier: {active.name || active.phone || `#${active.id}`}</span>
         <button className="btn btn-secondary btn-sm" onClick={handleSwitchClick}>
           Switch
         </button>
@@ -64,7 +64,7 @@ export function CashierSwitcher({ active, onSwitch, canSwitch, onBlocked }: Cash
 
   return (
     <form onSubmit={handleSwitch} className="cashier-switch-form">
-      <input placeholder="Email" value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
+      <input placeholder="Phone number" value={phone} onChange={(e) => setPhone(e.currentTarget.value)} />
       <input type="password" placeholder="PIN" value={pin} onChange={(e) => setPin(e.currentTarget.value)} />
       <button type="submit" className="btn btn-primary btn-sm">
         Confirm

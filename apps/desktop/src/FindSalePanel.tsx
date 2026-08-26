@@ -47,7 +47,7 @@ export function FindSalePanel({ storeId, payloadToken, tenant }: FindSalePanelPr
   const [query, setQuery] = useState('');
   const [orders, setOrders] = useState<LocalOrderRow[]>([]);
   const [settlingId, setSettlingId] = useState<string | null>(null);
-  const [managerEmail, setManagerEmail] = useState('');
+  const [managerPhone, setManagerPhone] = useState('');
   const [managerPin, setManagerPin] = useState('');
   const [busy, setBusy] = useState(false);
   const showToast = useToast();
@@ -110,7 +110,7 @@ export function FindSalePanel({ storeId, payloadToken, tenant }: FindSalePanelPr
     event.preventDefault();
     setBusy(true);
     try {
-      const localCheck = await findManagerAndCheckPinLocally(managerEmail, managerPin);
+      const localCheck = await findManagerAndCheckPinLocally(managerPhone, managerPin);
       if (!localCheck || !localCheck.valid) {
         showToast('Manager PIN incorrect', 'error');
         setBusy(false);
@@ -122,7 +122,7 @@ export function FindSalePanel({ storeId, payloadToken, tenant }: FindSalePanelPr
       } else {
         showToast('Sale marked as settled', 'success');
         setSettlingId(null);
-        setManagerEmail('');
+        setManagerPhone('');
         setManagerPin('');
         await refresh();
       }
@@ -176,9 +176,9 @@ export function FindSalePanel({ storeId, payloadToken, tenant }: FindSalePanelPr
                 {settlingId === order.id && (
                   <form onSubmit={(e) => handleSettle(order.id, e)} className="void-form">
                     <input
-                      placeholder="Manager email"
-                      value={managerEmail}
-                      onChange={(e) => setManagerEmail(e.currentTarget.value)}
+                      placeholder="Manager phone"
+                      value={managerPhone}
+                      onChange={(e) => setManagerPhone(e.currentTarget.value)}
                     />
                     <input
                       type="password"
