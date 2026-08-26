@@ -381,6 +381,35 @@ label {
   flex: 1;
 }
 
+.today-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.today-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: var(--radius-full);
+  background: var(--canvas-alt);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.today-stat-label {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.today-stat-value {
+  font-weight: 700;
+}
+.today-stat-credit {
+  background: var(--warning-soft);
+}
+.today-stat-credit .today-stat-value {
+  color: var(--warning);
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;

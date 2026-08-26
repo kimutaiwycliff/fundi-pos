@@ -80,6 +80,27 @@ export async function GET(request: Request) {
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 10);
 
+  // Outstanding credit tabs, deliberately NOT scoped to `range`/`since` - a
+  // tab opened last week is still owed today, and hiding it just because
+  // the dashboard happens to be showing "Today" would understate what's
+  // actually owed. Queried separately from the range-filtered `orders`
+  // above for that reason.
+  const unpaidCreditWhere: Where = {
+    tenant: { equals: tenantId },
+    status: { equals: 'completed' },
+    tenderType: { equals: 'credit' },
+    paymentStatus: { equals: 'pending' },
+  };
+  if (storeId) unpaidCreditWhere.store = { equals: storeId };
+  const unpaidCredit = await payload.find({
+    collection: 'orders',
+    where: unpaidCreditWhere,
+    pagination: false,
+    depth: 0,
+    overrideAccess: true,
+  });
+  const unpaidCreditTotal = unpaidCredit.docs.reduce((sum, order) => sum + ((order.total as number) ?? 0), 0);
+
   return Response.json({
     totalSales,
     totalTax,
@@ -88,6 +109,8 @@ export async function GET(request: Request) {
     paymentBreakdown: totalsByTender,
     topProducts,
     byStore: Array.from(revenueByStore.entries()).map(([store, revenue]) => ({ store: Number(store), revenue })),
+    unpaidCreditCount: unpaidCredit.docs.length,
+    unpaidCreditTotal,
   });
 }
 

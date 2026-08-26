@@ -13,6 +13,8 @@ interface SalesSummary {
   profitTotal: number | null;
   paymentBreakdown: { cash: number; mpesa: number; card: number; credit: number };
   topProducts: Array<{ name: string; revenue: number; quantity: number }>;
+  unpaidCreditCount: number;
+  unpaidCreditTotal: number;
 }
 interface StockLevel {
   productName: string;
@@ -35,7 +37,7 @@ export default async function DashboardOverviewPage() {
       <h1 className="text-2xl font-semibold">Overview</h1>
       <p className="text-sm text-muted-foreground">Today so far, across all stores.</p>
 
-      <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${canSeeProfit ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+      <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${canSeeProfit ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
         <Card>
           <CardHeader>
             <CardDescription>Today&apos;s sales</CardDescription>
@@ -56,6 +58,21 @@ export default async function DashboardOverviewPage() {
             </CardHeader>
           </Card>
         ) : null}
+        <Link href="/dashboard/sales">
+          <Card className="transition-colors hover:bg-muted/50">
+            <CardHeader>
+              <CardDescription>Unpaid credit</CardDescription>
+              <CardTitle className="text-2xl">
+                {today.unpaidCreditCount}
+                {today.unpaidCreditCount > 0 ? (
+                  <span className="ml-2 align-middle text-sm font-normal text-muted-foreground">
+                    {today.unpaidCreditTotal.toFixed(2)} owed
+                  </span>
+                ) : null}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </Link>
         <Link href="/dashboard/inventory">
           <Card className="transition-colors hover:bg-muted/50">
             <CardHeader>

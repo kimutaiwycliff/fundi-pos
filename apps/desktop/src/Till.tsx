@@ -127,6 +127,7 @@ export function Till({
   const [completing, setCompleting] = useState(false);
   const [pendingSyncCount, setPendingSyncCount] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
+  const [todayStats, setTodayStats] = useState({ salesTotal: 0, unpaidCreditCount: 0, unpaidCreditTotal: 0 });
   const [activeCashier, setActiveCashier] = useState({ id: user.id, phone: user.phone ?? null, name: user.name ?? null });
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
   const [tenant, setTenant] = useState<LocalTenant | null>(null);
@@ -300,6 +301,48 @@ export function Till({
     };
   }, []);
 
+  // synced_at (not created_at) is the filter column here on purpose:
+  // created_at only arrives once an order round-trips through the server
+  // and syncs back down (Payload sets it, PowerSync mirrors it down later),
+  // so it's still NULL for a sale rung up seconds ago on an offline till -
+  // exactly the case this header stat most needs to reflect. synced_at is
+  // set from this same device's clock at INSERT time in completeSale()
+  // below, online or offline, so it's always available immediately.
+  // Unpaid credit has no date filter - it's every outstanding tab on this
+  // store, not just today's, since that's the number a cashier/manager
+  // actually needs to chase up.
+  async function refreshTodayStats() {
+    if (storeId == null || tenantId == null) return;
+    const db = getDb();
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const [salesRow] = await db.getAll<{ total: number | null }>(
+      `SELECT SUM(total) AS total FROM orders
+       WHERE tenant_id = ? AND store_id = ? AND status = 'completed' AND synced_at >= ?`,
+      [tenantId, storeId, startOfDay.toISOString()],
+    );
+    const [creditRow] = await db.getAll<{ total: number | null; cnt: number }>(
+      `SELECT SUM(total) AS total, COUNT(*) AS cnt FROM orders
+       WHERE tenant_id = ? AND store_id = ? AND status = 'completed'
+         AND tender_type = 'credit' AND payment_status = 'pending'`,
+      [tenantId, storeId],
+    );
+    setTodayStats({
+      salesTotal: salesRow?.total ?? 0,
+      unpaidCreditCount: creditRow?.cnt ?? 0,
+      unpaidCreditTotal: creditRow?.total ?? 0,
+    });
+  }
+
+  useEffect(() => {
+    refreshTodayStats();
+    const interval = setInterval(refreshTodayStats, 5000);
+    return () => {
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId, tenantId]);
+
   const lineInputs: LineInput[] = useMemo(
     () =>
       cart.map((line) => ({
@@ -453,6 +496,7 @@ export function Till({
 
       const tenderLabel = TENDER_OPTIONS.find((t) => t.value === tenderType)?.label ?? tenderType;
       showToast(`Sale completed - ${tenderLabel} ${totals.total.toFixed(2)}`, 'success');
+      refreshTodayStats();
 
       // Printing is best-effort and must never undo or block a completed
       // sale - the order above is already durably recorded regardless of
@@ -522,6 +566,23 @@ export function Till({
         />
 
         <div className="till-topbar-spacer" />
+
+        <div className="today-stats">
+          <span className="today-stat" title="Total completed sales today, this store">
+            <span className="today-stat-label">Today</span>
+            <span className="today-stat-value">{todayStats.salesTotal.toFixed(2)}</span>
+          </span>
+          <span
+            className={`today-stat ${todayStats.unpaidCreditCount > 0 ? 'today-stat-credit' : ''}`}
+            title="Credit sales not yet paid, this store"
+          >
+            <span className="today-stat-label">Unpaid credit</span>
+            <span className="today-stat-value">
+              {todayStats.unpaidCreditCount}
+              {todayStats.unpaidCreditCount > 0 ? ` · ${todayStats.unpaidCreditTotal.toFixed(2)}` : ''}
+            </span>
+          </span>
+        </div>
 
         <span className={`status-pill ${isOnline ? 'online' : 'offline'}`}>
           {isOnline ? <WifiIcon /> : <WifiOffIcon />}
