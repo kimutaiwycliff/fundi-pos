@@ -5,6 +5,8 @@ import { connectPowerSync, disconnectPowerSync, ensureAppDataDir } from "./power
 import { getTerminalId, getTerminalName, setTerminalName } from "./terminal";
 import { checkPinLocallyById } from "./pin";
 import { loadSession, saveSession, clearSession, updateSessionStore, type PersistedSession } from "./session";
+import { checkForUpdate, type AvailableUpdate } from "./updateCheck";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Till } from "./Till";
 import { WrenchIcon } from "./icons";
 import "./App.css";
@@ -40,6 +42,17 @@ function App() {
   const [resumeCandidate, setResumeCandidate] = useState<PersistedSession | null>(() => loadSession());
   const [resumePin, setResumePin] = useState("");
   const [resumeError, setResumeError] = useState<string | null>(null);
+  const [availableUpdate, setAvailableUpdate] = useState<AvailableUpdate | null>(null);
+
+  // There's no auto-updater (see updateCheck.ts) - a till that installed
+  // once and never came back to the download page otherwise has no way to
+  // know it's missing every fix shipped since. import.meta.env.PROD keeps
+  // this quiet during `npm run dev`, where "current" is whatever's mid-work
+  // and comparing it against the last real release is meaningless noise.
+  useEffect(() => {
+    if (!import.meta.env.PROD) return;
+    checkForUpdate().then(setAvailableUpdate);
+  }, []);
 
   useEffect(() => {
     ensureAppDataDir().catch((err) => console.error("ensureAppDataDir failed", err));
@@ -155,6 +168,19 @@ function App() {
     }
   }
 
+  function renderUpdateBanner() {
+    if (!availableUpdate) return null;
+    return (
+      <button
+        type="button"
+        className="update-banner"
+        onClick={() => openUrl(availableUpdate.downloadUrl).catch((err) => console.error("openUrl failed", err))}
+      >
+        A newer version (v{availableUpdate.latestVersion}) is available - you're on v{availableUpdate.currentVersion}. Tap to download.
+      </button>
+    );
+  }
+
   function handleSaveTerminalName(e: FormEvent) {
     e.preventDefault();
     if (!nameDraft.trim()) return;
@@ -257,6 +283,7 @@ function App() {
           <p className="terminal-tag">
             Works offline - this till already signed in as this person within the last 24h.
           </p>
+          {renderUpdateBanner()}
         </div>
       </main>
     );
@@ -345,6 +372,7 @@ function App() {
           Status: <strong>{state}</strong>
         </p>
         <p className="terminal-tag">{terminalName} · {terminalId}</p>
+        {renderUpdateBanner()}
       </div>
     </main>
   );

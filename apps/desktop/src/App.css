@@ -333,6 +333,23 @@ label {
   letter-spacing: 0.02em;
 }
 
+.update-banner {
+  display: block;
+  width: 100%;
+  background: var(--warning-soft);
+  color: var(--warning);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+.update-banner:hover {
+  filter: brightness(0.97);
+}
+
 /* ---------------------------------------------------------------------
    Till shell & top bar
    --------------------------------------------------------------------- */
