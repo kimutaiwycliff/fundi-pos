@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { BarChart3 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -9,6 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { EmptyState } from '@/components/empty-state';
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
 import { PaymentBreakdownChart } from './payment-breakdown-chart';
@@ -110,8 +112,8 @@ export default async function ReportsPage({
           <TableBody>
             {summary.topProducts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} className="text-center text-muted-foreground">
-                  No completed sales in this period.
+                <TableCell colSpan={3}>
+                  <EmptyState icon={BarChart3} title="No completed sales in this period" />
                 </TableCell>
               </TableRow>
             ) : (
@@ -139,8 +141,8 @@ export default async function ReportsPage({
           <TableBody>
             {summary.byStore.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={2} className="text-center text-muted-foreground">
-                  No completed sales in this period.
+                <TableCell colSpan={2}>
+                  <EmptyState icon={BarChart3} title="No completed sales in this period" />
                 </TableCell>
               </TableRow>
             ) : (

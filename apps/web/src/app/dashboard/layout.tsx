@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { AlertTriangle, Wrench } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -13,8 +13,12 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { LogoutButton } from '@/components/logout-button';
+import { LogoMark } from '@/components/marketing/logo-mark';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { getCurrentUser } from '@/lib/current-user';
 import { NavItems } from './nav-items';
+import { PageTitle } from './page-title';
+import { UserMenu } from './user-menu';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Overview' },
@@ -54,9 +58,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <Sidebar collapsible="icon">
         <SidebarHeader className="gap-2 px-4 py-4 group-data-[collapsible=icon]:px-2">
           <div className="flex items-center gap-2">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-              <Wrench className="size-4" />
-            </div>
+            <LogoMark className="size-8 rounded-md" />
             <p className="text-sm font-semibold group-data-[collapsible=icon]:hidden">Fundi</p>
           </div>
           <p className="truncate text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
@@ -81,6 +83,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <SidebarInset>
         <header className="flex h-14 items-center gap-2 border-b px-4">
           <SidebarTrigger />
+          <div className="min-w-0 flex-1">
+            <PageTitle items={navItems} />
+          </div>
+          <ThemeToggle />
+          <UserMenu name={me.name} email={me.email} role={me.role} />
         </header>
         {billingStatus === 'past_due' ? (
           <div className="flex items-center gap-2 border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
@@ -88,7 +95,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <span>Your subscription payment is past due. Please update billing to avoid service interruption.</span>
           </div>
         ) : null}
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 p-4 sm:p-6">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );

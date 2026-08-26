@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,14 +24,10 @@ export function SettingsForm({ tenant }: { tenant: Tenant }) {
     receiptFooter: tenant.receiptFooter ?? '',
   });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);
-    setError(null);
-    setSaved(false);
 
     const response = await fetch(`/api/payload/tenants/${tenant.id}`, {
       method: 'PATCH',
@@ -44,12 +41,12 @@ export function SettingsForm({ tenant }: { tenant: Tenant }) {
 
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      setError(body?.errors?.[0]?.message ?? 'Failed to save settings');
+      toast.error(body?.errors?.[0]?.message ?? 'Failed to save settings');
       setLoading(false);
       return;
     }
 
-    setSaved(true);
+    toast.success('Settings saved');
     setLoading(false);
     router.refresh();
   }
@@ -98,8 +95,6 @@ export function SettingsForm({ tenant }: { tenant: Tenant }) {
         </CardContent>
       </Card>
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-      {saved ? <p className="text-sm text-muted-foreground">Saved.</p> : null}
       <Button type="submit" disabled={loading} className="w-fit">
         {loading ? 'Saving…' : 'Save settings'}
       </Button>

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search } from 'lucide-react';
+import { Receipt, Search, SearchX } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { EmptyState } from '@/components/empty-state';
 import type { Order, TenantReceiptInfo } from './page';
 import { ReceiptDialog } from './receipt-dialog';
 
@@ -207,8 +208,12 @@ export function SalesTable({
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground">
-                  {orders.length === 0 ? 'No sales yet.' : 'No sales match your search.'}
+                <TableCell colSpan={9}>
+                  {orders.length === 0 ? (
+                    <EmptyState icon={Receipt} title="No sales yet" />
+                  ) : (
+                    <EmptyState icon={SearchX} title="No sales match your search" />
+                  )}
                 </TableCell>
               </TableRow>
             ) : (

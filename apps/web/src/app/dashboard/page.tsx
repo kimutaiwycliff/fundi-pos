@@ -1,6 +1,8 @@
 import Link from 'next/link';
+import { ShoppingCart } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/empty-state';
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
 import { PaymentBreakdownChart } from './reports/payment-breakdown-chart';
@@ -85,7 +87,7 @@ export default async function DashboardOverviewPage() {
           </CardHeader>
           <CardContent>
             {today.topProducts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No sales yet today.</p>
+              <EmptyState icon={ShoppingCart} title="No sales yet today" className="py-4" />
             ) : (
               <ul className="flex flex-col gap-2 text-sm">
                 {today.topProducts.slice(0, 5).map((p) => (

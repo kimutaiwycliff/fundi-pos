@@ -1,3 +1,4 @@
+import { CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -7,6 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { EmptyState } from '@/components/empty-state';
 import { payloadFetch } from '@/lib/payload-client';
 
 interface FlaggedMovement {
@@ -46,8 +48,8 @@ export default async function ExceptionsPage() {
           <TableBody>
             {docs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
-                  No exceptions - nothing has gone negative.
+                <TableCell colSpan={6}>
+                  <EmptyState icon={CheckCircle2} title="No exceptions" description="Nothing has gone negative." />
                 </TableCell>
               </TableRow>
             ) : (
