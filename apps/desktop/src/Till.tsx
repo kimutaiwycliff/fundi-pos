@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
 import { getDb } from './database';
@@ -82,7 +82,7 @@ interface TillProps {
   // True only for an owner/manager overseeing multiple stores (Users.store
   // is null) - a cashier/manager with one fixed store never sees a toggle.
   canSelectStore: boolean;
-  onSwitchStore: (storeId: number) => void;
+  onSwitchStore: (storeId: number) => Promise<void>;
   switchingStore: boolean;
 }
 
@@ -206,10 +206,25 @@ export function Till({
   // exact unpicked-branch state the whole time. With only one store to
   // choose from there's no real decision to make, so pick it
   // automatically rather than leaving that choice for someone to notice.
+  //
+  // autoSelectAttempted is a ref, not state: onSwitchStore is a fresh
+  // function reference on every App.tsx render (not memoized), so this
+  // effect re-runs far more often than activeStoreId/stores actually
+  // change. A failed switch leaves activeStoreId null - without a ref
+  // tracking "already tried", every one of those re-runs would retry it
+  // again, forever, with the failure itself invisible (App.tsx's error
+  // state is never rendered once <Till> has mounted - the only place this
+  // runs from). Caught live in production: repeated silent reconnects
+  // over several minutes, stock never once actually synced.
+  const autoSelectAttempted = useRef(false);
   useEffect(() => {
-    if (!canSelectStore || activeStoreId != null || switchingStore || stores.length !== 1) return;
-    onSwitchStore(stores[0].id);
-  }, [canSelectStore, activeStoreId, switchingStore, stores, onSwitchStore]);
+    if (!canSelectStore || activeStoreId != null || stores.length !== 1) return;
+    if (autoSelectAttempted.current) return;
+    autoSelectAttempted.current = true;
+    onSwitchStore(stores[0].id).catch((err) => {
+      showToast(`Couldn't connect to ${stores[0].name}: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    });
+  }, [canSelectStore, activeStoreId, stores, onSwitchStore, showToast]);
 
   // A cart built against one store's stock/prices can't carry over to
   // another - cleared on every branch switch (including the initial one,
@@ -518,7 +533,14 @@ export function Till({
           canSelectStore={canSelectStore}
           shiftOpen={activeShift != null}
           switching={switchingStore}
-          onSwitch={onSwitchStore}
+          onSwitch={(id) => {
+            // Manual switch shares the same invisible-failure problem the
+            // auto-select effect above had - BranchSwitcher itself has no
+            // error UI of its own, so surface it the same way.
+            onSwitchStore(id).catch((err) => {
+              showToast(`Couldn't switch store: ${err instanceof Error ? err.message : String(err)}`, 'error');
+            });
+          }}
           onBlocked={() => setShiftBlockOpen(true)}
         />
 

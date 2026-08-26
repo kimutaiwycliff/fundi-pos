@@ -121,6 +121,12 @@ function App() {
     setUser(null);
     setActiveStoreId(null);
     setState("idle");
+    // Phone (and email) stay filled - the next login is almost always the
+    // same person/till, so retyping it every time is pure friction. PIN and
+    // password don't: leaving a credential sitting in a field after logout
+    // is the actual problem, regardless of which login mode was last used.
+    setPin("");
+    setPassword("");
   }
 
   // Full disconnect + reconnect, exactly like login - PowerSync has no
@@ -137,6 +143,13 @@ function App() {
       updateSessionStore(storeId);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      // error above is only ever rendered on the full login form, which
+      // isn't showing once <Till> has mounted (the only place this is
+      // actually called from) - re-throw so the caller can surface it too
+      // (a toast). Without this, a failed switch silently did nothing
+      // visible at all - caught live: an auto-select-on-mount that keeps
+      // failing would otherwise retry forever with zero indication why.
+      throw err;
     } finally {
       setSwitchingStore(false);
     }
