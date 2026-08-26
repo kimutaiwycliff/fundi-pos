@@ -1,0 +1,94 @@
+name: Deploy to production
+
+# Gated on CI (not a plain push trigger) so a change that fails lint/test/
+# build/typecheck/e2e never reaches the server - deploys the exact commit
+# CI validated (workflow_run.head_sha), not whatever main happens to be
+# when this workflow starts.
+#
+# Mirrors the manual deploy process used before this pipeline existed:
+# rsync the workspace to the server, then rebuild+recreate just the
+# fundi-payload-api/fundi-web containers via the same docker compose files
+# used locally. Deliberately no registry/image-push step - the server
+# builds its own image from source over SSH, same as always.
+#
+# The server (52.209.226.85) is co-located with an unrelated production
+# app (pharmatrack) behind a shared Caddy - this workflow only ever
+# touches fundi's own containers (build + up -d two named services), never
+# Caddy or pharmatrack's containers/network, and verifies pharmatrack's
+# own domain still responds after every deploy as a regression check.
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up SSH
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Sync workspace to server
+        run: |
+          set -euo pipefail
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 -o ServerAliveInterval=15" \
+            --exclude 'node_modules' \
+            --exclude '.git' \
+            --exclude '*.pem' \
+            --exclude '.env' \
+            --exclude '.env.*' \
+            --exclude 'docker/.env' \
+            --exclude '.next' \
+            --exclude 'dist' \
+            --exclude '.nx' \
+            --exclude '*.tsbuildinfo' \
+            --exclude 'apps/desktop/src-tauri/target' \
+            ./ "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_PATH }}/"
+
+      - name: Build and restart containers
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 -o ServerAliveInterval=15 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd '${{ secrets.DEPLOY_PATH }}/docker' && \
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml build fundi-payload-api fundi-web && \
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d fundi-payload-api fundi-web"
+
+      - name: Verify health (fundi + pharmatrack regression check)
+        run: |
+          set -euo pipefail
+          sleep 10
+          check() {
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$1")
+            echo "$1 -> $code"
+            [ "$code" = "200" ]
+          }
+          fail=0
+          check "https://app.fundipos.co.ke/" || fail=1
+          check "https://api.fundipos.co.ke/admin" || fail=1
+          # pharmatrack shares the same box/Caddy - this deploy never touches
+          # its containers or network, but a health check here catches a
+          # regression in the same step that would introduce one, not later.
+          check "https://pharmatrack.co.ke/" || fail=1
+          if [ "$fail" = "1" ]; then
+            echo "::error::Post-deploy health check failed - see above. This does NOT auto-rollback; investigate and roll back manually if needed."
+            exit 1
+          fi
