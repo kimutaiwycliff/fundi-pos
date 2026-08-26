@@ -25,6 +25,12 @@ async function findUserAndCheckPinLocally(
   allowedRoles: string[],
 ): Promise<{ userId: number; role: string; name: string | null; valid: boolean } | null> {
   const db = getDb();
+  // Safe to call unconditionally - init() is idempotent (the PowerSync
+  // plugin's own subscribe() calls it the same way on every invocation).
+  // Needed here specifically for the offline-resume path (App.tsx/
+  // session.ts), which checks a PIN locally before connectPowerSync() -
+  // and therefore db.init() - has necessarily run yet this session.
+  await db.init();
   const placeholders = allowedRoles.map(() => '?').join(', ');
   // status = 'active' excludes a banned staff member from the candidate
   // pool entirely, the same way a not-found email would - this is the

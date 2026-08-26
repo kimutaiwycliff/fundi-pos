@@ -3,6 +3,8 @@ import { getDb } from "./database";
 import { loginToPayload, loginWithPin, type PayloadUser } from "./auth";
 import { connectPowerSync, disconnectPowerSync, ensureAppDataDir } from "./powersync";
 import { getTerminalId, getTerminalName, setTerminalName } from "./terminal";
+import { findStaffAndCheckPinLocally } from "./pin";
+import { loadSession, saveSession, clearSession, updateSessionStore, type PersistedSession } from "./session";
 import { Till } from "./Till";
 import { WrenchIcon } from "./icons";
 import "./App.css";
@@ -31,6 +33,13 @@ function App() {
   const [switchingStore, setSwitchingStore] = useState(false);
   const payloadTokenRef = useRef<string | null>(null);
   const terminalId = useRef(getTerminalId()).current;
+  // A till that logged in online at least once can resume straight into
+  // the Till UI later via its cached PIN, even fully offline (session.ts
+  // handles the 24h expiry) - null once either no session was ever saved,
+  // it's past 24h, or the user chose "use a different account" below.
+  const [resumeCandidate, setResumeCandidate] = useState<PersistedSession | null>(() => loadSession());
+  const [resumePin, setResumePin] = useState("");
+  const [resumeError, setResumeError] = useState<string | null>(null);
 
   useEffect(() => {
     ensureAppDataDir().catch((err) => console.error("ensureAppDataDir failed", err));
@@ -57,6 +66,7 @@ function App() {
       const fixedStoreId = typeof loggedInUser.store === "object" ? loggedInUser.store?.id : loggedInUser.store;
       setState("connecting");
       await connectPowerSync(payloadToken, fixedStoreId ?? null);
+      saveSession(payloadToken, loggedInUser, fixedStoreId ?? null);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -64,8 +74,49 @@ function App() {
     }
   }
 
+  // Re-entry for a till that already logged in online at least once
+  // (session.ts, up to 24h old) - gated by the same local, zero-network PIN
+  // check fast cashier switching already uses, not a bare "was logged in
+  // before". Deliberately checks only resumeCandidate's own email: this is
+  // "resume MY session", not a general login - a different staff member
+  // starting fresh still needs connectivity via "Use a different account".
+  async function handleResume(e: FormEvent) {
+    e.preventDefault();
+    if (!resumeCandidate) return;
+    setResumeError(null);
+    try {
+      setState("logging-in");
+      const result = await findStaffAndCheckPinLocally(resumeCandidate.user.email, resumePin);
+      if (!result || !result.valid) {
+        setResumeError("Incorrect PIN");
+        setState("idle");
+        return;
+      }
+      payloadTokenRef.current = resumeCandidate.payloadToken;
+      setUser(resumeCandidate.user);
+      setActiveStoreId(resumeCandidate.storeId);
+      setState("connecting");
+      // skipPreflight: this is exactly the offline case - the Rust
+      // connector re-fetches real credentials with its own retry/backoff
+      // once connectivity is actually available (see powersync.ts).
+      await connectPowerSync(resumeCandidate.payloadToken, resumeCandidate.storeId, { skipPreflight: true });
+      setState("connected");
+    } catch (err) {
+      setResumeError(err instanceof Error ? err.message : String(err));
+      setState("idle");
+    }
+  }
+
+  function handleUseDifferentAccount() {
+    setResumeCandidate(null);
+    setResumeError(null);
+    setResumePin("");
+  }
+
   async function handleDisconnect() {
     await disconnectPowerSync();
+    clearSession();
+    setResumeCandidate(null);
     setUser(null);
     setActiveStoreId(null);
     setState("idle");
@@ -82,6 +133,7 @@ function App() {
       await disconnectPowerSync();
       await connectPowerSync(payloadTokenRef.current, storeId);
       setActiveStoreId(storeId);
+      updateSessionStore(storeId);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -150,6 +202,49 @@ function App() {
         onSwitchStore={handleSwitchStore}
         switchingStore={switchingStore}
       />
+    );
+  }
+
+  if (resumeCandidate) {
+    const resumeBusy = state === "logging-in" || state === "connecting";
+    return (
+      <main className="login-shell">
+        <div className="login-card">
+          <div className="login-brand">
+            <span className="brand-mark">
+              <WrenchIcon />
+            </span>
+            <div className="login-brand-text">
+              <h1>Welcome back</h1>
+              <p>{resumeCandidate.user.name || resumeCandidate.user.email}</p>
+            </div>
+          </div>
+          <form onSubmit={handleResume} className="login-form">
+            <div className="field">
+              <span className="field-label">PIN</span>
+              <input
+                autoFocus
+                value={resumePin}
+                onChange={(e) => setResumePin(e.currentTarget.value)}
+                placeholder="••••"
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+              />
+            </div>
+            <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={resumeBusy || !resumePin}>
+              {resumeBusy ? "Continuing..." : "Continue"}
+            </button>
+          </form>
+          {resumeError && <p className="error-banner">{resumeError}</p>}
+          <button type="button" className="btn btn-block" onClick={handleUseDifferentAccount} disabled={resumeBusy}>
+            Use a different account
+          </button>
+          <p className="terminal-tag">
+            Works offline - this till already signed in as this person within the last 24h.
+          </p>
+        </div>
+      </main>
     );
   }
 

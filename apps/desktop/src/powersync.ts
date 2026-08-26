@@ -40,13 +40,27 @@ export async function ensureAppDataDir(): Promise<string> {
  * again with the new id, exactly like a fresh login - there is no "hot"
  * reparameterization of an already-connected sync session.
  */
-export async function connectPowerSync(payloadToken: string, storeId?: number | null): Promise<void> {
+export async function connectPowerSync(
+  payloadToken: string,
+  storeId?: number | null,
+  opts?: { skipPreflight?: boolean },
+): Promise<void> {
   const db = getDb();
   await db.init();
 
   // Validate the full credential chain from JS too (fail fast with a
-  // readable error before asking Rust to connect).
-  await fetchPowerSyncToken(payloadToken, storeId);
+  // readable error before asking Rust to connect) - skipped when resuming
+  // an offline session (App.tsx's session.ts), where this call would
+  // require exactly the connectivity we're trying to work without. Safe to
+  // skip: the Rust connector's fetch_credentials() retries with its own
+  // backoff regardless (powersync crate's connect() is fire-and-forget, not
+  // a blocking handshake - confirmed against
+  // ~/.cargo/registry/src/*/powersync-0.0.7/src/db/mod.rs), so the local
+  // database is immediately usable either way and a real sync connection
+  // still gets established transparently once connectivity returns.
+  if (!opts?.skipPreflight) {
+    await fetchPowerSyncToken(payloadToken, storeId);
+  }
 
   await invoke('powersync_connect', {
     rustHandle: db.rustHandle,
