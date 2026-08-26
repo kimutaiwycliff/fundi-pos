@@ -72,7 +72,7 @@ jobs:
              docker compose -f docker-compose.yml -f docker-compose.prod.yml build fundi-payload-api fundi-web && \
              docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d fundi-payload-api fundi-web"
 
-      - name: Verify health (fundi + pharmatrack regression check)
+      - name: Verify fundi health
         run: |
           set -euo pipefail
           sleep 10
@@ -84,11 +84,29 @@ jobs:
           fail=0
           check "https://app.fundipos.co.ke/" || fail=1
           check "https://api.fundipos.co.ke/admin" || fail=1
-          # pharmatrack shares the same box/Caddy - this deploy never touches
-          # its containers or network, but a health check here catches a
-          # regression in the same step that would introduce one, not later.
-          check "https://pharmatrack.co.ke/" || fail=1
           if [ "$fail" = "1" ]; then
             echo "::error::Post-deploy health check failed - see above. This does NOT auto-rollback; investigate and roll back manually if needed."
+            exit 1
+          fi
+
+      - name: Verify pharmatrack is unaffected
+        # pharmatrack shares the same box/Caddy - this deploy never touches
+        # its containers or network, so this should always pass; it exists to
+        # catch a regression in the same step that would introduce one, not
+        # later. Checked over SSH via `docker ps` (not a public HTTPS curl
+        # from the runner) - the first real run of this pipeline hit a false
+        # positive here: Cloudflare's WAF returned 403 to the GitHub Actions
+        # runner's datacenter IP even though pharmatrack was genuinely
+        # healthy (confirmed 200 from an unrelated IP at the same moment).
+        # Container status is a direct, WAF-immune signal of whether this
+        # deploy actually affected pharmatrack, which is the only thing this
+        # check can meaningfully attest to anyway.
+        run: |
+          set -euo pipefail
+          bad=$(ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "docker ps --filter 'name=pharmatrack' --format '{{.Names}}\t{{.Status}}'" | tee /dev/stderr | grep -v -E 'Up ' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::pharmatrack container(s) not in an Up state after this deploy - see above. This does NOT auto-rollback; investigate immediately."
             exit 1
           fi
