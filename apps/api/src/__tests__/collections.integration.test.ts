@@ -122,6 +122,48 @@ describe('Payload collections - integration', () => {
       expect(order.discountTotal).toBe(0);
     });
 
+    it("uses each line item's own product taxRate, not a blanket rate", async () => {
+      // Regression test: the beforeChange hook used to hardcode 0.16 for
+      // every line regardless of the product - undetectable by the test
+      // above since its own fixture product also happens to be 0.16. A
+      // zero-rated product makes a wrong blanket rate impossible to miss.
+      const exemptProduct = await payload.create({
+        collection: 'products',
+        data: {
+          tenant: tenantId, sku: 'SKU-2', name: 'Zero-Rated Widget',
+          costPrice: 10, sellPrice: 100, taxRate: 0, reorderPoint: 0, maxDiscountPercent: 0,
+        },
+        overrideAccess: true,
+        draft: false,
+      });
+      await payload.create({
+        collection: 'stock-movements',
+        data: {
+          id: crypto.randomUUID(), tenant: tenantId, store: storeId, product: exemptProduct.id,
+          quantityDelta: 5, reason: 'restock', clientTimestamp: new Date().toISOString(),
+          sourceTerminal: 'test-seed',
+        },
+        overrideAccess: true,
+      });
+
+      const order = await payload.create({
+        collection: 'orders',
+        data: {
+          id: crypto.randomUUID(), tenant: tenantId, store: storeId, terminal: 'till-1',
+          cashier: cashierId,
+          lineItems: [{ product: exemptProduct.id, quantity: 2, unitPrice: 100, discount: 0 }],
+          taxTotal: 0, discountTotal: 0, total: 0,
+          tenderType: 'cash', paymentStatus: 'paid', status: 'completed', kraSubmissionStatus: 'not_applicable',
+        },
+        user: asUser({ id: cashierId, tenant: tenantId, role: 'cashier' }),
+        overrideAccess: false,
+        draft: false,
+      });
+
+      expect(order.total).toBe(200);
+      expect(order.taxTotal).toBe(0);
+    });
+
     it('derives a sale StockMovement per line item, linked to the order', async () => {
       const order = await payload.create({
         collection: 'orders',

@@ -118,14 +118,34 @@ export const Orders: CollectionConfig = {
   hooks: {
     beforeChange: [
       enforceOwnTenant({ requireOwnStore: true }),
-      ({ data, operation }) => {
+      // Each line's real taxRate, not a blanket rate - a product exempt
+      // from VAT (or at some other rate) was silently taxed at 16% anyway
+      // here, even though the till itself (computeOrderTotals called
+      // locally in Till.tsx, from each product's own synced tax_rate) got
+      // it right. That mismatch only showed up on a reprint/web view,
+      // which both read this collection's own (wrongly recomputed)
+      // taxTotal rather than the till's original one-time-correct receipt.
+      async ({ data, operation, req }) => {
         if (operation !== 'create' || !Array.isArray(data.lineItems)) return data;
+
+        const productIds = [...new Set(data.lineItems.map((line: Record<string, unknown>) => Number(line.product)))];
+        const products = await req.payload.find({
+          collection: 'products',
+          where: { id: { in: productIds } },
+          limit: productIds.length,
+          overrideAccess: true,
+          req,
+        });
+        const taxRateByProductId = new Map(products.docs.map((p) => [p.id, p.taxRate]));
 
         const lines: LineInput[] = data.lineItems.map((line: Record<string, unknown>) => ({
           quantity: Number(line.quantity),
           unitPrice: Number(line.unitPrice),
           discount: Number(line.discount ?? 0),
-          taxRate: 0.16, // TODO(Phase 6): read per-product taxRate once product lookups are wired into this hook
+          // Falls back to the same 0.16 Products.taxRate's own schema
+          // default uses - only reachable if a line references a product
+          // that's since been deleted, not the normal case.
+          taxRate: taxRateByProductId.get(Number(line.product)) ?? 0.16,
         }));
 
         const totals = computeOrderTotals(lines);
