@@ -12,6 +12,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
 
 const LINKS = [
@@ -37,8 +38,9 @@ export function MobileNav() {
           </Button>
         </SheetTrigger>
         <SheetContent side="right" className="flex flex-col">
-          <SheetHeader>
+          <SheetHeader className="flex-row items-center justify-between space-y-0">
             <SheetTitle>Menu</SheetTitle>
+            <ThemeToggle />
           </SheetHeader>
           <nav className="flex flex-col gap-1 px-4">
             {LINKS.map((link) => (

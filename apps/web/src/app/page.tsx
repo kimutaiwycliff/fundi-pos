@@ -17,6 +17,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { LogoMark } from '@/components/marketing/logo-mark';
 import { MobileNav } from '@/components/marketing/mobile-nav';
 import { DownloadButtons } from '@/components/marketing/download-buttons';
+import { Reveal } from '@/components/marketing/reveal';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { cn } from '@/lib/utils';
 
 const NAV_LINKS = [
   { href: '#features', label: 'Features' },
@@ -162,15 +165,18 @@ export default function LandingPage() {
               </a>
             ))}
           </nav>
-          <div className="hidden items-center gap-2 md:flex">
-            <Button variant="ghost" asChild>
-              <Link href="/login">Log in</Link>
-            </Button>
-            <Button asChild>
-              <Link href="/signup">Start free trial</Link>
-            </Button>
+          <div className="flex items-center gap-1 sm:gap-2">
+            <ThemeToggle />
+            <div className="hidden items-center gap-2 md:flex">
+              <Button variant="ghost" asChild>
+                <Link href="/login">Log in</Link>
+              </Button>
+              <Button asChild>
+                <Link href="/signup">Start free trial</Link>
+              </Button>
+            </div>
+            <MobileNav />
           </div>
-          <MobileNav />
         </div>
       </header>
 
@@ -179,10 +185,18 @@ export default function LandingPage() {
         <section className="relative overflow-hidden">
           <div
             aria-hidden
-            className="pointer-events-none absolute top-[-10rem] right-[-10rem] size-96 rounded-full bg-primary/20 blur-3xl"
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,var(--color-border)_1px,transparent_1px)] bg-size-[28px_28px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_0%,black_10%,transparent_75%)] dark:opacity-40"
           />
-          <div className="mx-auto grid max-w-6xl gap-12 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-2 lg:items-center lg:px-8 lg:py-32">
-            <div>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute top-[-10rem] right-[-10rem] size-96 animate-pulse rounded-full bg-primary/20 blur-3xl [animation-duration:6s]"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute bottom-[-12rem] left-[-8rem] size-80 rounded-full bg-chart-2/15 blur-3xl"
+          />
+          <div className="relative mx-auto grid max-w-6xl gap-12 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-2 lg:items-center lg:px-8 lg:py-32">
+            <Reveal>
               <Badge variant="secondary" className="mb-5">
                 Built for Kenyan hardware &amp; building-supply stores
               </Badge>
@@ -206,51 +220,53 @@ export default function LandingPage() {
                 </Button>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">No credit card required.</p>
-            </div>
+            </Reveal>
 
-            <div className="relative">
-              <div
-                aria-hidden
-                className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-tr from-primary/15 via-transparent to-transparent"
-              />
-              <div className="rounded-2xl border bg-card p-4 shadow-xl ring-1 ring-foreground/10 sm:p-6">
-                <div className="flex items-center justify-between border-b pb-3">
-                  <span className="text-xs font-medium text-muted-foreground">Fundi Till · Store 2, Nakuru</span>
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600">
-                    <span className="size-1.5 rounded-full bg-amber-500" />
-                    Offline · 3 pending sync
-                  </span>
-                </div>
-                <div className="mt-4 space-y-2">
-                  {[
-                    ['Cement 50kg — Bamburi', 'x2', 'KES 2,400'],
-                    ['Binding wire 1.6mm', 'x1', 'KES 450'],
-                    ['Wheelbarrow — heavy duty', 'x1', 'KES 6,800'],
-                  ].map(([name, qty, price]) => (
-                    <div key={name} className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2 text-sm">
-                      <span className="truncate">{name}</span>
-                      <span className="mx-3 shrink-0 text-muted-foreground">{qty}</span>
-                      <span className="shrink-0 font-medium">{price}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 flex items-center justify-between border-t pt-3">
-                  <span className="text-sm font-medium text-muted-foreground">Total</span>
-                  <span className="text-lg font-semibold">KES 9,650</span>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-primary bg-primary/5 px-3 py-2 text-center text-sm font-medium text-primary">
-                    Cash
+            <Reveal delay={150}>
+              <div className="relative">
+                <div
+                  aria-hidden
+                  className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-tr from-primary/15 via-transparent to-transparent"
+                />
+                <div className="rounded-2xl border bg-card p-4 shadow-xl ring-1 ring-foreground/10 transition-transform duration-500 hover:-translate-y-1 sm:p-6">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <span className="text-xs font-medium text-muted-foreground">Fundi Till · Store 2, Nakuru</span>
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+                      <span className="size-1.5 animate-pulse rounded-full bg-amber-500" />
+                      Offline · 3 pending sync
+                    </span>
                   </div>
-                  <div className="rounded-lg border px-3 py-2 text-center text-sm font-medium text-muted-foreground">
-                    M-Pesa
+                  <div className="mt-4 space-y-2">
+                    {[
+                      ['Cement 50kg — Bamburi', 'x2', 'KES 2,400'],
+                      ['Binding wire 1.6mm', 'x1', 'KES 450'],
+                      ['Wheelbarrow — heavy duty', 'x1', 'KES 6,800'],
+                    ].map(([name, qty, price]) => (
+                      <div key={name} className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2 text-sm">
+                        <span className="truncate">{name}</span>
+                        <span className="mx-3 shrink-0 text-muted-foreground">{qty}</span>
+                        <span className="shrink-0 font-medium">{price}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex items-center justify-between border-t pt-3">
+                    <span className="text-sm font-medium text-muted-foreground">Total</span>
+                    <span className="text-lg font-semibold">KES 9,650</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-primary bg-primary/5 px-3 py-2 text-center text-sm font-medium text-primary">
+                      Cash
+                    </div>
+                    <div className="rounded-lg border px-3 py-2 text-center text-sm font-medium text-muted-foreground">
+                      M-Pesa
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            </Reveal>
           </div>
 
-          <div className="border-y bg-muted/40">
+          <div className="relative border-y bg-muted/40">
             <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-8 gap-y-3 px-4 py-6 sm:px-6 lg:px-8">
               {CAPABILITIES.map((item) => (
                 <span key={item} className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -264,7 +280,7 @@ export default function LandingPage() {
 
         {/* Features */}
         <section id="features" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
+          <Reveal className="mx-auto max-w-2xl text-center">
             <h2 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
               Built for how Kenyan hardware stores actually run
             </h2>
@@ -272,20 +288,22 @@ export default function LandingPage() {
               Blackouts, patchy internet, multiple branches, staff you can&apos;t watch every minute — Fundi is built
               around those realities, not around a perfect cloud connection.
             </p>
-          </div>
+          </Reveal>
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {FEATURES.map(({ icon: Icon, title, description }) => (
-              <Card key={title}>
-                <CardHeader>
-                  <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <Icon className="size-5" />
-                  </div>
-                  <CardTitle className="text-base">{title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">{description}</p>
-                </CardContent>
-              </Card>
+            {FEATURES.map(({ icon: Icon, title, description }, index) => (
+              <Reveal key={title} delay={index * 80}>
+                <Card className="h-full transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg">
+                  <CardHeader>
+                    <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Icon className="size-5" />
+                    </div>
+                    <CardTitle className="text-base">{title}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">{description}</p>
+                  </CardContent>
+                </Card>
+              </Reveal>
             ))}
           </div>
         </section>
@@ -293,21 +311,24 @@ export default function LandingPage() {
         {/* How it works */}
         <section id="how-it-works" className="border-y bg-muted/40">
           <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
-            <div className="mx-auto max-w-2xl text-center">
+            <Reveal className="mx-auto max-w-2xl text-center">
               <h2 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
                 From sign-up to your first offline sale
               </h2>
               <p className="mt-4 text-muted-foreground text-pretty">No implementation project. No waiting on a rep.</p>
-            </div>
+            </Reveal>
             <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
               {STEPS.map((step, index) => (
-                <div key={step.title} className="relative">
-                  <div className="flex size-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                <Reveal key={step.title} delay={index * 100} className="relative">
+                  {index < STEPS.length - 1 ? (
+                    <div aria-hidden className="absolute top-4.5 left-9 hidden h-px w-[calc(100%-1.5rem)] bg-border lg:block" />
+                  ) : null}
+                  <div className="relative flex size-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
                     {index + 1}
                   </div>
                   <h3 className="mt-4 font-heading text-base font-semibold">{step.title}</h3>
                   <p className="mt-1.5 text-sm text-muted-foreground">{step.description}</p>
-                </div>
+                </Reveal>
               ))}
             </div>
           </div>
@@ -315,7 +336,7 @@ export default function LandingPage() {
 
         {/* Download */}
         <section id="download" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
+          <Reveal className="mx-auto max-w-2xl text-center">
             <h2 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
               Get the Fundi Till app
             </h2>
@@ -323,53 +344,57 @@ export default function LandingPage() {
               This is the offline-capable till your cashiers actually ring up sales on. Install it on the computer
               at each till — your team logs in there with a fast PIN once your account is set up.
             </p>
-          </div>
-          <div className="mt-8 flex justify-center">
+          </Reveal>
+          <Reveal delay={100} className="mt-8 flex justify-center">
             <DownloadButtons />
-          </div>
+          </Reveal>
         </section>
 
         {/* Pricing */}
         <section id="pricing" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
+          <Reveal className="mx-auto max-w-2xl text-center">
             <h2 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
               Pricing that grows with your store
             </h2>
             <p className="mt-4 text-muted-foreground text-pretty">
               Every plan starts with a free trial — no card required. Upgrade whenever you open a new branch.
             </p>
-          </div>
+          </Reveal>
           <div className="mt-12 grid gap-6 lg:grid-cols-3">
-            {PLANS.map((plan) => (
-              <Card
-                key={plan.name}
-                className={plan.featured ? 'relative ring-2 ring-primary' : undefined}
-              >
-                {plan.featured ? (
-                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Most popular</Badge>
-                ) : null}
-                <CardHeader>
-                  <CardTitle className="text-lg">{plan.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{plan.tagline}</p>
-                  <p className="mt-3 flex items-baseline gap-1.5">
-                    <span className="font-heading text-3xl font-semibold">{plan.price}</span>
-                    <span className="text-sm text-muted-foreground">{plan.priceNote}</span>
-                  </p>
-                </CardHeader>
-                <CardContent className="flex h-full flex-col">
-                  <ul className="flex-1 space-y-2.5">
-                    {plan.features.map((feature) => (
-                      <li key={feature} className="flex items-start gap-2 text-sm">
-                        <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <Button className="mt-6 w-full" variant={plan.featured ? 'default' : 'outline'} asChild>
-                    <Link href="/signup">Start free trial</Link>
-                  </Button>
-                </CardContent>
-              </Card>
+            {PLANS.map((plan, index) => (
+              <Reveal key={plan.name} delay={index * 100}>
+                <Card
+                  className={cn(
+                    'h-full transition-all duration-300 hover:-translate-y-1',
+                    plan.featured ? 'relative ring-2 ring-primary hover:shadow-xl' : 'hover:shadow-lg',
+                  )}
+                >
+                  {plan.featured ? (
+                    <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Most popular</Badge>
+                  ) : null}
+                  <CardHeader>
+                    <CardTitle className="text-lg">{plan.name}</CardTitle>
+                    <p className="text-sm text-muted-foreground">{plan.tagline}</p>
+                    <p className="mt-3 flex items-baseline gap-1.5">
+                      <span className="font-heading text-3xl font-semibold">{plan.price}</span>
+                      <span className="text-sm text-muted-foreground">{plan.priceNote}</span>
+                    </p>
+                  </CardHeader>
+                  <CardContent className="flex h-full flex-col">
+                    <ul className="flex-1 space-y-2.5">
+                      {plan.features.map((feature) => (
+                        <li key={feature} className="flex items-start gap-2 text-sm">
+                          <Check className="mt-0.5 size-4 shrink-0 text-primary" />
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Button className="mt-6 w-full" variant={plan.featured ? 'default' : 'outline'} asChild>
+                      <Link href="/signup">Start free trial</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Reveal>
             ))}
           </div>
         </section>
@@ -377,10 +402,12 @@ export default function LandingPage() {
         {/* FAQ */}
         <section id="faq" className="border-y bg-muted/40">
           <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
-            <h2 className="text-center font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
-              Questions, answered
-            </h2>
-            <div className="mt-10 divide-y rounded-xl border bg-card">
+            <Reveal>
+              <h2 className="text-center font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
+                Questions, answered
+              </h2>
+            </Reveal>
+            <Reveal delay={100} className="mt-10 divide-y rounded-xl border bg-card">
               {FAQS.map((item) => (
                 <details key={item.q} className="group p-5 open:pb-5">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium marker:content-none">
@@ -392,13 +419,17 @@ export default function LandingPage() {
                   <p className="mt-3 text-sm text-muted-foreground text-pretty">{item.a}</p>
                 </details>
               ))}
-            </div>
+            </Reveal>
           </div>
         </section>
 
         {/* Final CTA */}
-        <section className="bg-foreground text-background">
-          <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-4 py-16 text-center sm:px-6 sm:py-24 lg:px-8">
+        <section className="relative overflow-hidden bg-foreground text-background">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 left-1/2 size-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/25 blur-3xl"
+          />
+          <Reveal className="relative mx-auto flex max-w-6xl flex-col items-center gap-6 px-4 py-16 text-center sm:px-6 sm:py-24 lg:px-8">
             <div className="flex items-center gap-2 rounded-full bg-background/10 px-4 py-1.5 text-sm font-medium">
               <UploadCloud className="size-4" />
               Set up your store in minutes
@@ -415,7 +446,7 @@ export default function LandingPage() {
                 <ArrowRight />
               </Link>
             </Button>
-          </div>
+          </Reveal>
         </section>
       </main>
 
