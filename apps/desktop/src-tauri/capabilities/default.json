@@ -9,7 +9,10 @@
     "powersync:default",
     {
       "identifier": "http:default",
-      "allow": [{ "url": "http://localhost:3011/*" }]
+      "allow": [
+        { "url": "http://localhost:3011/*" },
+        { "url": "https://api.fundipos.co.ke/*" }
+      ]
     }
   ]
 }
