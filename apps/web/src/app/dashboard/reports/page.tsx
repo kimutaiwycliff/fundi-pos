@@ -60,7 +60,7 @@ export default async function ReportsPage({
         </div>
       </div>
 
-      <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${canSeeProfit ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+      <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${canSeeProfit ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
         <Card>
           <CardHeader>
             <CardDescription>Total sales</CardDescription>
@@ -73,12 +73,10 @@ export default async function ReportsPage({
             <CardTitle className="text-2xl">{summary.orderCount}</CardTitle>
           </CardHeader>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Tax collected</CardDescription>
-            <CardTitle className="text-2xl">{summary.totalTax.toFixed(2)}</CardTitle>
-          </CardHeader>
-        </Card>
+        {/* Tax collected card removed for now - every real product here is
+            0% rated, and past orders' stored taxTotal was contaminated by
+            the hardcoded-16% bug (see Orders.ts) until it synced. Revisit
+            once tax rates are actually in use. */}
         {canSeeProfit ? (
           <Card>
             <CardHeader>
