@@ -144,7 +144,7 @@ export function ReceiptDialog({ order, tenant }: { order: Order; tenant: TenantR
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="lg">
           <ReceiptIcon data-icon="inline-start" />
           Receipt
         </Button>

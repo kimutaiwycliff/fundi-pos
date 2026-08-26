@@ -56,21 +56,24 @@ export default async function TransfersPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              transfers.map((t) => (
+              transfers.map((t) => {
+                const itemsSummary = t.lineItems
+                  .map((li) => `${typeof li.product === 'object' ? li.product.name : `#${li.product}`} x${li.quantity}`)
+                  .join(', ');
+                return (
                 <TableRow key={t.id}>
                   <TableCell>{storeName(t.fromStore)}</TableCell>
                   <TableCell>{storeName(t.toStore)}</TableCell>
-                  <TableCell>
-                    {t.lineItems
-                      .map((li) => `${typeof li.product === 'object' ? li.product.name : `#${li.product}`} x${li.quantity}`)
-                      .join(', ')}
+                  <TableCell className="max-w-64 truncate" title={itemsSummary}>
+                    {itemsSummary}
                   </TableCell>
                   <TableCell>
                     <Badge variant={t.status === 'received' ? 'secondary' : 'default'}>{t.status}</Badge>
                   </TableCell>
                   <TableCell>{t.status !== 'received' ? <ReceiveButton transferId={t.id} /> : null}</TableCell>
                 </TableRow>
-              ))
+                );
+              })
             )}
           </TableBody>
         </Table>

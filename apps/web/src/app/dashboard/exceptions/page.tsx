@@ -60,7 +60,9 @@ export default async function ExceptionsPage() {
                   <TableCell className="text-right">
                     <Badge variant="destructive">{m.quantityDelta}</Badge>
                   </TableCell>
-                  <TableCell>{m.reason}</TableCell>
+                  <TableCell className="max-w-48 truncate" title={m.reason}>
+                    {m.reason}
+                  </TableCell>
                   <TableCell>{m.sourceTerminal}</TableCell>
                   <TableCell>{new Date(m.createdAt).toLocaleString()}</TableCell>
                 </TableRow>

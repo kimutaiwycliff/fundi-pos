@@ -54,7 +54,9 @@ export default async function StaffPage() {
             {staff.map((person) => (
               <TableRow key={person.id}>
                 <TableCell className="font-medium">{person.name ?? '—'}</TableCell>
-                <TableCell>{person.email}</TableCell>
+                <TableCell className="max-w-40 truncate" title={person.email}>
+                  {person.email}
+                </TableCell>
                 <TableCell>{person.phone ?? '—'}</TableCell>
                 <TableCell>
                   <Badge variant={person.role === 'owner' ? 'default' : 'secondary'}>{person.role}</Badge>

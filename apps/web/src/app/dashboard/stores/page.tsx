@@ -47,7 +47,9 @@ export default async function StoresPage() {
               stores.map((store) => (
                 <TableRow key={store.id}>
                   <TableCell>{store.name}</TableCell>
-                  <TableCell>{store.address ?? '—'}</TableCell>
+                  <TableCell className="max-w-48 truncate" title={store.address ?? undefined}>
+                    {store.address ?? '—'}
+                  </TableCell>
                   <TableCell>{store.timezone}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">

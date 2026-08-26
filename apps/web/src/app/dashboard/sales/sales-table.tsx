@@ -172,7 +172,7 @@ export function SalesTable({
           />
         </div>
         <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-full sm:w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -197,10 +197,10 @@ export function SalesTable({
               <TableHead>Date</TableHead>
               <TableHead>Store</TableHead>
               <TableHead>Customer</TableHead>
-              <TableHead>Cashier</TableHead>
+              <TableHead className="hidden lg:table-cell">Cashier</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead>Tender</TableHead>
-              <TableHead>Payment</TableHead>
+              <TableHead className="hidden lg:table-cell">Payment</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-0" />
             </TableRow>
@@ -225,12 +225,12 @@ export function SalesTable({
                     <TableCell className="whitespace-nowrap">{new Date(order.createdAt).toLocaleString()}</TableCell>
                     <TableCell>{storeName(order.store)}</TableCell>
                     <TableCell>{customerLabel(order.customer)}</TableCell>
-                    <TableCell>{cashierLabel(order.cashier)}</TableCell>
+                    <TableCell className="hidden lg:table-cell">{cashierLabel(order.cashier)}</TableCell>
                     <TableCell className="text-right">{order.total.toFixed(2)}</TableCell>
                     <TableCell>
                       <TenderBadge tenderType={order.tenderType} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden lg:table-cell">
                       <PaymentStatusBadge order={order} />
                     </TableCell>
                     <TableCell>
@@ -241,7 +241,7 @@ export function SalesTable({
                         <ReceiptDialog order={order} tenant={tenant} />
                         {canShowSettle ? (
                           <Button
-                            size="sm"
+                            size="lg"
                             disabled={settlingId === order.id}
                             onClick={() => handleSettle(order)}
                           >

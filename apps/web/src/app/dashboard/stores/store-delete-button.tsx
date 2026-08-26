@@ -41,7 +41,7 @@ export function StoreDeleteButton({ storeId, name }: { storeId: number; name: st
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="destructive" size="sm" disabled={loading}>
+        <Button variant="destructive" size="lg" disabled={loading}>
           Delete
         </Button>
       </AlertDialogTrigger>

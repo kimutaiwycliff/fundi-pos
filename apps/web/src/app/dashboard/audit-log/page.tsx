@@ -97,7 +97,7 @@ export default async function AuditLogPage() {
                   <TableCell>
                     <Badge variant={ACTION_VARIANTS[entry.action]}>{ACTION_LABELS[entry.action]}</Badge>
                   </TableCell>
-                  <TableCell>{entry.summary}</TableCell>
+                  <TableCell className="max-w-sm min-w-48 whitespace-normal">{entry.summary}</TableCell>
                   <TableCell>{typeof entry.actor === 'object' ? entry.actor.email : `#${entry.actor}`}</TableCell>
                 </TableRow>
               ))

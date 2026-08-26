@@ -103,7 +103,7 @@ export function StaffDialog({ stores, staff }: { stores: Store[]; staff?: Staff 
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {isEdit ? (
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="lg">
             Edit
           </Button>
         ) : (

@@ -20,7 +20,7 @@ export function ReceiveButton({ transferId }: { transferId: number }) {
   }
 
   return (
-    <Button size="sm" variant="secondary" disabled={loading} onClick={handleReceive}>
+    <Button size="lg" variant="secondary" disabled={loading} onClick={handleReceive}>
       {loading ? 'Marking...' : 'Mark received'}
     </Button>
   );

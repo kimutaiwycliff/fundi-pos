@@ -78,7 +78,7 @@ export function StaffStatusActions({
     <div className="flex items-center gap-2">
       <AlertDialog>
         <AlertDialogTrigger asChild>
-          <Button variant="outline" size="sm" disabled={loading}>
+          <Button variant="outline" size="lg" disabled={loading}>
             {status === 'banned' ? 'Reactivate' : 'Ban'}
           </Button>
         </AlertDialogTrigger>
@@ -101,7 +101,7 @@ export function StaffStatusActions({
       </AlertDialog>
       <AlertDialog>
         <AlertDialogTrigger asChild>
-          <Button variant="destructive" size="sm" disabled={loading}>
+          <Button variant="destructive" size="lg" disabled={loading}>
             Delete
           </Button>
         </AlertDialogTrigger>

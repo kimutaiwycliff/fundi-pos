@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { BarChart3 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { buttonVariants } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -13,6 +13,7 @@ import {
 import { EmptyState } from '@/components/empty-state';
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
+import { cn } from '@/lib/utils';
 import { PaymentBreakdownChart } from './payment-breakdown-chart';
 
 interface SalesSummary {
@@ -51,12 +52,14 @@ export default async function ReportsPage({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Sales &amp; margin</h1>
-        <div className="flex gap-1 rounded-md border p-1">
+        <div className="flex flex-wrap gap-1 rounded-md border p-1">
           {RANGES.map((r) => (
-            <Link key={r.value} href={`?range=${r.value}`}>
-              <Badge variant={range === r.value ? 'default' : 'outline'} className="cursor-pointer">
-                {r.label}
-              </Badge>
+            <Link
+              key={r.value}
+              href={`?range=${r.value}`}
+              className={cn(buttonVariants({ variant: range === r.value ? 'default' : 'ghost' }))}
+            >
+              {r.label}
             </Link>
           ))}
         </div>

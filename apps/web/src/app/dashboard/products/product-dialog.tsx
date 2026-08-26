@@ -96,7 +96,7 @@ export function ProductDialog({ product }: { product?: Product }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {isEdit ? (
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="lg">
             Edit
           </Button>
         ) : (
