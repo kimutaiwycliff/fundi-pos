@@ -3,8 +3,6 @@ import { fileURLToPath } from 'url';
 import { postgresAdapter } from '@payloadcms/db-postgres';
 import { buildConfig } from 'payload';
 
-import { migrations } from './migrations/index.ts';
-
 import { Tenants } from './collections/Tenants.ts';
 import { Stores } from './collections/Stores.ts';
 import { Users } from './collections/Users.ts';
@@ -74,15 +72,18 @@ export default buildConfig({
     pool: {
       connectionString: process.env.DATABASE_URI || '',
     },
-    // Dev mode auto-pushes schema changes (see @payloadcms/db-postgres's
-    // connect.js), which is why a schema change can work locally and still
-    // never reach production - push is unconditionally skipped when
-    // NODE_ENV === 'production'. Without prodMigrations wired in, nothing
-    // else applies pending migrations either, so a collection field added
-    // in code silently never reaches the real table until this runs on
-    // boot. Caught live: apps/web's Sell/Sales pages 500'd (React error
-    // #441) because Customers.email existed in code/types but not in the
-    // production customers table.
-    prodMigrations: migrations,
+    // NOT wiring prodMigrations here (despite the real gap that leaves -
+    // see migrations/README below): production's `payload-migrations`
+    // table already carries a batch:-1 "dev push was used on this
+    // database" row from however it was originally bootstrapped, before
+    // migrations became the strategy. @payloadcms/drizzle's migrate()
+    // interactively confirms before proceeding whenever that row exists
+    // (drizzle/dist/migrate.js), and the production container has no TTY -
+    // wiring prodMigrations here made every boot hang indefinitely on that
+    // prompt, taking the API down. Caught live: deployed, health check
+    // timed out, api.fundipos.co.ke stopped responding entirely.
+    // Applying pending migrations to production needs a one-time
+    // interactive `payload migrate` run (real terminal, someone answers
+    // the prompt once) before this can be turned back on safely.
   }),
 });
