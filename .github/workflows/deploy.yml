@@ -89,6 +89,17 @@ jobs:
             exit 1
           fi
 
+      - name: Apply pending Payload migrations
+        # Runs after the health check on purpose - confirms the app is up
+        # on its current schema before touching the database, and (per
+        # docker/migrate.sh's own comment) this can never hang the API
+        # itself since it never runs inside fundi-payload-api's own boot.
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 -o ServerAliveInterval=15 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd '${{ secrets.DEPLOY_PATH }}' && bash docker/migrate.sh"
+
       - name: Verify pharmatrack is unaffected
         # pharmatrack shares the same box/Caddy - this deploy never touches
         # its containers or network, so this should always pass; it exists to
