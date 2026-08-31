@@ -8,6 +8,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
+import { formatDateTime } from '@/lib/format-date';
 
 interface AuditEntry {
   id: number;
@@ -92,7 +93,7 @@ export default async function AuditLogPage() {
               entries.map((entry) => (
                 <TableRow key={entry.id}>
                   <TableCell className="text-sm text-muted-foreground">
-                    {new Date(entry.createdAt).toLocaleString()}
+                    {formatDateTime(entry.createdAt)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={ACTION_VARIANTS[entry.action]}>{ACTION_LABELS[entry.action]}</Badge>

@@ -1,4 +1,5 @@
 import { TENDER_LABEL, type ReceiptData, type TenantReceiptInfo } from './types';
+import { formatDateTime } from '@/lib/format-date';
 
 // Shared by the Sales page's reprint dialog and the Sell page's post-sale
 // receipt - both build a ReceiptData from whatever they have on hand (a
@@ -11,7 +12,7 @@ export function ReceiptView({ data, tenant }: { data: ReceiptData; tenant: Tenan
       {tenant.receiptHeader ? <p className="text-center whitespace-pre-wrap">{tenant.receiptHeader}</p> : null}
       <div className="my-2 border-t border-dashed" />
       <p>
-        Order #{data.orderId.slice(0, 8)} · {new Date(data.createdAt).toLocaleString()}
+        Order #{data.orderId.slice(0, 8)} · {formatDateTime(data.createdAt)}
       </p>
       <p>Cashier: {data.cashierLabel}</p>
       {data.customerLabel ? <p>Customer: {data.customerLabel}</p> : null}

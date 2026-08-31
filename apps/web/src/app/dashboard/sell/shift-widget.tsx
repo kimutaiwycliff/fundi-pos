@@ -72,7 +72,7 @@ export function ShiftWidget({
           placeholder="Opening float"
           value={openingFloat}
           onChange={(e) => setOpeningFloat(e.target.value)}
-          className="h-8 w-28"
+          className="h-8 w-40"
         />
         <Button type="button" size="sm" onClick={handleOpen} disabled={busy}>
           {busy ? 'Opening...' : 'Open shift'}
@@ -92,7 +92,7 @@ export function ShiftWidget({
             placeholder="Cash counted"
             value={closingCash}
             onChange={(e) => setClosingCash(e.target.value)}
-            className="h-8 w-28"
+            className="h-8 w-40"
           />
           <Button type="button" size="sm" variant="destructive" onClick={handleClose} disabled={busy}>
             {busy ? 'Closing...' : 'Confirm close'}

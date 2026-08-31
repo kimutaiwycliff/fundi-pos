@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
 import { payloadFetch } from '@/lib/payload-client';
+import { formatDateTime } from '@/lib/format-date';
 
 interface FlaggedMovement {
   id: string;
@@ -64,7 +65,7 @@ export default async function ExceptionsPage() {
                     {m.reason}
                   </TableCell>
                   <TableCell>{m.sourceTerminal}</TableCell>
-                  <TableCell>{new Date(m.createdAt).toLocaleString()}</TableCell>
+                  <TableCell>{formatDateTime(m.createdAt)}</TableCell>
                 </TableRow>
               ))
             )}

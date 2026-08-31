@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
+import { formatDate, formatDateTime } from '@/lib/format-date';
 import type { InvoiceData } from '@/lib/invoice-message';
 import type { ManagerRef, Order, TenantReceiptInfo } from './page';
 import { SaleRowActions } from './sale-row-actions';
@@ -71,7 +72,7 @@ function toInvoiceData(order: Order): InvoiceData {
     })),
     total: order.total,
     isPaid: order.paymentStatus === 'paid',
-    settledAtLabel: order.settledAt ? new Date(order.settledAt).toLocaleDateString() : null,
+    settledAtLabel: order.settledAt ? formatDate(order.settledAt) : null,
   };
 }
 
@@ -225,7 +226,7 @@ export function SalesTable({
                 const contact = customerContact(order.customer);
                 return (
                   <TableRow key={order.id}>
-                    <TableCell className="whitespace-nowrap">{new Date(order.createdAt).toLocaleString()}</TableCell>
+                    <TableCell className="whitespace-nowrap">{formatDateTime(order.createdAt)}</TableCell>
                     <TableCell>{storeName(order.store)}</TableCell>
                     <TableCell>{customerLabel(order.customer)}</TableCell>
                     <TableCell className="hidden lg:table-cell">{cashierLabel(order.cashier)}</TableCell>

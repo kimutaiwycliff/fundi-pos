@@ -13,6 +13,7 @@ import {
 import { ReceiptView } from '@/components/receipt/receipt-view';
 import { printReceipt } from '@/components/receipt/print-receipt';
 import type { ReceiptData } from '@/components/receipt/types';
+import { formatDate } from '@/lib/format-date';
 import type { Order, TenantReceiptInfo } from './page';
 
 function cashierLabel(value: Order['cashier']) {
@@ -51,7 +52,7 @@ function toReceiptData(order: Order): ReceiptData {
     tenderType: order.tenderType,
     isUnpaidCredit,
     isSettledCredit,
-    settledAtLabel: order.settledAt ? new Date(order.settledAt).toLocaleDateString() : null,
+    settledAtLabel: order.settledAt ? formatDate(order.settledAt) : null,
   };
 }
 

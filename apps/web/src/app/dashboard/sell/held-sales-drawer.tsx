@@ -4,6 +4,7 @@ import { Clock, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { EmptyState } from '@/components/empty-state';
+import { formatTime } from '@/lib/format-date';
 import type { HeldSale } from '@/lib/held-sales';
 
 export function HeldSalesDrawer({ heldSales, onResume }: { heldSales: HeldSale[]; onResume: (held: HeldSale) => void }) {
@@ -34,7 +35,7 @@ export function HeldSalesDrawer({ heldSales, onResume }: { heldSales: HeldSale[]
                   <p className="font-medium">
                     {held.cart.length} item{held.cart.length === 1 ? '' : 's'}
                   </p>
-                  <p className="text-xs text-muted-foreground">{new Date(held.createdAt).toLocaleTimeString()}</p>
+                  <p className="text-xs text-muted-foreground">{formatTime(held.createdAt)}</p>
                 </div>
                 <SheetClose asChild>
                   <Button type="button" size="sm" onClick={() => onResume(held)}>

@@ -1,3 +1,5 @@
+import { formatDate } from './format-date';
+
 export interface InvoiceLine {
   label: string;
   quantity: number;
@@ -30,7 +32,7 @@ export function buildInvoiceText(data: InvoiceData, tenant: InvoiceTenantInfo): 
 
   return [
     `*Invoice from ${tenant.name}*`,
-    `Order #${data.orderId.slice(0, 8)} - ${new Date(data.createdAt).toLocaleDateString()}`,
+    `Order #${data.orderId.slice(0, 8)} - ${formatDate(data.createdAt)}`,
     '',
     `Hi ${data.customerName},`,
     '',

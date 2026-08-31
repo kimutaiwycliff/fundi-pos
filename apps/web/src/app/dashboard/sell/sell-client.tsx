@@ -364,12 +364,12 @@ export function SellClient({
           description="Use the branch selector above to pick a store."
         />
       ) : (
-        <div className={isMobile ? 'flex flex-col gap-4 pb-20' : 'flex gap-6'}>
-          <div className={isMobile ? '' : 'flex-1'}>
+        <div className={isMobile ? 'flex flex-col gap-4 pb-20' : 'flex flex-col gap-6 lg:flex-row'}>
+          <div className={isMobile ? '' : 'min-w-0 flex-1'}>
             <ProductSearch products={products} stockByProduct={stockByProduct} onSelect={addToCart} />
           </div>
           {isMobile ? null : (
-            <aside className="w-96 shrink-0 rounded-lg border p-4">
+            <aside className="w-full shrink-0 rounded-lg border p-4 lg:w-96">
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="font-semibold">Current sale</h2>
                 <span className="text-xs text-muted-foreground">

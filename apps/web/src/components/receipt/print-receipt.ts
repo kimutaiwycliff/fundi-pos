@@ -1,4 +1,5 @@
 import { TENDER_LABEL, type ReceiptData, type TenantReceiptInfo } from './types';
+import { formatDateTime } from '@/lib/format-date';
 
 function escapeHtml(value: string) {
   return value
@@ -55,7 +56,7 @@ function buildReceiptHtml(data: ReceiptData, tenant: TenantReceiptInfo): string 
   <div class="center bold">${escapeHtml(tenant.name)}</div>
   ${tenant.receiptHeader ? `<div class="center">${escapeHtml(tenant.receiptHeader)}</div>` : ''}
   <div class="divider"></div>
-  <div class="line"><span>Order #${data.orderId.slice(0, 8)}</span><span>${new Date(data.createdAt).toLocaleString()}</span></div>
+  <div class="line"><span>Order #${data.orderId.slice(0, 8)}</span><span>${formatDateTime(data.createdAt)}</span></div>
   <div class="line"><span>Cashier</span><span>${escapeHtml(data.cashierLabel)}</span></div>
   ${data.customerLabel ? `<div class="line"><span>Customer</span><span>${escapeHtml(data.customerLabel)}</span></div>` : ''}
   <div class="divider"></div>
