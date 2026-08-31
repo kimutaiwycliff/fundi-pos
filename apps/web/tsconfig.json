@@ -31,10 +31,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"],
-  "references": [
-    {
-      "path": "../../packages/business-logic"
-    }
-  ]
+  "exclude": ["node_modules"]
 }
