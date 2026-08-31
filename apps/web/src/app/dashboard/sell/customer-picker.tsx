@@ -26,6 +26,7 @@ export function CustomerPicker({
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
   const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
   const [saving, setSaving] = useState(false);
 
   const trimmed = query.trim().toLowerCase();
@@ -39,7 +40,7 @@ export function CustomerPicker({
     const response = await fetch('/api/payload/customers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: query.trim(), phone: newPhone.trim(), loyaltyPoints: 0 }),
+      body: JSON.stringify({ name: query.trim(), phone: newPhone.trim(), email: newEmail.trim() || null, loyaltyPoints: 0 }),
     });
     const body = await response.json().catch(() => null);
     if (!response.ok) {
@@ -54,6 +55,7 @@ export function CustomerPicker({
     setCreating(false);
     setQuery('');
     setNewPhone('');
+    setNewEmail('');
     setSaving(false);
   }
 
@@ -103,6 +105,12 @@ export function CustomerPicker({
       {creating ? (
         <div className="flex flex-col gap-2 rounded-lg border p-2">
           <Input placeholder="Phone e.g. 0712345678" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} />
+          <Input
+            type="email"
+            placeholder="Email (optional, for invoices)"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+          />
           <Button type="button" size="sm" onClick={handleCreate} disabled={saving || !newPhone.trim()}>
             {saving ? 'Adding...' : 'Add customer'}
           </Button>

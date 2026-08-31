@@ -66,6 +66,10 @@ export function SellClient({
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+  // Snapshot of the customer at the moment of sale - selectedCustomer is
+  // cleared right after checkout (below), but the success dialog's "send
+  // invoice" buttons still need this customer's contact details.
+  const [receiptCustomer, setReceiptCustomer] = useState<CustomerRef | null>(null);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   // Resolved after mount, not via a render-time useMemo: getTerminalId()
   // touches localStorage, which doesn't exist during server rendering and
@@ -262,6 +266,7 @@ export function SellClient({
 
     const cartAtSale = cart;
     toast.success(`Sale completed — ${totals.total.toFixed(2)}`);
+    setReceiptCustomer(selectedCustomer);
     setReceipt({
       orderId,
       createdAt: new Date().toISOString(),
@@ -399,7 +404,7 @@ export function SellClient({
         </Sheet>
       ) : null}
 
-      <CheckoutSuccessDialog receipt={receipt} tenant={tenant} onClose={() => setReceipt(null)} />
+      <CheckoutSuccessDialog receipt={receipt} customer={receiptCustomer} tenant={tenant} onClose={() => setReceipt(null)} />
     </div>
   );
 }

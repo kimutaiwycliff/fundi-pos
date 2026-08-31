@@ -23,6 +23,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
+import { SendInvoiceButtons } from '@/components/invoice/send-invoice-buttons';
+import { buildInvoiceText, invoiceSubject, type InvoiceData } from '@/lib/invoice-message';
 import type { ManagerRef, Order, TenantReceiptInfo } from './page';
 import { ReceiptDialog } from './receipt-dialog';
 import { VoidOrderDialog } from './void-order-dialog';
@@ -50,6 +52,28 @@ function customerLabel(value: Order['customer']) {
 }
 function customerPhone(value: Order['customer']) {
   return typeof value === 'object' && value ? value.phone : '';
+}
+function customerContact(value: Order['customer']) {
+  if (typeof value !== 'object' || !value) return { phone: null, email: null };
+  return { phone: value.phone, email: value.email };
+}
+function productLabel(value: Order['lineItems'][number]['product']) {
+  return typeof value === 'object' ? value.name : `#${value}`;
+}
+function toInvoiceData(order: Order): InvoiceData {
+  return {
+    orderId: order.id,
+    createdAt: order.createdAt,
+    customerName: customerLabel(order.customer),
+    lines: order.lineItems.map((li) => ({
+      label: productLabel(li.product),
+      quantity: li.quantity,
+      lineTotal: li.quantity * li.unitPrice - li.discount,
+    })),
+    total: order.total,
+    isPaid: order.paymentStatus === 'paid',
+    settledAtLabel: order.settledAt ? new Date(order.settledAt).toLocaleDateString() : null,
+  };
 }
 
 // The whole reason this page exists: a credit ("buy now, pay later") sale
@@ -224,6 +248,8 @@ export function SalesTable({
                 const canShowSettle =
                   canSettle && order.tenderType === 'credit' && order.paymentStatus === 'pending' && order.status === 'completed';
                 const canShowVoid = order.status === 'completed';
+                const canShowInvoice = order.tenderType === 'credit' && order.status === 'completed';
+                const contact = customerContact(order.customer);
                 return (
                   <TableRow key={order.id}>
                     <TableCell className="whitespace-nowrap">{new Date(order.createdAt).toLocaleString()}</TableCell>
@@ -241,8 +267,17 @@ export function SalesTable({
                       <StatusBadge status={order.status} />
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
                         <ReceiptDialog order={order} tenant={tenant} />
+                        {canShowInvoice ? (
+                          <SendInvoiceButtons
+                            phone={contact.phone}
+                            email={contact.email}
+                            size="sm"
+                            subject={invoiceSubject(toInvoiceData(order), tenant)}
+                            message={buildInvoiceText(toInvoiceData(order), tenant)}
+                          />
+                        ) : null}
                         {canShowVoid ? <VoidOrderDialog order={order} managers={managers} /> : null}
                         {canShowSettle ? (
                           <Button

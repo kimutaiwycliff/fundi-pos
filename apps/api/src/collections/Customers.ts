@@ -19,6 +19,10 @@ export const Customers: CollectionConfig = {
     { name: 'tenant', type: 'relationship', relationTo: 'tenants', required: true, index: true },
     { name: 'name', type: 'text', required: true },
     { name: 'phone', type: 'text', index: true },
+    // Optional - only needed to email a credit-sale invoice (see
+    // apps/web's Sales/Sell pages). Payload's built-in email type validates
+    // format for us.
+    { name: 'email', type: 'email' },
     { name: 'loyaltyPoints', type: 'number', required: true, defaultValue: 0 },
   ],
   hooks: {

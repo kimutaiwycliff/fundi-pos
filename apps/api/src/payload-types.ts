@@ -396,6 +396,7 @@ export interface Customer {
   tenant: number | Tenant;
   name: string;
   phone?: string | null;
+  email?: string | null;
   loyaltyPoints: number;
   updatedAt: string;
   createdAt: string;
@@ -907,6 +908,7 @@ export interface CustomersSelect<T extends boolean = true> {
   tenant?: T;
   name?: T;
   phone?: T;
+  email?: T;
   loyaltyPoints?: T;
   updatedAt?: T;
   createdAt?: T;

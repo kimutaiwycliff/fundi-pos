@@ -5,7 +5,7 @@ import { SalesTable } from './sales-table';
 export type StoreRef = { id: number; name: string };
 export type UserRef = { id: number; name: string | null; email: string };
 export type ManagerRef = { id: number; name: string | null; email: string };
-export type CustomerRef = { id: number; name: string; phone: string };
+export type CustomerRef = { id: number; name: string; phone: string | null; email: string | null };
 export type ProductRef = { id: number; name: string; sku: string };
 
 export type Order = {

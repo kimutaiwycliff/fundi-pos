@@ -8,12 +8,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
-import { NewCustomerDialog } from './new-customer-dialog';
+import { CustomerDialog } from './customer-dialog';
 
 interface Customer {
   id: number;
   name: string;
-  phone: string;
+  phone: string | null;
+  email: string | null;
   loyaltyPoints: number;
 }
 
@@ -24,7 +25,7 @@ export default async function CustomersPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Customers</h1>
-        <NewCustomerDialog />
+        <CustomerDialog />
       </div>
       <div className="rounded-md border">
         <Table>
@@ -32,13 +33,15 @@ export default async function CustomersPage() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Phone</TableHead>
+              <TableHead className="hidden sm:table-cell">Email</TableHead>
               <TableHead className="text-right">Loyalty points</TableHead>
+              <TableHead className="w-0" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {customers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} className="text-center text-muted-foreground">
+                <TableCell colSpan={5} className="text-center text-muted-foreground">
                   No customers yet.
                 </TableCell>
               </TableRow>
@@ -46,9 +49,13 @@ export default async function CustomersPage() {
               customers.map((customer) => (
                 <TableRow key={customer.id}>
                   <TableCell>{customer.name}</TableCell>
-                  <TableCell>{customer.phone}</TableCell>
+                  <TableCell>{customer.phone ?? '—'}</TableCell>
+                  <TableCell className="hidden sm:table-cell">{customer.email ?? '—'}</TableCell>
                   <TableCell className="text-right">
                     <Badge variant="secondary">{customer.loyaltyPoints}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <CustomerDialog customer={customer} />
                   </TableCell>
                 </TableRow>
               ))

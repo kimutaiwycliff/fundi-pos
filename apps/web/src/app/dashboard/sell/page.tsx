@@ -13,7 +13,7 @@ export type Product = {
 };
 
 export type StoreRef = { id: number; name: string };
-export type CustomerRef = { id: number; name: string; phone: string | null };
+export type CustomerRef = { id: number; name: string; phone: string | null; email: string | null };
 
 export type TenantReceiptInfo = {
   name: string;

@@ -6,15 +6,19 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { ReceiptView } from '@/components/receipt/receipt-view';
 import { printReceipt } from '@/components/receipt/print-receipt';
 import type { ReceiptData } from '@/components/receipt/types';
+import { SendInvoiceButtons } from '@/components/invoice/send-invoice-buttons';
+import { buildInvoiceText, invoiceSubject } from '@/lib/invoice-message';
 import { toast } from 'sonner';
-import type { TenantReceiptInfo } from './page';
+import type { CustomerRef, TenantReceiptInfo } from './page';
 
 export function CheckoutSuccessDialog({
   receipt,
+  customer,
   tenant,
   onClose,
 }: {
   receipt: ReceiptData | null;
+  customer: CustomerRef | null;
   tenant: TenantReceiptInfo;
   onClose: () => void;
 }) {
@@ -23,6 +27,18 @@ export function CheckoutSuccessDialog({
     const opened = printReceipt(receipt, tenant);
     if (!opened) toast.error('Please allow popups for this site to print receipts');
   }
+
+  const invoiceData = receipt
+    ? {
+        orderId: receipt.orderId,
+        createdAt: receipt.createdAt,
+        customerName: customer?.name ?? receipt.customerLabel ?? 'Customer',
+        lines: receipt.lines,
+        total: receipt.total,
+        isPaid: !receipt.isUnpaidCredit,
+        settledAtLabel: receipt.settledAtLabel,
+      }
+    : null;
 
   return (
     <Dialog
@@ -36,6 +52,18 @@ export function CheckoutSuccessDialog({
           <DialogTitle>Sale complete</DialogTitle>
         </DialogHeader>
         {receipt ? <ReceiptView data={receipt} tenant={tenant} /> : null}
+        {receipt?.tenderType === 'credit' && invoiceData ? (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-xs text-muted-foreground">Send invoice to customer</p>
+            <SendInvoiceButtons
+              phone={customer?.phone ?? null}
+              email={customer?.email ?? null}
+              subject={invoiceSubject(invoiceData, tenant)}
+              message={buildInvoiceText(invoiceData, tenant)}
+              size="sm"
+            />
+          </div>
+        ) : null}
         <DialogFooter className="gap-2 sm:gap-2">
           <Button type="button" variant="outline" onClick={handlePrint}>
             <Printer data-icon="inline-start" />
