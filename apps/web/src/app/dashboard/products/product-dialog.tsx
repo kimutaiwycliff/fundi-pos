@@ -54,6 +54,19 @@ interface StockLevel {
 }
 type Variant = { id?: string; label: string; sku: string; barcode?: string | null };
 
+// Uppercase, hyphenated slug of the name - a reasonable default SKU so
+// adding a product doesn't require typing one by hand. Only ever runs
+// while creating (never edit) and stops the moment the user types into
+// the SKU field themselves (skuTouched, below).
+function deriveSku(name: string): string {
+  return name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
 const STOCK_TYPES = [
   { value: 'restock', label: 'Restock (received new stock)' },
   { value: 'adjustment', label: 'Correction (recount - can be + or -)' },
@@ -176,9 +189,22 @@ export function ProductDialog({
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
+  // Edit mode starts "touched" so an existing SKU is never silently
+  // overwritten by a later name edit.
+  const [skuTouched, setSkuTouched] = useState(isEdit);
 
   function update(field: keyof typeof form) {
     return (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [field]: e.target.value }));
+  }
+
+  function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const name = e.target.value;
+    setForm((f) => (skuTouched ? { ...f, name } : { ...f, name, sku: deriveSku(name) }));
+  }
+
+  function handleSkuChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setSkuTouched(true);
+    setForm((f) => ({ ...f, sku: e.target.value }));
   }
 
   function updateVariant(index: number, field: keyof Variant) {
@@ -317,19 +343,24 @@ export function ProductDialog({
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex min-w-0 flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="name">Name</Label>
+            <Input id="name" required value={form.name} onChange={handleNameChange} />
+          </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="sku">SKU</Label>
-              <Input id="sku" required value={form.sku} onChange={update('sku')} />
+              <Label htmlFor="sku">
+                SKU
+                {!isEdit && !skuTouched ? (
+                  <span className="ml-1 font-normal text-muted-foreground">(auto)</span>
+                ) : null}
+              </Label>
+              <Input id="sku" required value={form.sku} onChange={handleSkuChange} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="barcode">Barcode</Label>
               <Input id="barcode" value={form.barcode} onChange={update('barcode')} />
             </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" required value={form.name} onChange={update('name')} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="category">Category</Label>
