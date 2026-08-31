@@ -13,30 +13,31 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ProductDialog } from './product-dialog';
+import type { Product } from './page';
 
-type Product = {
-  id: number;
-  sku: string;
-  barcode: string | null;
-  name: string;
-  category: string | null;
-  costPrice?: number;
-  sellPrice: number;
-  taxRate: number;
-  reorderPoint?: number;
-  maxDiscountPercent?: number;
-};
+type Store = { id: number; name: string };
+interface StockLevel {
+  store: number;
+  product: number;
+  quantity: number;
+}
 
 export function ProductsTable({
   products,
   canSeeCost,
   branchStock = null,
   branchName = null,
+  stores,
+  stockLevels,
+  archivedView = false,
 }: {
   products: Product[];
   canSeeCost: boolean;
   branchStock?: Record<number, number> | null;
   branchName?: string | null;
+  stores: Store[];
+  stockLevels: StockLevel[];
+  archivedView?: boolean;
 }) {
   const [query, setQuery] = useState('');
 
@@ -87,14 +88,27 @@ export function ProductsTable({
                   colSpan={(canSeeCost ? 9 : 7) + (branchStock ? 1 : 0)}
                   className="text-center text-muted-foreground"
                 >
-                  {products.length === 0 ? 'No products yet.' : 'No products match your search.'}
+                  {products.length === 0
+                    ? archivedView
+                      ? 'No archived products.'
+                      : 'No products yet.'
+                    : 'No products match your search.'}
                 </TableCell>
               </TableRow>
             ) : (
               filtered.map((product) => (
                 <TableRow key={product.id}>
                   <TableCell className="font-mono text-xs">{product.sku}</TableCell>
-                  <TableCell>{product.name}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {product.name}
+                      {product.variants.length > 0 ? (
+                        <Badge variant="outline">
+                          {product.variants.length} variant{product.variants.length === 1 ? '' : 's'}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     {product.category ? <Badge variant="secondary">{product.category}</Badge> : '—'}
                   </TableCell>
@@ -115,7 +129,7 @@ export function ProductsTable({
                     <TableCell className="text-right">{branchStock[product.id] ?? 0}</TableCell>
                   ) : null}
                   <TableCell>
-                    <ProductDialog product={product} />
+                    <ProductDialog product={product} stores={stores} allProducts={products} stockLevels={stockLevels} />
                   </TableCell>
                 </TableRow>
               ))

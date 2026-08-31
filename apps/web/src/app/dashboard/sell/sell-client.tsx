@@ -66,6 +66,10 @@ export function SellClient({
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+  // "Frequently bought with" - recomputed from the last-added product's
+  // relatedProducts every addToCart, not accumulated, so it always reflects
+  // what was just added rather than growing stale across a whole sale.
+  const [suggestions, setSuggestions] = useState<Product[]>([]);
   // Snapshot of the customer at the moment of sale - selectedCustomer is
   // cleared right after checkout (below), but the success dialog's "send
   // invoice" buttons still need this customer's contact details.
@@ -128,6 +132,7 @@ export function SellClient({
     localStorage.setItem(ACTIVE_STORE_KEY, String(id));
     setCart([]);
     setSelectedCustomer(null);
+    setSuggestions([]);
   }
 
   const stockByProduct = useMemo(() => {
@@ -164,6 +169,11 @@ export function SellClient({
       }
       return [...prev, { product, quantity: 1, discountAmount: 0 }];
     });
+    setSuggestions(
+      product.relatedProducts
+        .map((id) => products.find((p) => p.id === id))
+        .filter((p): p is Product => p != null && p.id !== product.id && !cart.some((l) => l.product.id === p.id)),
+    );
   }
 
   function updateQuantity(productId: number, quantity: number) {
@@ -200,6 +210,7 @@ export function SellClient({
     holdSale(cart);
     setCart([]);
     setSelectedCustomer(null);
+    setSuggestions([]);
     setHeldSales(listHeldSales());
     setMobileCartOpen(false);
     toast.success('Sale held');
@@ -287,6 +298,7 @@ export function SellClient({
     });
     setCart([]);
     setSelectedCustomer(null);
+    setSuggestions([]);
     setMobileCartOpen(false);
     setCompleting(false);
     router.refresh();
@@ -356,6 +368,20 @@ export function SellClient({
           <HeldSalesDrawer heldSales={heldSales} onResume={handleResumeSale} />
         </div>
       </div>
+
+      {activeStoreId != null && suggestions.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2.5">
+          <span className="text-xs font-medium text-muted-foreground">Frequently bought with:</span>
+          {suggestions.map((product) => (
+            <Button key={product.id} type="button" variant="outline" size="sm" onClick={() => addToCart(product)}>
+              + {product.name}
+            </Button>
+          ))}
+          <Button type="button" variant="ghost" size="sm" onClick={() => setSuggestions([])}>
+            Dismiss
+          </Button>
+        </div>
+      ) : null}
 
       {activeStoreId == null ? (
         <EmptyState

@@ -277,6 +277,10 @@ export interface Product {
   barcode?: string | null;
   name: string;
   category?: string | null;
+  /**
+   * Archived products are hidden from the Sell page and the default Products list, but stay intact on past orders, stock movements, and reports.
+   */
+  isActive?: boolean | null;
   variants?:
     | {
         label: string;
@@ -304,6 +308,7 @@ export interface Product {
         id?: string | null;
       }[]
     | null;
+  relatedProducts?: (number | Product)[] | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -750,6 +755,7 @@ export interface ProductsSelect<T extends boolean = true> {
   barcode?: T;
   name?: T;
   category?: T;
+  isActive?: T;
   variants?:
     | T
     | {
@@ -771,6 +777,7 @@ export interface ProductsSelect<T extends boolean = true> {
         quantity?: T;
         id?: T;
       };
+  relatedProducts?: T;
   updatedAt?: T;
   createdAt?: T;
 }

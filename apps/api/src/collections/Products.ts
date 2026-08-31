@@ -19,6 +19,15 @@ export const Products: CollectionConfig = {
     { name: 'name', type: 'text', required: true },
     { name: 'category', type: 'text' },
     {
+      name: 'isActive',
+      type: 'checkbox',
+      defaultValue: true,
+      index: true,
+      admin: {
+        description: 'Archived products are hidden from the Sell page and the default Products list, but stay intact on past orders, stock movements, and reports.',
+      },
+    },
+    {
       name: 'variants',
       type: 'array',
       fields: [
@@ -71,6 +80,16 @@ export const Products: CollectionConfig = {
         { name: 'product', type: 'relationship', relationTo: 'products', required: true },
         { name: 'quantity', type: 'number', required: true, defaultValue: 1 },
       ],
+    },
+    {
+      // Cross-sell/accessory suggestions ("frequently bought with"), not a
+      // bundle - each side is sold and priced independently. Surfaced on
+      // the Sell page as an add-on suggestion once the anchor product is
+      // in the cart.
+      name: 'relatedProducts',
+      type: 'relationship',
+      relationTo: 'products',
+      hasMany: true,
     },
   ],
   hooks: {

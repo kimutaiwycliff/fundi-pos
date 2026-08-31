@@ -10,6 +10,8 @@ export type Product = {
   sellPrice: number;
   taxRate: number;
   maxDiscountPercent: number;
+  // Fetched at depth=0 below, so this is bare ids, not populated docs.
+  relatedProducts: number[];
 };
 
 export type StoreRef = { id: number; name: string };
@@ -33,7 +35,9 @@ export default async function SellPage() {
 
   const [{ docs: products }, { docs: stores }, tenant, { docs: customers }, { levels: stockLevels }] =
     await Promise.all([
-      payloadFetch<{ docs: Product[] }>('/api/products?sort=name&limit=1000'),
+      payloadFetch<{ docs: Product[] }>(
+        '/api/products?sort=name&limit=1000&depth=0&where[isActive][equals]=true',
+      ),
       payloadFetch<{ docs: StoreRef[] }>('/api/stores?sort=name&limit=100'),
       payloadFetch<TenantReceiptInfo>(`/api/tenants/${tenantId}`),
       payloadFetch<{ docs: CustomerRef[] }>('/api/customers?sort=name&limit=1000'),

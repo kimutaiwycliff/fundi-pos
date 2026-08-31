@@ -5,10 +5,11 @@ import { BranchFilter } from '@/components/branch-filter';
 import { ProductDialog } from './product-dialog';
 import { ProductsTable } from './products-table';
 import { ImportProductsDialog } from './import-dialog';
+import { ProductStatusFilter } from './status-filter';
 
 type Store = { id: number; name: string };
 
-type Product = {
+export type Product = {
   id: number;
   sku: string;
   barcode: string | null;
@@ -21,6 +22,11 @@ type Product = {
   taxRate: number;
   reorderPoint?: number;
   maxDiscountPercent?: number;
+  isActive: boolean;
+  variants: { id?: string; label: string; sku: string; barcode?: string | null }[];
+  // Fetched at depth=0 below, so relations come back as bare ids, not
+  // populated docs - keeps a 500-product catalog fetch cheap.
+  relatedProducts: number[];
 };
 
 interface StockLevel {
@@ -32,13 +38,17 @@ interface StockLevel {
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ store?: string }>;
+  searchParams: Promise<{ store?: string; status?: string }>;
 }) {
-  const { store } = await searchParams;
-  const [{ docs: products }, { docs: stores }, me] = await Promise.all([
-    payloadFetch<{ docs: Product[] }>('/api/products?sort=-createdAt&limit=500'),
+  const { store, status } = await searchParams;
+  const archived = status === 'archived';
+  const [{ docs: products }, { docs: stores }, me, { levels: stockLevels }] = await Promise.all([
+    payloadFetch<{ docs: Product[] }>(
+      `/api/products?sort=-createdAt&limit=500&depth=0&where[isActive][equals]=${archived ? 'false' : 'true'}`,
+    ),
     payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
     getCurrentUser(),
+    payloadFetch<{ levels: StockLevel[] }>('/api/reports/stock-levels'),
   ]);
   const canSeeCost = me.role === 'owner';
 
@@ -48,7 +58,7 @@ export default async function ProductsPage({
   let branchStock: Record<number, number> | null = null;
   let branchName: string | null = null;
   if (store) {
-    const { levels } = await payloadFetch<{ levels: StockLevel[] }>(`/api/reports/stock-levels?store=${store}`);
+    const levels = stockLevels.filter((l) => String(l.store) === store);
     branchStock = Object.fromEntries(levels.map((l) => [l.product, l.quantity]));
     branchName = stores.find((s) => String(s.id) === store)?.name ?? null;
   }
@@ -58,15 +68,24 @@ export default async function ProductsPage({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Products</h1>
         <div className="flex flex-wrap gap-2">
+          <ProductStatusFilter />
           <Suspense fallback={null}>
             <BranchFilter stores={stores} />
           </Suspense>
           <ImportProductsDialog stores={stores} />
-          <ProductDialog />
+          <ProductDialog stores={stores} allProducts={products} stockLevels={stockLevels} />
         </div>
       </div>
 
-      <ProductsTable products={products} canSeeCost={canSeeCost} branchStock={branchStock} branchName={branchName} />
+      <ProductsTable
+        products={products}
+        canSeeCost={canSeeCost}
+        branchStock={branchStock}
+        branchName={branchName}
+        stores={stores}
+        stockLevels={stockLevels}
+        archivedView={archived}
+      />
     </div>
   );
 }
