@@ -3,6 +3,8 @@ import { fileURLToPath } from 'url';
 import { postgresAdapter } from '@payloadcms/db-postgres';
 import { buildConfig } from 'payload';
 
+import { migrations } from './migrations/index.ts';
+
 import { Tenants } from './collections/Tenants.ts';
 import { Stores } from './collections/Stores.ts';
 import { Users } from './collections/Users.ts';
@@ -72,5 +74,15 @@ export default buildConfig({
     pool: {
       connectionString: process.env.DATABASE_URI || '',
     },
+    // Dev mode auto-pushes schema changes (see @payloadcms/db-postgres's
+    // connect.js), which is why a schema change can work locally and still
+    // never reach production - push is unconditionally skipped when
+    // NODE_ENV === 'production'. Without prodMigrations wired in, nothing
+    // else applies pending migrations either, so a collection field added
+    // in code silently never reaches the real table until this runs on
+    // boot. Caught live: apps/web's Sell/Sales pages 500'd (React error
+    // #441) because Customers.email existed in code/types but not in the
+    // production customers table.
+    prodMigrations: migrations,
   }),
 });
