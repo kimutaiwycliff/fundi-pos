@@ -26,6 +26,10 @@ function customerLabel(value: Order['customer']) {
   return typeof value === 'object' ? value.name : `#${value}`;
 }
 function productLabel(value: Order['lineItems'][number]['product']) {
+  // `typeof null === 'object'` - a line item whose product has since been
+  // deleted populates as null, not the numeric id, so the null check must
+  // come first or this throws reading `.name` off null.
+  if (!value) return 'Deleted product';
   return typeof value === 'object' ? value.name : `#${value}`;
 }
 
