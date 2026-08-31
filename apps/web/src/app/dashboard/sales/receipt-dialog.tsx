@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { Printer, Receipt as ReceiptIcon } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,7 +9,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { ReceiptView } from '@/components/receipt/receipt-view';
 import { printReceipt } from '@/components/receipt/print-receipt';
@@ -57,8 +55,17 @@ function toReceiptData(order: Order): ReceiptData {
   };
 }
 
-export function ReceiptDialog({ order, tenant }: { order: Order; tenant: TenantReceiptInfo }) {
-  const [open, setOpen] = useState(false);
+export function ReceiptDialog({
+  order,
+  tenant,
+  open,
+  onOpenChange,
+}: {
+  order: Order;
+  tenant: TenantReceiptInfo;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const data = toReceiptData(order);
 
   function handlePrint() {
@@ -69,13 +76,7 @@ export function ReceiptDialog({ order, tenant }: { order: Order; tenant: TenantR
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="lg">
-          <ReceiptIcon data-icon="inline-start" />
-          Receipt
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xs">
         <DialogHeader>
           <DialogTitle>Receipt</DialogTitle>

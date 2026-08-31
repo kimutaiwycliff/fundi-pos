@@ -1,11 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Receipt, Search, SearchX } from 'lucide-react';
-import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -23,11 +20,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
-import { SendInvoiceButtons } from '@/components/invoice/send-invoice-buttons';
-import { buildInvoiceText, invoiceSubject, type InvoiceData } from '@/lib/invoice-message';
+import type { InvoiceData } from '@/lib/invoice-message';
 import type { ManagerRef, Order, TenantReceiptInfo } from './page';
-import { ReceiptDialog } from './receipt-dialog';
-import { VoidOrderDialog } from './void-order-dialog';
+import { SaleRowActions } from './sale-row-actions';
 
 type StatusFilter = 'all' | 'unpaid' | 'paid' | 'voided' | 'refunded';
 
@@ -137,10 +132,8 @@ export function SalesTable({
   canSettle: boolean;
   managers: ManagerRef[];
 }) {
-  const router = useRouter();
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
-  const [settlingId, setSettlingId] = useState<string | null>(null);
 
   const unpaidCount = useMemo(() => orders.filter(isUnpaidCredit).length, [orders]);
 
@@ -169,26 +162,6 @@ export function SalesTable({
       return haystack.includes(q);
     });
   }, [orders, query, status]);
-
-  async function handleSettle(order: Order) {
-    setSettlingId(order.id);
-    const response = await fetch(`/api/payload/orders/${order.id}/settle`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
-    });
-
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      toast.error(body?.error ?? 'Failed to settle sale');
-      setSettlingId(null);
-      return;
-    }
-
-    toast.success('Sale marked as settled');
-    setSettlingId(null);
-    router.refresh();
-  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -249,10 +222,6 @@ export function SalesTable({
               </TableRow>
             ) : (
               filtered.map((order) => {
-                const canShowSettle =
-                  canSettle && order.tenderType === 'credit' && order.paymentStatus === 'pending' && order.status === 'completed';
-                const canShowVoid = order.status === 'completed';
-                const canShowInvoice = order.tenderType === 'credit' && order.status === 'completed';
                 const contact = customerContact(order.customer);
                 return (
                   <TableRow key={order.id}>
@@ -271,27 +240,15 @@ export function SalesTable({
                       <StatusBadge status={order.status} />
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <ReceiptDialog order={order} tenant={tenant} />
-                        {canShowInvoice ? (
-                          <SendInvoiceButtons
-                            phone={contact.phone}
-                            email={contact.email}
-                            size="sm"
-                            subject={invoiceSubject(toInvoiceData(order), tenant)}
-                            message={buildInvoiceText(toInvoiceData(order), tenant)}
-                          />
-                        ) : null}
-                        {canShowVoid ? <VoidOrderDialog order={order} managers={managers} /> : null}
-                        {canShowSettle ? (
-                          <Button
-                            size="lg"
-                            disabled={settlingId === order.id}
-                            onClick={() => handleSettle(order)}
-                          >
-                            {settlingId === order.id ? 'Settling…' : 'Mark as settled'}
-                          </Button>
-                        ) : null}
+                      <div className="flex justify-end">
+                        <SaleRowActions
+                          order={order}
+                          tenant={tenant}
+                          managers={managers}
+                          canSettle={canSettle}
+                          contact={contact}
+                          invoiceData={toInvoiceData(order)}
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

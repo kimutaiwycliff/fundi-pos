@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +12,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { ManagerRef, Order } from './page';
@@ -22,9 +20,18 @@ import type { ManagerRef, Order } from './page';
 // requires a real managerId + PIN regardless of the caller's own session
 // role (unlike settle, which skips PIN for an owner/manager session), so
 // this is exposed to every role and gated purely by the PIN itself.
-export function VoidOrderDialog({ order, managers }: { order: Order; managers: ManagerRef[] }) {
+export function VoidOrderDialog({
+  order,
+  managers,
+  open,
+  onOpenChange,
+}: {
+  order: Order;
+  managers: ManagerRef[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<'voided' | 'refunded'>('voided');
   const [managerId, setManagerId] = useState('');
   const [pin, setPin] = useState('');
@@ -48,7 +55,7 @@ export function VoidOrderDialog({ order, managers }: { order: Order; managers: M
     }
 
     toast.success(`Order ${status}`);
-    setOpen(false);
+    onOpenChange(false);
     setManagerId('');
     setPin('');
     setBusy(false);
@@ -56,13 +63,7 @@ export function VoidOrderDialog({ order, managers }: { order: Order; managers: M
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="lg">
-          <ShieldAlert data-icon="inline-start" />
-          Void / refund
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Void or refund order #{order.id.slice(0, 8)}</DialogTitle>
