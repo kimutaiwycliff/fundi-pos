@@ -23,8 +23,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
-import type { Order, TenantReceiptInfo } from './page';
+import type { ManagerRef, Order, TenantReceiptInfo } from './page';
 import { ReceiptDialog } from './receipt-dialog';
+import { VoidOrderDialog } from './void-order-dialog';
 
 type StatusFilter = 'all' | 'unpaid' | 'paid' | 'voided' | 'refunded';
 
@@ -101,10 +102,12 @@ export function SalesTable({
   orders,
   tenant,
   canSettle,
+  managers,
 }: {
   orders: Order[];
   tenant: TenantReceiptInfo;
   canSettle: boolean;
+  managers: ManagerRef[];
 }) {
   const router = useRouter();
   const [query, setQuery] = useState('');
@@ -220,6 +223,7 @@ export function SalesTable({
               filtered.map((order) => {
                 const canShowSettle =
                   canSettle && order.tenderType === 'credit' && order.paymentStatus === 'pending' && order.status === 'completed';
+                const canShowVoid = order.status === 'completed';
                 return (
                   <TableRow key={order.id}>
                     <TableCell className="whitespace-nowrap">{new Date(order.createdAt).toLocaleString()}</TableCell>
@@ -239,6 +243,7 @@ export function SalesTable({
                     <TableCell>
                       <div className="flex items-center justify-end gap-2">
                         <ReceiptDialog order={order} tenant={tenant} />
+                        {canShowVoid ? <VoidOrderDialog order={order} managers={managers} /> : null}
                         {canShowSettle ? (
                           <Button
                             size="lg"

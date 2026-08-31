@@ -11,6 +11,7 @@ import {
   Package,
   ScrollText,
   Settings as SettingsIcon,
+  ShoppingCart,
   Store,
   Users,
   UserCog,
@@ -20,6 +21,7 @@ import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui
 
 const ICONS: Record<string, LucideIcon> = {
   '/dashboard': LayoutDashboard,
+  '/dashboard/sell': ShoppingCart,
   '/dashboard/products': Package,
   '/dashboard/inventory': Boxes,
   '/dashboard/transfers': ArrowLeftRight,

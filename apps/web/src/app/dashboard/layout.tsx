@@ -22,6 +22,7 @@ import { UserMenu } from './user-menu';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Overview' },
+  { href: '/dashboard/sell', label: 'Sell' },
   { href: '/dashboard/products', label: 'Products' },
   { href: '/dashboard/inventory', label: 'Inventory' },
   { href: '/dashboard/transfers', label: 'Transfers' },
