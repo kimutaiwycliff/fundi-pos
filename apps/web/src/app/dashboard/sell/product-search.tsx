@@ -5,6 +5,7 @@ import { Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/empty-state';
+import { fuzzySearch } from '@/lib/fuzzy-search';
 import { stockKey } from '@/lib/stock-key';
 import type { Product } from './page';
 
@@ -33,17 +34,25 @@ export function ProductSearch({
   const [query, setQuery] = useState('');
   const trimmed = query.trim().toLowerCase();
 
-  const results = trimmed
-    ? products
-        .filter(
-          (p) =>
-            (p.barcode && p.barcode.toLowerCase() === trimmed) ||
-            p.name.toLowerCase().includes(trimmed) ||
-            p.sku.toLowerCase().includes(trimmed) ||
-            p.variants.some((v) => v.sku.toLowerCase() === trimmed || (v.barcode && v.barcode.toLowerCase() === trimmed)),
-        )
-        .slice(0, 24)
-    : [];
+  // A barcode is scanner input - exact digits, typed fast, ending in Enter
+  // with no chance for a human to double-check before it fires. Fuzzy-
+  // matching that could ring up the wrong product (a close-but-wrong
+  // barcode scoring as a "match"), so an exact hit always short-circuits
+  // straight past the fuzzy pass below. Free-text (name/SKU) typos are the
+  // actual pain point fuzzy search is for, and carry no such risk.
+  const exactBarcodeMatch = trimmed
+    ? products.find(
+        (p) =>
+          (p.barcode && p.barcode.toLowerCase() === trimmed) ||
+          p.variants.some((v) => v.barcode && v.barcode.toLowerCase() === trimmed),
+      )
+    : undefined;
+
+  const results = exactBarcodeMatch
+    ? [exactBarcodeMatch]
+    : trimmed
+      ? fuzzySearch(products, ['name', 'sku', 'variants.sku', 'variants.label'], query).slice(0, 24)
+      : [];
 
   function handleSelect(product: Product) {
     onSelect(product);

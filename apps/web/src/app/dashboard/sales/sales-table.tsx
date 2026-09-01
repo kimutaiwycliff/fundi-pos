@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatDateTime } from '@/lib/format-date';
+import { fuzzySearch } from '@/lib/fuzzy-search';
 import type { InvoiceData } from '@/lib/invoice-message';
 import type { CreditPayment, ManagerRef, Order, TenantReceiptInfo } from './page';
 import { SaleRowActions } from './sale-row-actions';
@@ -145,29 +146,35 @@ export function SalesTable({
   const unpaidCount = useMemo(() => orders.filter(isUnpaidCredit).length, [orders]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-
-    return orders.filter((order) => {
+    const statusFiltered = orders.filter((order) => {
       if (status === 'unpaid' && !isUnpaidCredit(order)) return false;
       if (status === 'paid' && order.paymentStatus !== 'paid') return false;
       if (status === 'voided' && order.status !== 'voided') return false;
       if (status === 'refunded' && order.status !== 'refunded') return false;
-
-      if (!q) return true;
-      const haystack = [
-        order.id,
-        order.id.slice(0, 8),
-        customerLabel(order.customer),
-        customerPhone(order.customer),
-        typeof order.cashier === 'object' ? order.cashier.name ?? '' : '',
-        typeof order.cashier === 'object' ? order.cashier.email : '',
-        order.terminal,
-        order.terminalName ?? '',
-      ]
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(q);
+      return true;
     });
+
+    // Each field passed to Fuse separately, not joined into one blob - a
+    // fuzzy match against a single long concatenated string scores far
+    // worse than the same typo against one short field (confirmed live: a
+    // transposed "onwer"/"owner" typo matched nothing against a joined
+    // haystack, but matches cleanly once cashierEmail is its own key).
+    const searchable = statusFiltered.map((order) => ({
+      order,
+      id: order.id,
+      idShort: order.id.slice(0, 8),
+      customerName: customerLabel(order.customer),
+      customerPhone: customerPhone(order.customer),
+      cashierName: typeof order.cashier === 'object' ? order.cashier.name ?? '' : '',
+      cashierEmail: typeof order.cashier === 'object' ? order.cashier.email : '',
+      terminal: order.terminal,
+      terminalName: order.terminalName ?? '',
+    }));
+    return fuzzySearch(
+      searchable,
+      ['id', 'idShort', 'customerName', 'customerPhone', 'cashierName', 'cashierEmail', 'terminal', 'terminalName'],
+      query,
+    ).map((s) => s.order);
   }, [orders, query, status]);
 
   return (

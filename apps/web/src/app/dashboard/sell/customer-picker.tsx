@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { fuzzySearch } from '@/lib/fuzzy-search';
 import type { CustomerRef } from './page';
 
 // Credit ("pay later") sales must be tied to a known customer. Existing
@@ -30,9 +31,7 @@ export function CustomerPicker({
   const [saving, setSaving] = useState(false);
 
   const trimmed = query.trim().toLowerCase();
-  const results = trimmed
-    ? customers.filter((c) => c.name.toLowerCase().includes(trimmed) || (c.phone ?? '').includes(trimmed)).slice(0, 10)
-    : [];
+  const results = trimmed ? fuzzySearch(customers, ['name', 'phone'], query).slice(0, 10) : [];
 
   async function handleCreate() {
     if (!query.trim() || !newPhone.trim()) return;

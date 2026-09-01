@@ -13,6 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ProductDialog } from './product-dialog';
+import { fuzzySearch } from '@/lib/fuzzy-search';
 import type { Product, StockLevel } from './page';
 
 type Store = { id: number; name: string };
@@ -38,17 +39,10 @@ export function ProductsTable({
 }) {
   const [query, setQuery] = useState('');
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.sku.toLowerCase().includes(q) ||
-        (p.barcode ?? '').toLowerCase().includes(q) ||
-        (p.category ?? '').toLowerCase().includes(q),
-    );
-  }, [products, query]);
+  const filtered = useMemo(
+    () => fuzzySearch(products, ['name', 'sku', 'barcode', 'category'], query),
+    [products, query],
+  );
 
   return (
     <div className="flex flex-col gap-3">
