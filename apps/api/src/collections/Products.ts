@@ -34,6 +34,19 @@ export const Products: CollectionConfig = {
         { name: 'label', type: 'text', required: true }, // e.g. "Red / L"
         { name: 'sku', type: 'text', required: true },
         { name: 'barcode', type: 'text' },
+        // Null/unset means "use the product's own price" - most variants
+        // (e.g. a T-shirt's colors) don't need their own price, but some
+        // (e.g. a drill's battery-capacity options) genuinely do.
+        { name: 'sellPrice', type: 'number', admin: { step: 0.01, description: "Leave blank to use the product's own sell price." } },
+        {
+          name: 'costPrice',
+          type: 'number',
+          admin: { step: 0.01, description: "Leave blank to use the product's own cost price." },
+          // Same owner-only visibility as the product-level costPrice field
+          // above - a variant's cost shouldn't leak margin info to non-owners
+          // just because it happens to live inside an array.
+          access: { read: ({ req }) => req.user?.collection === 'platform-admins' || req.user?.role === 'owner' },
+        },
       ],
     },
     {

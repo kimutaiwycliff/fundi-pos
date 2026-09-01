@@ -11,6 +11,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { getTerminalId, getTerminalName } from '@/lib/terminal';
 import { findOpenShift, type Shift } from '@/lib/shifts-client';
 import { deleteHeldSale, holdSale, listHeldSales, type HeldSale } from '@/lib/held-sales';
+import { stockKey } from '@/lib/stock-key';
 import type { CurrentUser } from '@/lib/current-user';
 import { ProductSearch } from './product-search';
 import { CartPanel } from './cart-panel';
@@ -18,8 +19,9 @@ import { TenderPicker } from './tender-picker';
 import { ShiftWidget } from './shift-widget';
 import { HeldSalesDrawer } from './held-sales-drawer';
 import { CheckoutSuccessDialog } from './checkout-success-dialog';
-import type { CartLine, TenderType } from './types';
-import type { CustomerRef, Product, StoreRef, TenantReceiptInfo } from './page';
+import { VariantPickerDialog } from './variant-picker-dialog';
+import { lineDisplayLabel, lineUnitPrice, type CartLine, type TenderType } from './types';
+import type { CustomerRef, Product, StockLevel, StoreRef, TenantReceiptInfo } from './page';
 import type { ReceiptData } from '@/components/receipt/types';
 import { ShoppingCart, Store as StoreIcon } from 'lucide-react';
 import {
@@ -49,7 +51,7 @@ export function SellClient({
   stores: StoreRef[];
   tenant: TenantReceiptInfo;
   customers: CustomerRef[];
-  stockLevels: { store: number; product: number; quantity: number }[];
+  stockLevels: StockLevel[];
 }) {
   const router = useRouter();
   const isMobile = useIsMobile();
@@ -70,6 +72,9 @@ export function SellClient({
   // relatedProducts every addToCart, not accumulated, so it always reflects
   // what was just added rather than growing stale across a whole sale.
   const [suggestions, setSuggestions] = useState<Product[]>([]);
+  // A variant-having product is never sold as its bare self - picking one
+  // from search or from a suggestion opens this instead of adding directly.
+  const [variantPickerProduct, setVariantPickerProduct] = useState<Product | null>(null);
   // Snapshot of the customer at the moment of sale - selectedCustomer is
   // cleared right after checkout (below), but the success dialog's "send
   // invoice" buttons still need this customer's contact details.
@@ -135,10 +140,10 @@ export function SellClient({
     setSuggestions([]);
   }
 
-  const stockByProduct = useMemo(() => {
-    const map = new Map<number, number>();
+  const stockByKey = useMemo(() => {
+    const map = new Map<string, number>();
     for (const level of stockLevels) {
-      if (level.store === activeStoreId) map.set(level.product, level.quantity);
+      if (level.store === activeStoreId) map.set(stockKey(level.product, level.variant), level.quantity);
     }
     return map;
   }, [stockLevels, activeStoreId]);
@@ -147,7 +152,7 @@ export function SellClient({
     () =>
       cart.map((line) => ({
         quantity: line.quantity,
-        unitPrice: line.product.sellPrice,
+        unitPrice: lineUnitPrice(line.product, line.variantId),
         discount: line.discountAmount,
         taxRate: line.product.taxRate,
       })),
@@ -155,19 +160,23 @@ export function SellClient({
   );
   const totals = useMemo(() => computeOrderTotals(lineInputs), [lineInputs]);
 
-  function addToCart(product: Product) {
-    const stock = stockByProduct.get(product.id) ?? 0;
-    const existing = cart.find((l) => l.product.id === product.id);
+  function addToCart(product: Product, variantId: string | null) {
+    const key = stockKey(product.id, variantId);
+    const stock = stockByKey.get(key) ?? 0;
+    const existing = cart.find((l) => l.product.id === product.id && l.variantId === variantId);
     const nextQuantity = (existing?.quantity ?? 0) + 1;
+    const label = lineDisplayLabel(product, variantId);
     if (nextQuantity > stock) {
-      toast.error(`Only ${stock} ${product.name} left in stock`);
+      toast.error(`Only ${stock} ${label} left in stock`);
       return;
     }
     setCart((prev) => {
       if (existing) {
-        return prev.map((l) => (l.product.id === product.id ? { ...l, quantity: l.quantity + 1 } : l));
+        return prev.map((l) =>
+          l.product.id === product.id && l.variantId === variantId ? { ...l, quantity: l.quantity + 1 } : l,
+        );
       }
-      return [...prev, { product, quantity: 1, discountAmount: 0 }];
+      return [...prev, { product, variantId, quantity: 1, discountAmount: 0 }];
     });
     setSuggestions(
       product.relatedProducts
@@ -176,33 +185,47 @@ export function SellClient({
     );
   }
 
-  function updateQuantity(productId: number, quantity: number) {
-    const stock = stockByProduct.get(productId) ?? 0;
-    const line = cart.find((l) => l.product.id === productId);
+  // Entry point for both the search grid and the suggestion strip - a
+  // product with variants always opens the picker first, never adds
+  // straight to cart (there's no such thing as "the product itself" once
+  // it has options, same as any real POS/e-commerce catalog).
+  function requestAdd(product: Product) {
+    if (product.variants.length > 0) {
+      setVariantPickerProduct(product);
+    } else {
+      addToCart(product, null);
+    }
+  }
+
+  function updateQuantity(productId: number, variantId: string | null, quantity: number) {
+    const stock = stockByKey.get(stockKey(productId, variantId)) ?? 0;
+    const line = cart.find((l) => l.product.id === productId && l.variantId === variantId);
     if (line && quantity > line.quantity && quantity > stock) {
-      toast.error(`Only ${stock} ${line.product.name} left in stock`);
+      toast.error(`Only ${stock} ${lineDisplayLabel(line.product, variantId)} left in stock`);
       return;
     }
     setCart((prev) =>
       quantity <= 0
-        ? prev.filter((l) => l.product.id !== productId)
+        ? prev.filter((l) => !(l.product.id === productId && l.variantId === variantId))
         : prev.map((l) => {
-            if (l.product.id !== productId) return l;
+            if (!(l.product.id === productId && l.variantId === variantId)) return l;
             const max = maxDiscountAmountForLine(quantity, l.product);
             return { ...l, quantity, discountAmount: Math.min(l.discountAmount, max) };
           }),
     );
   }
 
-  function updateDiscountAmount(productId: number, rawValue: number) {
-    const line = cart.find((l) => l.product.id === productId);
+  function updateDiscountAmount(productId: number, variantId: string | null, rawValue: number) {
+    const line = cart.find((l) => l.product.id === productId && l.variantId === variantId);
     if (!line) return;
     const max = maxDiscountAmountForLine(line.quantity, line.product);
     const clamped = Math.min(Math.max(rawValue, 0), max);
     if (rawValue > max) {
-      toast.error(`Max discount for ${line.product.name} is ${max.toFixed(2)}`);
+      toast.error(`Max discount for ${lineDisplayLabel(line.product, variantId)} is ${max.toFixed(2)}`);
     }
-    setCart((prev) => prev.map((l) => (l.product.id === productId ? { ...l, discountAmount: clamped } : l)));
+    setCart((prev) =>
+      prev.map((l) => (l.product.id === productId && l.variantId === variantId ? { ...l, discountAmount: clamped } : l)),
+    );
   }
 
   function handleHoldSale() {
@@ -233,9 +256,10 @@ export function SellClient({
       toast.error('Select a customer for a credit sale');
       return;
     }
-    const oversold = cart.find((line) => line.quantity > (stockByProduct.get(line.product.id) ?? 0));
+    const oversold = cart.find((line) => line.quantity > (stockByKey.get(stockKey(line.product.id, line.variantId)) ?? 0));
     if (oversold) {
-      toast.error(`Only ${stockByProduct.get(oversold.product.id) ?? 0} ${oversold.product.name} left in stock`);
+      const stock = stockByKey.get(stockKey(oversold.product.id, oversold.variantId)) ?? 0;
+      toast.error(`Only ${stock} ${lineDisplayLabel(oversold.product, oversold.variantId)} left in stock`);
       return;
     }
 
@@ -255,9 +279,9 @@ export function SellClient({
         customer: selectedCustomer?.id ?? null,
         lineItems: cart.map((l) => ({
           product: l.product.id,
-          variant: null,
+          variant: l.variantId,
           quantity: l.quantity,
-          unitPrice: l.product.sellPrice,
+          unitPrice: lineUnitPrice(l.product, l.variantId),
           discount: l.discountAmount,
         })),
         taxTotal: totals.taxTotal,
@@ -284,9 +308,9 @@ export function SellClient({
       cashierLabel: me.name || me.email,
       customerLabel: selectedCustomer?.name ?? null,
       lines: cartAtSale.map((l) => ({
-        label: l.product.name,
+        label: lineDisplayLabel(l.product, l.variantId),
         quantity: l.quantity,
-        lineTotal: l.quantity * l.product.sellPrice - l.discountAmount,
+        lineTotal: l.quantity * lineUnitPrice(l.product, l.variantId) - l.discountAmount,
       })),
       taxTotal: totals.taxTotal,
       discountTotal: totals.discountTotal,
@@ -373,7 +397,7 @@ export function SellClient({
         <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2.5">
           <span className="text-xs font-medium text-muted-foreground">Frequently bought with:</span>
           {suggestions.map((product) => (
-            <Button key={product.id} type="button" variant="outline" size="sm" onClick={() => addToCart(product)}>
+            <Button key={product.id} type="button" variant="outline" size="sm" onClick={() => requestAdd(product)}>
               + {product.name}
             </Button>
           ))}
@@ -392,7 +416,7 @@ export function SellClient({
       ) : (
         <div className={isMobile ? 'flex flex-col gap-4 pb-20' : 'flex flex-col gap-6 lg:flex-row'}>
           <div className={isMobile ? '' : 'min-w-0 flex-1'}>
-            <ProductSearch products={products} stockByProduct={stockByProduct} onSelect={addToCart} />
+            <ProductSearch products={products} stockByKey={stockByKey} onSelect={requestAdd} />
           </div>
           {isMobile ? null : (
             <aside className="w-full shrink-0 rounded-lg border p-4 lg:w-96">
@@ -429,6 +453,18 @@ export function SellClient({
           </SheetContent>
         </Sheet>
       ) : null}
+
+      <VariantPickerDialog
+        product={variantPickerProduct}
+        stockByKey={stockByKey}
+        onSelect={(variantId) => {
+          if (variantPickerProduct) addToCart(variantPickerProduct, variantId);
+          setVariantPickerProduct(null);
+        }}
+        onOpenChange={(open) => {
+          if (!open) setVariantPickerProduct(null);
+        }}
+      />
 
       <CheckoutSuccessDialog receipt={receipt} customer={receiptCustomer} tenant={tenant} onClose={() => setReceipt(null)} />
     </div>

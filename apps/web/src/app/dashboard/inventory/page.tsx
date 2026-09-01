@@ -9,18 +9,22 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
+import { stockKey } from '@/lib/stock-key';
 import { BranchFilter } from '@/components/branch-filter';
 import { StockAdjustmentDialog } from './stock-adjustment-dialog';
 
 interface StockLevel {
   store: number;
   product: number;
+  variant: string | null;
+  variantLabel: string | null;
   productName: string;
   quantity: number;
   reorderPoint: number;
   lowStock: boolean;
 }
-type Product = { id: number; name: string; sku: string };
+type Variant = { id?: string; label: string; sku: string; barcode?: string | null };
+type Product = { id: number; name: string; sku: string; variants: Variant[] };
 type Store = { id: number; name: string };
 
 export default async function InventoryPage({
@@ -43,7 +47,8 @@ export default async function InventoryPage({
         <div>
           <h1 className="text-2xl font-semibold">Inventory levels</h1>
           <p className="text-sm text-muted-foreground">
-            Current stock is always a derived sum over the StockMovements ledger - never a stored count.
+            Current stock is always a derived sum over the StockMovements ledger - never a stored count. A product
+            with variants shows one row per variant, since they&apos;re tracked separately.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -73,8 +78,13 @@ export default async function InventoryPage({
               </TableRow>
             ) : (
               sorted.map((level) => (
-                <TableRow key={`${level.store}-${level.product}`}>
-                  <TableCell>{level.productName}</TableCell>
+                <TableRow key={`${level.store}-${stockKey(level.product, level.variant)}`}>
+                  <TableCell>
+                    {level.productName}
+                    {level.variantLabel ? (
+                      <span className="text-muted-foreground"> · {level.variantLabel}</span>
+                    ) : null}
+                  </TableCell>
                   <TableCell>{storeName.get(level.store) ?? `#${level.store}`}</TableCell>
                   <TableCell className="text-right">{level.quantity}</TableCell>
                   <TableCell className="text-right">{level.reorderPoint}</TableCell>

@@ -9,6 +9,17 @@ import { ProductStatusFilter } from './status-filter';
 
 type Store = { id: number; name: string };
 
+export type Variant = {
+  id?: string;
+  label: string;
+  sku: string;
+  barcode?: string | null;
+  sellPrice?: number | null;
+  // Absent entirely from the API response for non-owners (same field-level
+  // access as the product-level costPrice below) - never assume it's there.
+  costPrice?: number | null;
+};
+
 export type Product = {
   id: number;
   sku: string;
@@ -23,15 +34,17 @@ export type Product = {
   reorderPoint?: number;
   maxDiscountAmount?: number;
   isActive: boolean;
-  variants: { id?: string; label: string; sku: string; barcode?: string | null }[];
+  variants: Variant[];
   // Fetched at depth=0 below, so relations come back as bare ids, not
   // populated docs - keeps a 500-product catalog fetch cheap.
   relatedProducts: number[];
 };
 
-interface StockLevel {
+export interface StockLevel {
   store: number;
   product: number;
+  variant: string | null;
+  variantLabel: string | null;
   quantity: number;
 }
 
@@ -54,12 +67,17 @@ export default async function ProductsPage({
 
   // Products are tenant-wide, not store-owned - a branch toggle here can't
   // filter the catalog itself, only annotate each row with that branch's
-  // stock-on-hand (which genuinely is per-store).
+  // stock-on-hand (which genuinely is per-store). Summed across variants -
+  // a variant-having product now has one stock-levels row per variant, not
+  // one, so this can no longer just take the last row per product id.
   let branchStock: Record<number, number> | null = null;
   let branchName: string | null = null;
   if (store) {
     const levels = stockLevels.filter((l) => String(l.store) === store);
-    branchStock = Object.fromEntries(levels.map((l) => [l.product, l.quantity]));
+    branchStock = {};
+    for (const level of levels) {
+      branchStock[level.product] = (branchStock[level.product] ?? 0) + level.quantity;
+    }
     branchName = stores.find((s) => String(s.id) === store)?.name ?? null;
   }
 
@@ -73,7 +91,7 @@ export default async function ProductsPage({
             <BranchFilter stores={stores} />
           </Suspense>
           <ImportProductsDialog stores={stores} />
-          <ProductDialog stores={stores} allProducts={products} stockLevels={stockLevels} />
+          <ProductDialog stores={stores} allProducts={products} stockLevels={stockLevels} canSeeCost={canSeeCost} />
         </div>
       </div>
 

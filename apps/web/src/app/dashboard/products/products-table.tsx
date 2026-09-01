@@ -13,14 +13,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ProductDialog } from './product-dialog';
-import type { Product } from './page';
+import type { Product, StockLevel } from './page';
 
 type Store = { id: number; name: string };
-interface StockLevel {
-  store: number;
-  product: number;
-  quantity: number;
-}
 
 export function ProductsTable({
   products,
@@ -129,7 +124,13 @@ export function ProductsTable({
                     <TableCell className="text-right">{branchStock[product.id] ?? 0}</TableCell>
                   ) : null}
                   <TableCell>
-                    <ProductDialog product={product} stores={stores} allProducts={products} stockLevels={stockLevels} />
+                    <ProductDialog
+                      product={product}
+                      stores={stores}
+                      allProducts={products}
+                      stockLevels={stockLevels}
+                      canSeeCost={canSeeCost}
+                    />
                   </TableCell>
                 </TableRow>
               ))

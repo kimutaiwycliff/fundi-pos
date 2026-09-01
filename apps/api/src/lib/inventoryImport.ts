@@ -17,7 +17,9 @@ export interface InventoryColumn {
     | 'reorderPoint'
     | 'maxDiscountAmount'
     | 'active'
-    | 'openingStock';
+    | 'openingStock'
+    | 'parentSku'
+    | 'variantLabel';
   required: boolean;
   type: 'string' | 'number';
   example: string | number;
@@ -27,8 +29,17 @@ export interface InventoryColumn {
 // symbol, no hardware-specific examples baked into the schema itself) - this
 // import is meant to work for any retail or service business selling
 // physical stock, not just hardware stores.
+//
+// Parent SKU/Variant Label are how one flat sheet represents a product with
+// variants - blank Parent SKU means "this row is its own product" (the
+// original, still-supported shape); a filled Parent SKU means "this row is
+// one variant of the product with that SKU" (either created earlier in this
+// same file, or already existing in the catalog), same "one row per shared
+// key" convention Shopify's own product CSV import uses.
 export const INVENTORY_COLUMNS: InventoryColumn[] = [
   { header: 'SKU', key: 'sku', required: true, type: 'string', example: 'SKU-001' },
+  { header: 'Parent SKU', key: 'parentSku', required: false, type: 'string', example: '' },
+  { header: 'Variant Label', key: 'variantLabel', required: false, type: 'string', example: '' },
   { header: 'Barcode', key: 'barcode', required: false, type: 'string', example: '6001234567890' },
   { header: 'Name', key: 'name', required: true, type: 'string', example: 'Sample Product' },
   { header: 'Category', key: 'category', required: false, type: 'string', example: 'General' },
@@ -41,8 +52,9 @@ export const INVENTORY_COLUMNS: InventoryColumn[] = [
   { header: 'Opening Stock', key: 'openingStock', required: false, type: 'number', example: 25 },
 ];
 
-export interface ParsedInventoryRow {
+export interface ParsedProductRow {
   rowNumber: number;
+  kind: 'product';
   sku: string;
   barcode: string | null;
   name: string;
@@ -56,6 +68,22 @@ export interface ParsedInventoryRow {
   openingStock: number;
 }
 
+export interface ParsedVariantRow {
+  rowNumber: number;
+  kind: 'variant';
+  parentSku: string;
+  sku: string;
+  barcode: string | null;
+  label: string;
+  // null = inherit the parent product's own price, same meaning as leaving
+  // the field blank in the dashboard's variant editor.
+  costPrice: number | null;
+  sellPrice: number | null;
+  openingStock: number;
+}
+
+export type ParsedInventoryRow = ParsedProductRow | ParsedVariantRow;
+
 export interface InventoryRowError {
   rowNumber: number;
   message: string;
@@ -66,11 +94,11 @@ export interface ParsedInventoryWorkbook {
   errors: InventoryRowError[];
 }
 
-// Only variant-free, non-bundle products are in scope here - a flat product
-// list is what a bulk import realistically looks like; variants/bundles
-// stay a manual follow-up in the dashboard (Products.variants/
-// bundleComponents are nested array structures that don't map cleanly onto
-// flat spreadsheet rows without a much more complex template).
+// Bundles still stay a manual follow-up in the dashboard - Products.
+// bundleComponents is its own nested structure that doesn't map onto a flat
+// spreadsheet row any more cleanly than variants would have without the
+// Parent SKU convention above, and bundles are rare enough not to warrant
+// inventing one.
 export function buildTemplateWorkbook(): ExcelJS.Workbook {
   const workbook = new ExcelJS.Workbook();
 
@@ -92,21 +120,41 @@ export function buildTemplateWorkbook(): ExcelJS.Workbook {
       ]),
     ),
   );
+  // A third example row demonstrating the variant convention: Parent SKU
+  // points back at row 2 (SKU-001), so this becomes a variant of that
+  // product rather than a standalone one - Cost/Sell Price are left blank
+  // here on purpose to show "inherit the parent's price."
+  sheet.addRow({
+    sku: 'SKU-001-RED-L',
+    parentSku: 'SKU-001',
+    variantLabel: 'Red / L',
+    barcode: '',
+    name: '',
+    category: '',
+    costPrice: '',
+    sellPrice: '',
+    taxRate: '',
+    reorderPoint: '',
+    maxDiscountAmount: '',
+    active: '',
+    openingStock: 10,
+  });
 
   const instructions = workbook.addWorksheet('Instructions');
   instructions.columns = [{ width: 90 }];
   instructions.addRows([
     ['Bulk product import - how to fill this in'],
     [''],
-    ['1. Fill in the "Products" sheet, one row per product. Delete the two example rows first.'],
-    ['2. Required columns: SKU, Name, Cost Price, Sell Price.'],
+    ['1. Fill in the "Products" sheet, one row per product (or per variant - see #10). Delete the example rows first.'],
+    ['2. Required columns for a standalone product: SKU, Name, Cost Price, Sell Price.'],
     ['3. SKU must be unique within your business - a row whose SKU already exists is skipped, not overwritten.'],
     ['4. Tax Rate is a decimal, not a percentage - e.g. 16% is 0.16. Leave blank to default to 0.16.'],
     ['5. Reorder Point triggers the low-stock alert once on-hand quantity drops to or below it. Leave blank to default to 0.'],
     ['6. Max Discount is a flat amount, not a percentage - how much a cashier may knock off this product per unit at the till. Leave blank or 0 to disallow discounts entirely - this is the default unless you state otherwise.'],
     ['7. Active (Yes/No) - leave blank or Yes for a normal product. Set to No to import it already archived (hidden from the Sell page and Products list, but still on record).'],
-    ['8. Opening Stock creates one initial stock movement per product for the store you pick when uploading. Leave blank or 0 for none.'],
-    ['9. This template only supports simple products - add variants, bundles, or related-product links afterward in the dashboard.'],
+    ['8. Opening Stock creates one initial stock movement per product (or per variant) for the store you pick when uploading. Leave blank or 0 for none.'],
+    ['9. This template only supports simple products and variants - add bundles or related-product links afterward in the dashboard.'],
+    ['10. To add variants (e.g. sizes or colors), fill Parent SKU with an existing product\'s SKU (either from an earlier row in this file, or already in your catalog) and Variant Label with the option name (e.g. "Red / L"). SKU on that row becomes the variant\'s own SKU. Cost Price/Sell Price can be left blank on a variant row to use the parent product\'s price, or filled in if that option costs/sells differently.'],
   ]);
   instructions.getRow(1).font = { bold: true, size: 14 };
 
@@ -150,7 +198,41 @@ export async function parseInventoryWorkbook(buffer: Buffer): Promise<ParsedInve
 
     if (Object.values(values).every((v) => v === null)) return; // fully blank row - skip silently
 
-    const missing = INVENTORY_COLUMNS.filter((c) => c.required && !values[c.key]).map((c) => c.header);
+    const parentSku = values.parentSku ? String(values.parentSku).trim() : '';
+
+    if (parentSku) {
+      // Variant row - Name/Category/Tax Rate/Reorder Point/Max Discount/
+      // Active don't apply per-variant in the schema (Products.variants
+      // only carries label/sku/barcode/price), so they're simply ignored
+      // here rather than erroring on an unused column.
+      const variantLabel = values.variantLabel ? String(values.variantLabel).trim() : '';
+      if (!values.sku || !variantLabel) {
+        errors.push({ rowNumber, message: 'Variant rows (with a Parent SKU) need both SKU and Variant Label' });
+        return;
+      }
+      const costPrice = values.costPrice != null ? Number(values.costPrice) : null;
+      const sellPrice = values.sellPrice != null ? Number(values.sellPrice) : null;
+      if ((costPrice != null && !Number.isFinite(costPrice)) || (sellPrice != null && !Number.isFinite(sellPrice))) {
+        errors.push({ rowNumber, message: 'Cost Price and Sell Price must be numbers when set' });
+        return;
+      }
+      rows.push({
+        rowNumber,
+        kind: 'variant',
+        parentSku,
+        sku: String(values.sku),
+        barcode: values.barcode ? String(values.barcode) : null,
+        label: variantLabel,
+        costPrice,
+        sellPrice,
+        openingStock: values.openingStock != null && Number.isFinite(Number(values.openingStock)) ? Number(values.openingStock) : 0,
+      });
+      return;
+    }
+
+    const missing = INVENTORY_COLUMNS.filter(
+      (c) => c.required && c.key !== 'parentSku' && c.key !== 'variantLabel' && !values[c.key],
+    ).map((c) => c.header);
     if (missing.length > 0) {
       errors.push({ rowNumber, message: `Missing required value(s): ${missing.join(', ')}` });
       return;
@@ -165,6 +247,7 @@ export async function parseInventoryWorkbook(buffer: Buffer): Promise<ParsedInve
 
     rows.push({
       rowNumber,
+      kind: 'product',
       sku: String(values.sku),
       barcode: values.barcode ? String(values.barcode) : null,
       name: String(values.name),

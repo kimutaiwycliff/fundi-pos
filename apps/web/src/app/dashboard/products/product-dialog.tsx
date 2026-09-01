@@ -44,15 +44,18 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import type { Product } from './page';
+import { stockKey } from '@/lib/stock-key';
+import type { Product, StockLevel, Variant } from './page';
 
 type Store = { id: number; name: string };
-interface StockLevel {
-  store: number;
-  product: number;
-  quantity: number;
-}
-type Variant = { id?: string; label: string; sku: string; barcode?: string | null };
+
+const STOCK_TYPES = [
+  { value: 'restock', label: 'Restock (received new stock)' },
+  { value: 'adjustment', label: 'Correction (recount - can be + or -)' },
+  { value: 'write_off', label: 'Write-off (damaged / lost / expired)' },
+] as const;
+
+const NO_VARIANT = '__base__';
 
 // Uppercase, hyphenated slug of the name - a reasonable default SKU so
 // adding a product doesn't require typing one by hand. Only ever runs
@@ -66,12 +69,6 @@ function deriveSku(name: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 40);
 }
-
-const STOCK_TYPES = [
-  { value: 'restock', label: 'Restock (received new stock)' },
-  { value: 'adjustment', label: 'Correction (recount - can be + or -)' },
-  { value: 'write_off', label: 'Write-off (damaged / lost / expired)' },
-] as const;
 
 // Multi-select "related products" picker - same Command+Popover shell as
 // ProductCombobox, but selecting an item toggles it into a list instead of
@@ -156,11 +153,13 @@ export function ProductDialog({
   stores,
   allProducts,
   stockLevels,
+  canSeeCost,
 }: {
   product?: Product;
   stores: Store[];
   allProducts: Product[];
   stockLevels: StockLevel[];
+  canSeeCost: boolean;
 }) {
   const router = useRouter();
   const isEdit = Boolean(product);
@@ -181,8 +180,10 @@ export function ProductDialog({
   const [variants, setVariants] = useState<Variant[]>(product?.variants ?? []);
   const [relatedProducts, setRelatedProducts] = useState<number[]>(product?.relatedProducts ?? []);
 
+  const savedVariants = variants.filter((v): v is Variant & { id: string } => Boolean(v.id));
   const [stockForm, setStockForm] = useState({
     storeId: stores[0] ? String(stores[0].id) : '',
+    variantId: savedVariants[0]?.id ?? NO_VARIANT,
     type: 'restock' as (typeof STOCK_TYPES)[number]['value'],
     quantity: '',
   });
@@ -207,9 +208,20 @@ export function ProductDialog({
     setForm((f) => ({ ...f, sku: e.target.value }));
   }
 
-  function updateVariant(index: number, field: keyof Variant) {
+  function updateVariant(index: number, field: 'label' | 'sku' | 'barcode') {
     return (e: React.ChangeEvent<HTMLInputElement>) =>
       setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [field]: e.target.value } : v)));
+  }
+
+  // Blank means "inherit the product's own price" - stored as undefined
+  // (dropped from the JSON body entirely) rather than 0, which would
+  // actually mean "free."
+  function updateVariantPrice(index: number, field: 'sellPrice' | 'costPrice') {
+    return (e: React.ChangeEvent<HTMLInputElement>) => {
+      const raw = e.target.value;
+      const parsed = raw === '' ? undefined : Number(raw);
+      setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [field]: parsed } : v)));
+    };
   }
 
   function addVariant() {
@@ -299,6 +311,7 @@ export function ProductDialog({
       body: JSON.stringify({
         id: crypto.randomUUID(),
         product: product.id,
+        variant: stockForm.variantId === NO_VARIANT ? null : stockForm.variantId,
         store: Number(stockForm.storeId),
         quantityDelta,
         reason: stockForm.type,
@@ -408,31 +421,61 @@ export function ProductDialog({
             {variants.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 No variants - this product is sold as-is. Add one for options like size or color (e.g. &quot;Red /
-                L&quot;).
+                L&quot;) - each can optionally have its own price, and stock is always tracked separately per variant.
               </p>
             ) : (
               <div className="flex flex-col gap-2">
                 {variants.map((variant, index) => (
-                  <div key={index} className="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2">
-                    <div className="flex flex-col gap-1">
-                      {index === 0 ? <Label className="text-xs text-muted-foreground">Label</Label> : null}
+                  <div key={index} className="flex flex-col gap-2 rounded-lg border p-3">
+                    <div className="flex items-center gap-2">
                       <Input
                         placeholder="e.g. Red / L"
                         value={variant.label}
                         onChange={updateVariant(index, 'label')}
+                        className="min-w-0 flex-1"
                       />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeVariant(index)}
+                        aria-label="Remove variant"
+                      >
+                        <X className="size-4" />
+                      </Button>
                     </div>
-                    <div className="flex flex-col gap-1">
-                      {index === 0 ? <Label className="text-xs text-muted-foreground">SKU</Label> : null}
-                      <Input value={variant.sku} onChange={updateVariant(index, 'sku')} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs text-muted-foreground">SKU</Label>
+                        <Input value={variant.sku} onChange={updateVariant(index, 'sku')} />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs text-muted-foreground">Barcode</Label>
+                        <Input value={variant.barcode ?? ''} onChange={updateVariant(index, 'barcode')} />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs text-muted-foreground">Sell price</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder={form.sellPrice || '0'}
+                          value={variant.sellPrice ?? ''}
+                          onChange={updateVariantPrice(index, 'sellPrice')}
+                        />
+                      </div>
+                      {canSeeCost ? (
+                        <div className="flex flex-col gap-1">
+                          <Label className="text-xs text-muted-foreground">Cost price</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder={form.costPrice || '0'}
+                            value={variant.costPrice ?? ''}
+                            onChange={updateVariantPrice(index, 'costPrice')}
+                          />
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="flex flex-col gap-1">
-                      {index === 0 ? <Label className="text-xs text-muted-foreground">Barcode</Label> : null}
-                      <Input value={variant.barcode ?? ''} onChange={updateVariant(index, 'barcode')} />
-                    </div>
-                    <Button type="button" variant="ghost" size="icon" onClick={() => removeVariant(index)} aria-label="Remove variant">
-                      <X className="size-4" />
-                    </Button>
                   </div>
                 ))}
               </div>
@@ -500,62 +543,88 @@ export function ProductDialog({
             ) : (
               <div className="flex flex-col gap-1 text-sm">
                 {productStock.map((level) => (
-                  <div key={level.store} className="flex items-center justify-between">
+                  <div key={stockKey(level.product, level.variant)} className="flex items-center justify-between">
                     <span className="text-muted-foreground">
                       {stores.find((s) => s.id === level.store)?.name ?? `Store #${level.store}`}
+                      {level.variantLabel ? ` · ${level.variantLabel}` : ''}
                     </span>
                     <span className="font-medium tabular-nums">{level.quantity}</span>
                   </div>
                 ))}
               </div>
             )}
-            <div className="mt-1 grid grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
-              <div className="flex min-w-0 flex-col gap-1">
-                <Label className="text-xs text-muted-foreground">Store</Label>
-                <Select value={stockForm.storeId} onValueChange={(v) => setStockForm((f) => ({ ...f, storeId: v }))}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {stores.map((s) => (
-                      <SelectItem key={s.id} value={String(s.id)}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="mt-1 flex flex-col gap-2">
+              <div className={savedVariants.length > 0 ? 'grid grid-cols-1 gap-2 sm:grid-cols-2' : ''}>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Store</Label>
+                  <Select value={stockForm.storeId} onValueChange={(v) => setStockForm((f) => ({ ...f, storeId: v }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {stores.map((s) => (
+                        <SelectItem key={s.id} value={String(s.id)}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {savedVariants.length > 0 ? (
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <Label className="text-xs text-muted-foreground">Variant</Label>
+                    <Select
+                      value={stockForm.variantId}
+                      onValueChange={(v) => setStockForm((f) => ({ ...f, variantId: v }))}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_VARIANT}>Base product (no variant)</SelectItem>
+                        {savedVariants.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
               </div>
-              <div className="flex min-w-0 flex-col gap-1">
-                <Label className="text-xs text-muted-foreground">Type</Label>
-                <Select
-                  value={stockForm.type}
-                  onValueChange={(v) => setStockForm((f) => ({ ...f, type: v as typeof f.type }))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STOCK_TYPES.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>
-                        {t.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Type</Label>
+                  <Select
+                    value={stockForm.type}
+                    onValueChange={(v) => setStockForm((f) => ({ ...f, type: v as typeof f.type }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STOCK_TYPES.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs text-muted-foreground">Qty</Label>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    className="w-24"
+                    value={stockForm.quantity}
+                    onChange={(e) => setStockForm((f) => ({ ...f, quantity: e.target.value }))}
+                  />
+                </div>
+                <Button type="button" onClick={handleStockAdjust} disabled={stockLoading}>
+                  {stockLoading ? 'Saving…' : 'Record'}
+                </Button>
               </div>
-              <div className="flex flex-col gap-1">
-                <Label className="text-xs text-muted-foreground">Qty</Label>
-                <Input
-                  type="number"
-                  step="0.001"
-                  className="w-24"
-                  value={stockForm.quantity}
-                  onChange={(e) => setStockForm((f) => ({ ...f, quantity: e.target.value }))}
-                />
-              </div>
-              <Button type="button" onClick={handleStockAdjust} disabled={stockLoading}>
-                {stockLoading ? 'Saving…' : 'Record'}
-              </Button>
             </div>
             {stockError ? <p className="text-sm text-destructive">{stockError}</p> : null}
           </div>

@@ -2,6 +2,8 @@ import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
 import { SellClient } from './sell-client';
 
+export type Variant = { id?: string; label: string; sku: string; barcode?: string | null; sellPrice?: number | null };
+
 export type Product = {
   id: number;
   sku: string;
@@ -10,6 +12,7 @@ export type Product = {
   sellPrice: number;
   taxRate: number;
   maxDiscountAmount: number;
+  variants: Variant[];
   // Fetched at depth=0 below, so this is bare ids, not populated docs.
   relatedProducts: number[];
 };
@@ -23,9 +26,10 @@ export type TenantReceiptInfo = {
   receiptFooter: string | null;
 };
 
-interface StockLevel {
+export interface StockLevel {
   store: number;
   product: number;
+  variant: string | null;
   quantity: number;
 }
 

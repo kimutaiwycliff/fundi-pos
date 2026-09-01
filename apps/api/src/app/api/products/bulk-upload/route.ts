@@ -10,6 +10,11 @@ import { isTenantUser, toID } from '@/lib/relations';
 // so re-uploading the same file (or a corrected version of it) is always
 // safe. Opening-stock rows go through the same StockMovements ledger every
 // other stock change does - never a direct stock-count write.
+//
+// Two passes: standalone product rows first (kind: 'product'), then variant
+// rows (kind: 'variant') - a variant's Parent SKU might point at a product
+// created in the FIRST pass of this very file, so variants can never be
+// processed before every product row has had a chance to exist.
 export async function POST(request: Request) {
   const payload = await getPayload({ config });
   const { user } = await payload.auth({ headers: await nextHeaders() });
@@ -31,8 +36,38 @@ export async function POST(request: Request) {
   const rowErrors: { row: number; message: string }[] = errors.map((e) => ({ row: e.rowNumber, message: e.message }));
   let createdCount = 0;
   let skippedCount = 0;
+  let variantsAddedCount = 0;
 
+  async function recordOpeningStock(productId: number, variant: string | null, quantity: number, rowNumber: number) {
+    if (quantity <= 0) return;
+    if (typeof storeId !== 'string' || !storeId) {
+      rowErrors.push({ row: rowNumber, message: `Opening Stock (${quantity}) ignored - no store selected for this upload` });
+      return;
+    }
+    await payload.create({
+      collection: 'stock-movements',
+      data: {
+        id: crypto.randomUUID(),
+        tenant: Number(tenantId),
+        store: Number(storeId),
+        product: productId,
+        variant,
+        quantityDelta: quantity,
+        reason: 'restock',
+        clientTimestamp: new Date().toISOString(),
+        sourceTerminal: 'bulk-import',
+      },
+      overrideAccess: true,
+    });
+  }
+
+  // Pass 1 - standalone products. skuToProductId tracks what THIS upload
+  // just created, so a variant row later in the same file can resolve its
+  // Parent SKU without a fresh query.
+  const skuToProductId = new Map<string, number>();
   for (const row of rows) {
+    if (row.kind !== 'product') continue;
+
     const existing = await payload.find({
       collection: 'products',
       where: { tenant: { equals: tenantId }, sku: { equals: row.sku } },
@@ -63,26 +98,66 @@ export async function POST(request: Request) {
       overrideAccess: true,
     });
     createdCount++;
+    skuToProductId.set(row.sku, Number(product.id));
 
-    if (row.openingStock > 0 && typeof storeId === 'string' && storeId) {
-      await payload.create({
-        collection: 'stock-movements',
-        data: {
-          id: crypto.randomUUID(),
-          tenant: Number(tenantId),
-          store: Number(storeId),
-          product: Number(product.id),
-          quantityDelta: row.openingStock,
-          reason: 'restock',
-          clientTimestamp: new Date().toISOString(),
-          sourceTerminal: 'bulk-import',
-        },
-        overrideAccess: true,
-      });
-    } else if (row.openingStock > 0) {
-      rowErrors.push({ row: row.rowNumber, message: `Opening Stock (${row.openingStock}) ignored - no store selected for this upload` });
-    }
+    await recordOpeningStock(Number(product.id), null, row.openingStock, row.rowNumber);
   }
 
-  return Response.json({ createdCount, skippedCount, errors: rowErrors });
+  // Pass 2 - variants. Each Parent SKU resolves against what pass 1 just
+  // created first, then falls back to an existing product already in the
+  // catalog (so a follow-up upload can add new variants to an old product).
+  for (const row of rows) {
+    if (row.kind !== 'variant') continue;
+
+    let parentId = skuToProductId.get(row.parentSku);
+    if (parentId == null) {
+      const existingParent = await payload.find({
+        collection: 'products',
+        where: { tenant: { equals: tenantId }, sku: { equals: row.parentSku } },
+        limit: 1,
+        overrideAccess: true,
+      });
+      parentId = existingParent.docs[0]?.id as number | undefined;
+    }
+    if (parentId == null) {
+      rowErrors.push({ row: row.rowNumber, message: `Parent SKU "${row.parentSku}" not found - add that product first` });
+      continue;
+    }
+
+    const parent = await payload.findByID({ collection: 'products', id: parentId, overrideAccess: true });
+    const existingVariants = (parent.variants ?? []) as Array<{ sku: string }>;
+    if (existingVariants.some((v) => v.sku === row.sku)) {
+      skippedCount++;
+      rowErrors.push({ row: row.rowNumber, message: `Variant SKU "${row.sku}" already exists on "${row.parentSku}" - skipped` });
+      continue;
+    }
+
+    const updated = await payload.update({
+      collection: 'products',
+      id: parentId,
+      data: {
+        variants: [
+          ...existingVariants,
+          {
+            label: row.label,
+            sku: row.sku,
+            barcode: row.barcode ?? undefined,
+            sellPrice: row.sellPrice ?? undefined,
+            costPrice: row.costPrice ?? undefined,
+          },
+        ],
+      },
+      overrideAccess: true,
+    });
+    variantsAddedCount++;
+
+    // The new variant's id is only assigned by this update - match it back
+    // by sku (unique within the product) to tag the opening-stock movement
+    // with the right sub-document, not the product's bare stock bucket.
+    const newVariants = (updated.variants ?? []) as Array<{ id?: string; sku: string }>;
+    const newVariantId = newVariants.find((v) => v.sku === row.sku)?.id ?? null;
+    await recordOpeningStock(parentId, newVariantId, row.openingStock, row.rowNumber);
+  }
+
+  return Response.json({ createdCount, variantsAddedCount, skippedCount, errors: rowErrors });
 }

@@ -288,6 +288,14 @@ export interface Product {
         label: string;
         sku: string;
         barcode?: string | null;
+        /**
+         * Leave blank to use the product's own sell price.
+         */
+        sellPrice?: number | null;
+        /**
+         * Leave blank to use the product's own cost price.
+         */
+        costPrice?: number | null;
         id?: string | null;
       }[]
     | null;
@@ -785,6 +793,8 @@ export interface ProductsSelect<T extends boolean = true> {
         label?: T;
         sku?: T;
         barcode?: T;
+        sellPrice?: T;
+        costPrice?: T;
         id?: T;
       };
   costPrice?: T;

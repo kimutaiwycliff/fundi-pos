@@ -23,8 +23,11 @@ import {
 } from '@/components/ui/select';
 import { ProductCombobox } from '@/components/product-combobox';
 
-type Product = { id: number; name: string; sku: string };
+type Variant = { id?: string; label: string; sku: string; barcode?: string | null };
+type Product = { id: number; name: string; sku: string; variants: Variant[] };
 type Store = { id: number; name: string };
+
+const NO_VARIANT = '__base__';
 
 const TYPES = [
   { value: 'restock', label: 'Restock (received new stock)' },
@@ -44,10 +47,20 @@ export function StockAdjustmentDialog({ products, stores }: { products: Product[
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     productId: '',
+    variantId: NO_VARIANT,
     storeId: stores[0] ? String(stores[0].id) : '',
     type: 'restock' as (typeof TYPES)[number]['value'],
     quantity: '',
   });
+
+  const selectedProduct = products.find((p) => String(p.id) === form.productId);
+  const savedVariants = (selectedProduct?.variants ?? []).filter((v): v is Variant & { id: string } => Boolean(v.id));
+
+  function handleProductChange(productId: string) {
+    const product = products.find((p) => String(p.id) === productId);
+    const firstVariant = product?.variants.find((v) => v.id)?.id;
+    setForm((f) => ({ ...f, productId, variantId: firstVariant ?? NO_VARIANT }));
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -72,6 +85,7 @@ export function StockAdjustmentDialog({ products, stores }: { products: Product[
       body: JSON.stringify({
         id: crypto.randomUUID(),
         product: Number(form.productId),
+        variant: form.variantId === NO_VARIANT ? null : form.variantId,
         store: Number(form.storeId),
         quantityDelta,
         reason: form.type,
@@ -90,7 +104,7 @@ export function StockAdjustmentDialog({ products, stores }: { products: Product[
     }
 
     setOpen(false);
-    setForm((f) => ({ ...f, productId: '', quantity: '' }));
+    setForm((f) => ({ ...f, productId: '', variantId: NO_VARIANT, quantity: '' }));
     setLoading(false);
     toast.success('Stock movement recorded');
     router.refresh();
@@ -111,10 +125,28 @@ export function StockAdjustmentDialog({ products, stores }: { products: Product[
             <ProductCombobox
               products={products}
               value={form.productId}
-              onValueChange={(v) => setForm((f) => ({ ...f, productId: v }))}
+              onValueChange={handleProductChange}
               placeholder="Choose a product"
             />
           </div>
+          {savedVariants.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="variant">Variant</Label>
+              <Select value={form.variantId} onValueChange={(v) => setForm((f) => ({ ...f, variantId: v }))}>
+                <SelectTrigger id="variant" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_VARIANT}>Base product (no variant)</SelectItem>
+                  {savedVariants.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="store">Store</Label>
             <Select value={form.storeId} onValueChange={(v) => setForm((f) => ({ ...f, storeId: v }))}>

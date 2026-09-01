@@ -2,21 +2,30 @@
 
 import { useState } from 'react';
 import { Search } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/empty-state';
+import { stockKey } from '@/lib/stock-key';
 import type { Product } from './page';
 
 // Barcode scanners are plain USB/Bluetooth-HID keyboard input - they type
 // into whatever has focus and end with Enter, so an autofocused input that
 // adds the first result on Enter already handles scans with no special-case
 // code, same as apps/desktop/src/Till.tsx's search box.
+//
+// A tile only ever reports "this product was picked" - it never decides
+// whether that means adding straight to cart or opening a variant picker
+// first (that's sell-client.tsx's requestAdd, shared by this search grid
+// and the "frequently bought with" suggestion strip), so the stock/price
+// shown here for a variant-having product is a summary (total across all
+// variants, cheapest price) rather than one exact figure.
 export function ProductSearch({
   products,
-  stockByProduct,
+  stockByKey,
   onSelect,
 }: {
   products: Product[];
-  stockByProduct: Map<number, number>;
+  stockByKey: Map<string, number>;
   onSelect: (product: Product) => void;
 }) {
   const [query, setQuery] = useState('');
@@ -28,7 +37,8 @@ export function ProductSearch({
           (p) =>
             (p.barcode && p.barcode.toLowerCase() === trimmed) ||
             p.name.toLowerCase().includes(trimmed) ||
-            p.sku.toLowerCase().includes(trimmed),
+            p.sku.toLowerCase().includes(trimmed) ||
+            p.variants.some((v) => v.sku.toLowerCase() === trimmed || (v.barcode && v.barcode.toLowerCase() === trimmed)),
         )
         .slice(0, 24)
     : [];
@@ -56,8 +66,14 @@ export function ProductSearch({
       {results.length > 0 ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {results.map((product) => {
-            const stock = stockByProduct.get(product.id) ?? 0;
+            const hasVariants = product.variants.length > 0;
+            const stock = hasVariants
+              ? product.variants.reduce((sum, v) => sum + (stockByKey.get(stockKey(product.id, v.id)) ?? 0), 0)
+              : (stockByKey.get(stockKey(product.id, null)) ?? 0);
             const outOfStock = stock <= 0;
+            const priceLabel = hasVariants
+              ? `from ${Math.min(...product.variants.map((v) => v.sellPrice ?? product.sellPrice)).toFixed(2)}`
+              : product.sellPrice.toFixed(2);
             return (
               <button
                 key={product.id}
@@ -66,10 +82,17 @@ export function ProductSearch({
                 onClick={() => handleSelect(product)}
                 className="flex min-h-11 flex-col gap-1 rounded-lg border p-3 text-left transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <span className="truncate text-sm font-medium">{product.name}</span>
+                <span className="flex items-center gap-1.5 truncate text-sm font-medium">
+                  <span className="truncate">{product.name}</span>
+                  {hasVariants ? (
+                    <Badge variant="outline" className="shrink-0">
+                      {product.variants.length}
+                    </Badge>
+                  ) : null}
+                </span>
                 <span className="truncate text-xs text-muted-foreground">{product.sku}</span>
                 <span className="flex items-center justify-between text-xs">
-                  <span className="font-semibold">{product.sellPrice.toFixed(2)}</span>
+                  <span className="font-semibold">{priceLabel}</span>
                   <span className={outOfStock ? 'text-destructive' : 'text-muted-foreground'}>
                     {outOfStock ? 'Out of stock' : `${stock} in stock`}
                   </span>

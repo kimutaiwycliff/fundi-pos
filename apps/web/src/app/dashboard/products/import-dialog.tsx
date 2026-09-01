@@ -25,6 +25,7 @@ type Store = { id: number; name: string };
 
 interface UploadResult {
   createdCount: number;
+  variantsAddedCount: number;
   skippedCount: number;
   errors: { row: number; message: string }[];
 }
@@ -68,8 +69,9 @@ export function ImportProductsDialog({ stores }: { stores: Store[] }) {
     const uploadResult = body as UploadResult;
     setResult(uploadResult);
     setLoading(false);
+    const variantNote = uploadResult.variantsAddedCount > 0 ? `, ${uploadResult.variantsAddedCount} variant${uploadResult.variantsAddedCount === 1 ? '' : 's'} added` : '';
     toast.success(
-      `${uploadResult.createdCount} product${uploadResult.createdCount === 1 ? '' : 's'} created, ${uploadResult.skippedCount} skipped`,
+      `${uploadResult.createdCount} product${uploadResult.createdCount === 1 ? '' : 's'} created${variantNote}, ${uploadResult.skippedCount} skipped`,
     );
     router.refresh();
   }
@@ -132,8 +134,11 @@ export function ImportProductsDialog({ stores }: { stores: Store[] }) {
           {result ? (
             <div className="rounded-md border bg-muted/40 p-3 text-sm">
               <p>
-                {result.createdCount} product{result.createdCount === 1 ? '' : 's'} created,{' '}
-                {result.skippedCount} skipped.
+                {result.createdCount} product{result.createdCount === 1 ? '' : 's'} created
+                {result.variantsAddedCount > 0
+                  ? `, ${result.variantsAddedCount} variant${result.variantsAddedCount === 1 ? '' : 's'} added`
+                  : ''}
+                , {result.skippedCount} skipped.
               </p>
               {result.errors.length > 0 ? (
                 <ul className="mt-2 list-disc pl-4 text-muted-foreground">
