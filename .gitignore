@@ -84,6 +84,8 @@ node_modules/
 .expo/
 .yarn/
 dist/
+/apps/mobile/ios/
+/apps/mobile/android/
 npm-debug.*
 *.jks
 *.p8
