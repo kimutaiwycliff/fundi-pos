@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import { Modal, View, Text, TextInput, Pressable } from 'react-native';
 import { findManagerAndCheckPinLocally, authorizeOrderStatusChange } from '../lib/pin';
 
@@ -25,6 +26,7 @@ export function VoidRefundModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const placeholderColor = useMutedPlaceholderColor();
   const [status, setStatus] = useState<'voided' | 'refunded'>('voided');
   const [managerPhone, setManagerPhone] = useState('');
   const [managerPin, setManagerPin] = useState('');
@@ -82,7 +84,7 @@ export function VoidRefundModal({
           <TextInput
             className="mt-3 rounded-lg border border-border bg-card px-3 py-2 text-foreground"
             placeholder="Manager phone"
-            placeholderTextColor="#6e605a"
+            placeholderTextColor={placeholderColor}
             keyboardType="phone-pad"
             value={managerPhone}
             onChangeText={setManagerPhone}
@@ -90,7 +92,7 @@ export function VoidRefundModal({
           <TextInput
             className="mt-2 rounded-lg border border-border bg-card px-3 py-2 text-foreground"
             placeholder="Manager PIN"
-            placeholderTextColor="#6e605a"
+            placeholderTextColor={placeholderColor}
             secureTextEntry
             keyboardType="number-pad"
             maxLength={6}

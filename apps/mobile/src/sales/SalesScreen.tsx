@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal } from 'react-native';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
@@ -32,6 +33,7 @@ interface OrderLine {
 // void/refund and settling both still require connectivity, per the plan's
 // Option-A decision.
 export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser; payloadToken: string; storeId: number | null }) {
+  const placeholderColor = useMutedPlaceholderColor();
   const [query, setQuery] = useState('');
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [receiptOrder, setReceiptOrder] = useState<OrderRow | null>(null);
@@ -92,7 +94,7 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
         <TextInput
           className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
           placeholder="Search by order id or customer name..."
-          placeholderTextColor="#6e605a"
+          placeholderTextColor={placeholderColor}
           value={query}
           onChangeText={setQuery}
         />

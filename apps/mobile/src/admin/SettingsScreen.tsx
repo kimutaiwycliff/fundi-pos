@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable } from 'react-native';
 import { API_BASE_URL } from '../lib/auth';
 
@@ -14,6 +15,7 @@ interface Tenant {
 // schema.ts's tenants table) - this screen is only where they're edited,
 // which requires connectivity.
 export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: string; tenantId: number }) {
+  const placeholderColor = useMutedPlaceholderColor();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [name, setName] = useState('');
   const [receiptHeader, setReceiptHeader] = useState('');
@@ -70,7 +72,7 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
         className="min-h-16 rounded-lg border border-border bg-card px-3 py-2 text-foreground"
         multiline
         placeholder={'e.g. Westlands, Nairobi\n0700 000 000'}
-        placeholderTextColor="#6e605a"
+        placeholderTextColor={placeholderColor}
         value={receiptHeader}
         onChangeText={setReceiptHeader}
       />
@@ -80,7 +82,7 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
         className="min-h-16 rounded-lg border border-border bg-card px-3 py-2 text-foreground"
         multiline
         placeholder="e.g. Thank you for your business!"
-        placeholderTextColor="#6e605a"
+        placeholderTextColor={placeholderColor}
         value={receiptFooter}
         onChangeText={setReceiptFooter}
       />

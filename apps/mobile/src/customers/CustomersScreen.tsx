@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, ScrollView } from 'react-native';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
@@ -44,6 +45,7 @@ function orderDateLabel(o: Pick<RecentOrder, 'created_at' | 'synced_at'>): strin
 export function CustomersScreen({ user, payloadToken, storeId }: { user: PayloadUser; payloadToken: string; storeId: number | null }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
 
+  const placeholderColor = useMutedPlaceholderColor();
   const [query, setQuery] = useState('');
   const [customers, setCustomers] = useState<LocalCustomer[]>([]);
   const [detailCustomer, setDetailCustomer] = useState<LocalCustomer | null>(null);
@@ -108,7 +110,7 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
         <TextInput
           className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
           placeholder="Search customers by name or phone..."
-          placeholderTextColor="#6e605a"
+          placeholderTextColor={placeholderColor}
           value={query}
           onChangeText={setQuery}
         />

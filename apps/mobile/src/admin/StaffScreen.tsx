@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, Alert, ScrollView } from 'react-native';
 import { API_BASE_URL } from '../lib/auth';
 
@@ -123,6 +124,7 @@ function StaffFormModal({
   onSaved: () => void;
 }) {
   const isEdit = staff != null;
+  const placeholderColor = useMutedPlaceholderColor();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -182,11 +184,11 @@ function StaffFormModal({
           </Pressable>
         </View>
         <ScrollView contentContainerClassName="gap-3 p-4">
-          <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Name" placeholderTextColor="#6e605a" value={name} onChangeText={setName} />
+          <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Name" placeholderTextColor={placeholderColor} value={name} onChangeText={setName} />
           <TextInput
             className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
             placeholder="Email"
-            placeholderTextColor="#6e605a"
+            placeholderTextColor={placeholderColor}
             autoCapitalize="none"
             keyboardType="email-address"
             value={email}
@@ -195,7 +197,7 @@ function StaffFormModal({
           <TextInput
             className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
             placeholder={isEdit ? 'New password (leave blank to keep current)' : 'Password'}
-            placeholderTextColor="#6e605a"
+            placeholderTextColor={placeholderColor}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -203,7 +205,7 @@ function StaffFormModal({
           <TextInput
             className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
             placeholder="Phone e.g. 0712345678"
-            placeholderTextColor="#6e605a"
+            placeholderTextColor={placeholderColor}
             keyboardType="phone-pad"
             value={phone}
             onChangeText={setPhone}
@@ -211,7 +213,7 @@ function StaffFormModal({
           <TextInput
             className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
             placeholder={isEdit ? 'Reset till PIN (leave blank to keep current)' : 'Till PIN (4-6 digits)'}
-            placeholderTextColor="#6e605a"
+            placeholderTextColor={placeholderColor}
             keyboardType="number-pad"
             maxLength={6}
             value={pin}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, Alert } from 'react-native';
 import { API_BASE_URL } from '../lib/auth';
 
@@ -14,6 +15,7 @@ interface StoreRow {
 // beforeDelete guard pattern as Users.ts) - surfaced here verbatim rather
 // than re-implemented client-side.
 export function StoresScreen({ payloadToken, tenantId }: { payloadToken: string; tenantId: number }) {
+  const placeholderColor = useMutedPlaceholderColor();
   const [stores, setStores] = useState<StoreRow[]>([]);
   const [editing, setEditing] = useState<StoreRow | 'new' | null>(null);
   const [name, setName] = useState('');
@@ -109,9 +111,9 @@ export function StoresScreen({ payloadToken, tenantId }: { payloadToken: string;
             </Pressable>
           </View>
           <View className="gap-3 p-4">
-            <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Name" placeholderTextColor="#6e605a" value={name} onChangeText={setName} />
-            <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Address" placeholderTextColor="#6e605a" value={address} onChangeText={setAddress} />
-            <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Timezone" placeholderTextColor="#6e605a" value={timezone} onChangeText={setTimezone} />
+            <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Name" placeholderTextColor={placeholderColor} value={name} onChangeText={setName} />
+            <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Address" placeholderTextColor={placeholderColor} value={address} onChangeText={setAddress} />
+            <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Timezone" placeholderTextColor={placeholderColor} value={timezone} onChangeText={setTimezone} />
             {error ? <Text className="text-destructive">{error}</Text> : null}
             <Pressable className={`items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`} disabled={busy} onPress={handleSubmit}>
               <Text className="font-medium text-primary-foreground">{busy ? 'Saving...' : editing === 'new' ? 'Create store' : 'Save changes'}</Text>

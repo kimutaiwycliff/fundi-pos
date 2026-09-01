@@ -1,4 +1,6 @@
 import '../../global.css';
+import { StatusBar } from 'expo-status-bar';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator, SafeAreaView, KeyboardAvoidingView, Platform, Linking } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -11,6 +13,7 @@ import { loadSession, saveSession, clearSession, updateSessionStore, type Persis
 import { getDb } from '../db/database';
 import { RootTabs } from '../navigation/RootTabs';
 import { checkForUpdate, type AvailableUpdate } from '../lib/updateCheck';
+import { PinPad } from '../components/PinPad';
 
 type ConnectionState = 'idle' | 'logging-in' | 'connecting' | 'connected' | 'error';
 type LoginMode = 'pin' | 'password';
@@ -27,6 +30,7 @@ interface StoreOption {
 // synchronously there (session.ts/terminal.ts) is awaited here since
 // expo-secure-store is async.
 function AppInner() {
+  const placeholderColor = useMutedPlaceholderColor();
   const [initializing, setInitializing] = useState(true);
   const [mode, setMode] = useState<LoginMode>('pin');
   const [phone, setPhone] = useState('');
@@ -86,11 +90,12 @@ function AppInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, user]);
 
-  async function handleLogin() {
+  async function handleLogin(pinOverride?: string) {
     setError(null);
     try {
       setState('logging-in');
-      const { payloadToken, user: loggedInUser } = mode === 'pin' ? await loginWithPin(phone, pin) : await loginToPayload(email, password);
+      const { payloadToken, user: loggedInUser } =
+        mode === 'pin' ? await loginWithPin(phone, pinOverride ?? pin) : await loginToPayload(email, password);
       payloadTokenRef.current = payloadToken;
       setUser(loggedInUser);
 
@@ -111,12 +116,12 @@ function AppInner() {
   // mechanism (pin.ts's checkPinLocallyById). Deliberately checks only
   // resumeCandidate's own user id: this is "resume MY session", not a
   // general login.
-  async function handleResume() {
+  async function handleResume(pinOverride?: string) {
     if (!resumeCandidate) return;
     setResumeError(null);
     try {
       setState('logging-in');
-      const result = await checkPinLocallyById(resumeCandidate.user.id, resumePin);
+      const result = await checkPinLocallyById(resumeCandidate.user.id, pinOverride ?? resumePin);
       if (!result || !result.valid) {
         setResumeError('Incorrect PIN');
         setState('idle');
@@ -191,7 +196,7 @@ function AppInner() {
           value={nameDraft}
           onChangeText={setNameDraft}
           placeholder="e.g. Front Counter"
-          placeholderTextColor="#6e605a"
+          placeholderTextColor={placeholderColor}
         />
         <PrimaryButton label="Continue" onPress={handleSaveTerminalName} disabled={!nameDraft.trim()} />
       </LoginShell>
@@ -250,18 +255,19 @@ function AppInner() {
     const resumeBusy = state === 'logging-in' || state === 'connecting';
     return (
       <LoginShell title="Welcome back" subtitle={resumeCandidate.user.name || resumeCandidate.user.email}>
-        <TextInput
-          className="rounded-lg border border-border bg-card px-4 py-3 text-center text-2xl tracking-widest text-foreground"
-          autoFocus
+        <PinPad
           value={resumePin}
-          onChangeText={setResumePin}
-          placeholder="••••"
-          placeholderTextColor="#6e605a"
-          secureTextEntry
-          keyboardType="number-pad"
-          maxLength={6}
+          onChange={(v) => {
+            setResumeError(null);
+            setResumePin(v);
+          }}
+          onComplete={(v) => handleResume(v)}
+          disabled={resumeBusy}
+          error={resumeError}
         />
-        <PrimaryButton label={resumeBusy ? 'Continuing...' : 'Continue'} onPress={handleResume} disabled={resumeBusy || !resumePin} />
+        {resumePin.length > 0 && resumePin.length < 6 ? (
+          <PrimaryButton label={resumeBusy ? 'Continuing...' : 'Continue'} onPress={() => handleResume()} disabled={resumeBusy} />
+        ) : null}
         {resumeError && <Text className="text-center text-destructive">{resumeError}</Text>}
         <Pressable className="items-center py-2" onPress={handleUseDifferentAccount} disabled={resumeBusy}>
           <Text className="text-muted-foreground">Use a different account</Text>
@@ -275,36 +281,20 @@ function AppInner() {
   const submitLabel = state === 'logging-in' ? 'Logging in...' : state === 'connecting' ? 'Connecting...' : 'Log in';
 
   return (
-    <LoginShell title="Fundi Till" subtitle="Sign in to start selling">
-      <View className="flex-row rounded-lg bg-muted p-1">
-        <Pressable className={`flex-1 items-center rounded-md py-2 ${mode === 'pin' ? 'bg-card' : ''}`} onPress={() => setMode('pin')}>
-          <Text className={mode === 'pin' ? 'font-medium text-foreground' : 'text-muted-foreground'}>PIN login</Text>
-        </Pressable>
-        <Pressable className={`flex-1 items-center rounded-md py-2 ${mode === 'password' ? 'bg-card' : ''}`} onPress={() => setMode('password')}>
-          <Text className={mode === 'password' ? 'font-medium text-foreground' : 'text-muted-foreground'}>Password login</Text>
-        </Pressable>
-      </View>
-
+    <LoginShell title="Fundi Till" subtitle={mode === 'pin' ? 'Sign in with your phone and till PIN' : 'Sign in with email and password'}>
       {mode === 'pin' ? (
         <>
           <TextInput
-            className="rounded-lg border border-border bg-card px-4 py-3 text-foreground"
+            className="rounded-lg border border-border bg-card px-4 py-3 text-center text-lg text-foreground"
             value={phone}
             onChangeText={setPhone}
             placeholder="0712345678"
-            placeholderTextColor="#6e605a"
+            placeholderTextColor={placeholderColor}
             keyboardType="phone-pad"
+            autoFocus
           />
-          <TextInput
-            className="rounded-lg border border-border bg-card px-4 py-3 text-foreground"
-            value={pin}
-            onChangeText={setPin}
-            placeholder="••••"
-            placeholderTextColor="#6e605a"
-            secureTextEntry
-            keyboardType="number-pad"
-            maxLength={6}
-          />
+          <PinPad value={pin} onChange={setPin} onComplete={(v) => handleLogin(v)} disabled={busy} error={error} />
+          {pin.length > 0 && pin.length < 6 ? <PrimaryButton label={submitLabel} onPress={() => handleLogin()} disabled={busy} /> : null}
         </>
       ) : (
         <>
@@ -313,7 +303,7 @@ function AppInner() {
             value={email}
             onChangeText={setEmail}
             placeholder="you@business.com"
-            placeholderTextColor="#6e605a"
+            placeholderTextColor={placeholderColor}
             autoCapitalize="none"
             keyboardType="email-address"
           />
@@ -322,14 +312,25 @@ function AppInner() {
             value={password}
             onChangeText={setPassword}
             placeholder="••••••••"
-            placeholderTextColor="#6e605a"
+            placeholderTextColor={placeholderColor}
             secureTextEntry
           />
+          <PrimaryButton label={submitLabel} onPress={() => handleLogin()} disabled={busy} />
         </>
       )}
 
-      <PrimaryButton label={submitLabel} onPress={handleLogin} disabled={busy} />
       {error && <Text className="text-center text-destructive">{error}</Text>}
+
+      <Pressable
+        className="items-center py-1"
+        onPress={() => {
+          setMode(mode === 'pin' ? 'password' : 'pin');
+          setError(null);
+        }}
+        disabled={busy}
+      >
+        <Text className="text-sm text-muted-foreground">{mode === 'pin' ? 'Sign in with email instead' : 'Sign in with phone + PIN instead'}</Text>
+      </Pressable>
       <Text className="text-center text-xs text-muted-foreground">
         {terminalName} · {terminalIdRef.current}
       </Text>
@@ -356,7 +357,8 @@ function LoginShell({ title, subtitle, children }: { title: string; subtitle?: s
 function PrimaryButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
   return (
     <Pressable
-      className={`items-center rounded-lg bg-primary px-4 py-3 ${disabled ? 'opacity-50' : 'active:opacity-80'}`}
+      className={`items-center overflow-hidden rounded-lg bg-primary px-4 py-3 ${disabled ? 'opacity-50' : 'active:opacity-80'}`}
+      android_ripple={disabled ? undefined : { color: '#ffffff40' }}
       onPress={onPress}
       disabled={disabled}
     >
@@ -368,6 +370,8 @@ function PrimaryButton({ label, onPress, disabled }: { label: string; onPress: (
 export const App = () => {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      {/* "auto" tracks the OS color scheme itself (light content on dark, dark content on light) - same source of truth as global.css's prefers-color-scheme tokens, so the status bar never mismatches the app's own theme. */}
+      <StatusBar style="auto" />
       <AppInner />
     </GestureHandlerRootView>
   );

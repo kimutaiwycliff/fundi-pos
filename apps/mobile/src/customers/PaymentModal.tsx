@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import { Modal, View, Text, TextInput, Pressable, ScrollView } from 'react-native';
 import { API_BASE_URL, type PayloadUser } from '../lib/auth';
 import { findManagerAndCheckPinLocally, recordCreditPayment } from '../lib/pin';
@@ -49,6 +50,7 @@ export function PaymentModal({
   onRecorded: () => void;
 }) {
   const isSelfManager = user.role === 'owner' || user.role === 'manager';
+  const placeholderColor = useMutedPlaceholderColor();
 
   const [payments, setPayments] = useState<CreditPaymentRecord[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -200,7 +202,7 @@ export function PaymentModal({
                 <TextInput
                   className="rounded-md border border-border bg-card px-3 py-2 text-foreground"
                   placeholder="Manager phone"
-                  placeholderTextColor="#6e605a"
+                  placeholderTextColor={placeholderColor}
                   keyboardType="phone-pad"
                   value={managerPhone}
                   onChangeText={setManagerPhone}
@@ -208,7 +210,7 @@ export function PaymentModal({
                 <TextInput
                   className="rounded-md border border-border bg-card px-3 py-2 text-foreground"
                   placeholder="Manager PIN"
-                  placeholderTextColor="#6e605a"
+                  placeholderTextColor={placeholderColor}
                   secureTextEntry
                   keyboardType="number-pad"
                   maxLength={6}

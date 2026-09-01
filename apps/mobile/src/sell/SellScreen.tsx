@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Alert, Modal } from 'react-native';
 import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
 import { getDb } from '../db/database';
@@ -58,6 +59,7 @@ export function SellScreen({
   storeId: number | null;
 }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
+  const placeholderColor = useMutedPlaceholderColor();
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LocalProduct[]>([]);
@@ -334,7 +336,7 @@ export function SellScreen({
           autoFocus
           className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
           placeholder="Scan barcode or search by name/SKU..."
-          placeholderTextColor="#6e605a"
+          placeholderTextColor={placeholderColor}
           value={query}
           onChangeText={setQuery}
         />
@@ -446,7 +448,7 @@ export function SellScreen({
                           className="h-8 w-24 rounded-md border border-border bg-card px-2 text-sm text-foreground"
                           keyboardType="decimal-pad"
                           placeholder="0.00"
-                          placeholderTextColor="#6e605a"
+                          placeholderTextColor={placeholderColor}
                           value={item.discountAmount === 0 ? '' : String(item.discountAmount)}
                           onChangeText={(text) => updateDiscountAmount(item, Number(text) || 0)}
                         />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import { Modal, View, Text, TextInput, Pressable, FlatList } from 'react-native';
 import { getDb } from '../db/database';
 import { uuid } from '../lib/uuid';
@@ -45,6 +46,7 @@ export function StockAdjustmentModal({
   onClose: () => void;
   onRecorded: () => void;
 }) {
+  const placeholderColor = useMutedPlaceholderColor();
   const [productQuery, setProductQuery] = useState('');
   const [productResults, setProductResults] = useState<PickableProduct[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<PickableProduct | null>(null);
@@ -165,7 +167,7 @@ export function StockAdjustmentModal({
               <TextInput
                 className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
                 placeholder="Search product by name or SKU..."
-                placeholderTextColor="#6e605a"
+                placeholderTextColor={placeholderColor}
                 value={productQuery}
                 onChangeText={setProductQuery}
               />

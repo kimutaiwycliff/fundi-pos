@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Alert } from 'react-native';
 import { getDb } from '../db/database';
 import { API_BASE_URL } from '../lib/auth';
@@ -26,6 +27,7 @@ export function CustomerPicker({
   value: LocalCustomer | null;
   onChange: (customer: LocalCustomer | null) => void;
 }) {
+  const placeholderColor = useMutedPlaceholderColor();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LocalCustomer[]>([]);
   const [creating, setCreating] = useState(false);
@@ -102,7 +104,7 @@ export function CustomerPicker({
       <TextInput
         className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
         placeholder="Search customer by name or phone..."
-        placeholderTextColor="#6e605a"
+        placeholderTextColor={placeholderColor}
         value={query}
         onChangeText={(text) => {
           setQuery(text);
@@ -134,7 +136,7 @@ export function CustomerPicker({
           <TextInput
             className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
             placeholder="Phone e.g. 0712345678"
-            placeholderTextColor="#6e605a"
+            placeholderTextColor={placeholderColor}
             keyboardType="phone-pad"
             value={newPhone}
             onChangeText={setNewPhone}
@@ -142,7 +144,7 @@ export function CustomerPicker({
           <TextInput
             className="rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground"
             placeholder="Email (optional, for invoices)"
-            placeholderTextColor="#6e605a"
+            placeholderTextColor={placeholderColor}
             autoCapitalize="none"
             keyboardType="email-address"
             value={newEmail}

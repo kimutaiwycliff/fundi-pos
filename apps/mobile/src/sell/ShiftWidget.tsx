@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, Alert } from 'react-native';
 import { closeShift, openShift, type Shift } from '../lib/shifts';
 
@@ -24,6 +25,7 @@ export function ShiftWidget({
   shift: Shift | null;
   onShiftChange: (shift: Shift | null) => void;
 }) {
+  const placeholderColor = useMutedPlaceholderColor();
   const [openingFloat, setOpeningFloat] = useState('');
   const [closingCash, setClosingCash] = useState('');
   const [closing, setClosing] = useState(false);
@@ -69,7 +71,7 @@ export function ShiftWidget({
         <TextInput
           className="h-8 w-32 rounded-md border border-border bg-card px-2 text-sm text-foreground"
           placeholder="Opening float"
-          placeholderTextColor="#6e605a"
+          placeholderTextColor={placeholderColor}
           keyboardType="decimal-pad"
           value={openingFloat}
           onChangeText={setOpeningFloat}
@@ -93,7 +95,7 @@ export function ShiftWidget({
           <TextInput
             className="h-8 w-32 rounded-md border border-border bg-card px-2 text-sm text-foreground"
             placeholder="Cash counted"
-            placeholderTextColor="#6e605a"
+            placeholderTextColor={placeholderColor}
             keyboardType="decimal-pad"
             value={closingCash}
             onChangeText={setClosingCash}
