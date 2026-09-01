@@ -22,10 +22,12 @@ import type { Product } from './page';
 export function ProductSearch({
   products,
   stockByKey,
+  mediaUrlById,
   onSelect,
 }: {
   products: Product[];
   stockByKey: Map<string, number>;
+  mediaUrlById: Record<number, string>;
   onSelect: (product: Product) => void;
 }) {
   const [query, setQuery] = useState('');
@@ -74,27 +76,34 @@ export function ProductSearch({
             const priceLabel = hasVariants
               ? `from ${Math.min(...product.variants.map((v) => v.sellPrice ?? product.sellPrice)).toFixed(2)}`
               : product.sellPrice.toFixed(2);
+            const imageUrl = product.image != null ? mediaUrlById[product.image] : undefined;
             return (
               <button
                 key={product.id}
                 type="button"
                 disabled={outOfStock}
                 onClick={() => handleSelect(product)}
-                className="flex min-h-11 flex-col gap-1 rounded-lg border p-3 text-left transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex min-h-11 gap-2 rounded-lg border p-3 text-left transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <span className="flex items-center gap-1.5 truncate text-sm font-medium">
-                  <span className="truncate">{product.name}</span>
-                  {hasVariants ? (
-                    <Badge variant="outline" className="shrink-0">
-                      {product.variants.length}
-                    </Badge>
-                  ) : null}
-                </span>
-                <span className="truncate text-xs text-muted-foreground">{product.sku}</span>
-                <span className="flex items-center justify-between text-xs">
-                  <span className="font-semibold">{priceLabel}</span>
-                  <span className={outOfStock ? 'text-destructive' : 'text-muted-foreground'}>
-                    {outOfStock ? 'Out of stock' : `${stock} in stock`}
+                {imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={imageUrl} alt="" className="size-10 shrink-0 rounded-md border object-cover" />
+                ) : null}
+                <span className="flex min-w-0 flex-1 flex-col gap-1">
+                  <span className="flex items-center gap-1.5 truncate text-sm font-medium">
+                    <span className="truncate">{product.name}</span>
+                    {hasVariants ? (
+                      <Badge variant="outline" className="shrink-0">
+                        {product.variants.length}
+                      </Badge>
+                    ) : null}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">{product.sku}</span>
+                  <span className="flex items-center justify-between text-xs">
+                    <span className="font-semibold">{priceLabel}</span>
+                    <span className={outOfStock ? 'text-destructive' : 'text-muted-foreground'}>
+                      {outOfStock ? 'Out of stock' : `${stock} in stock`}
+                    </span>
                   </span>
                 </span>
               </button>

@@ -25,6 +25,12 @@ export const Products: CollectionConfig = {
     { name: 'name', type: 'text', required: true },
     { name: 'category', type: 'text' },
     {
+      name: 'image',
+      type: 'upload',
+      relationTo: 'media',
+      admin: { description: "Optional. Shown on the Sell page and Products list. A variant without its own image below falls back to this one." },
+    },
+    {
       name: 'isActive',
       type: 'checkbox',
       defaultValue: true,
@@ -40,6 +46,12 @@ export const Products: CollectionConfig = {
         { name: 'label', type: 'text', required: true }, // e.g. "Red / L"
         { name: 'sku', type: 'text' },
         { name: 'barcode', type: 'text' },
+        {
+          name: 'image',
+          type: 'upload',
+          relationTo: 'media',
+          admin: { description: "Optional. Leave blank to use the product's own image." },
+        },
         // Null/unset means "use the product's own price" - most variants
         // (e.g. a T-shirt's colors) don't need their own price, but some
         // (e.g. a drill's battery-capacity options) genuinely do.

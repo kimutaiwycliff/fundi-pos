@@ -18,6 +18,9 @@ export type Variant = {
   // Absent entirely from the API response for non-owners (same field-level
   // access as the product-level costPrice below) - never assume it's there.
   costPrice?: number | null;
+  // Bare media doc id (depth=0, see below) - null/undefined means "use the
+  // product's own image." Look up the actual URL via mediaUrlById.
+  image?: number | null;
 };
 
 export type Product = {
@@ -35,6 +38,9 @@ export type Product = {
   maxDiscountAmount?: number;
   isActive: boolean;
   variants: Variant[];
+  // Bare media doc id (depth=0, see below), not a populated doc - look up
+  // the actual URL via mediaUrlById.
+  image?: number | null;
   // Fetched at depth=0 below, so relations come back as bare ids, not
   // populated docs - keeps a 500-product catalog fetch cheap.
   relatedProducts: number[];
@@ -55,15 +61,20 @@ export default async function ProductsPage({
 }) {
   const { store, status } = await searchParams;
   const archived = status === 'archived';
-  const [{ docs: products }, { docs: stores }, me, { levels: stockLevels }] = await Promise.all([
+  const [{ docs: products }, { docs: stores }, me, { levels: stockLevels }, { docs: mediaDocs }] = await Promise.all([
     payloadFetch<{ docs: Product[] }>(
       `/api/products?sort=-createdAt&limit=500&depth=0&where[isActive][equals]=${archived ? 'false' : 'true'}`,
     ),
     payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
     getCurrentUser(),
     payloadFetch<{ levels: StockLevel[] }>('/api/reports/stock-levels'),
+    // Products/variants only store a bare media id at depth=0 - resolved
+    // against actual URLs client-side via this map, same "load once, join
+    // client-side" pattern as branchStock above.
+    payloadFetch<{ docs: { id: number; url: string }[] }>('/api/media?limit=1000&depth=0'),
   ]);
   const canSeeCost = me.role === 'owner';
+  const mediaUrlById: Record<number, string> = Object.fromEntries(mediaDocs.map((m) => [m.id, m.url]));
 
   // Products are tenant-wide, not store-owned - a branch toggle here can't
   // filter the catalog itself, only annotate each row with that branch's
@@ -91,7 +102,13 @@ export default async function ProductsPage({
             <BranchFilter stores={stores} />
           </Suspense>
           <ImportProductsDialog stores={stores} />
-          <ProductDialog stores={stores} allProducts={products} stockLevels={stockLevels} canSeeCost={canSeeCost} />
+          <ProductDialog
+            stores={stores}
+            allProducts={products}
+            stockLevels={stockLevels}
+            canSeeCost={canSeeCost}
+            mediaUrlById={mediaUrlById}
+          />
         </div>
       </div>
 
@@ -103,6 +120,7 @@ export default async function ProductsPage({
         stores={stores}
         stockLevels={stockLevels}
         archivedView={archived}
+        mediaUrlById={mediaUrlById}
       />
     </div>
   );

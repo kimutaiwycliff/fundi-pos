@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Check, ChevronsUpDown, X } from 'lucide-react';
+import { Check, ChevronsUpDown, ImageIcon, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -129,24 +129,94 @@ function RelatedProductsField({
   );
 }
 
+// Uploads straight to R2 via /api/media (its own dedicated route, not the
+// generic JSON proxy - see that route's own comment) the moment a file is
+// picked, then reports back the new media doc's id/url. Shared between the
+// product-level image and each variant's own optional override below.
+function ImageField({
+  label,
+  imageUrl,
+  onChange,
+}: {
+  label: string;
+  imageUrl: string | null;
+  onChange: (imageId: number | null, imageUrl: string | null) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLoading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch('/api/media', { method: 'POST', body: formData });
+    const body = await response.json().catch(() => null);
+    setLoading(false);
+    if (inputRef.current) inputRef.current.value = '';
+    if (!response.ok) {
+      toast.error(body?.errors?.[0]?.message ?? 'Failed to upload image');
+      return;
+    }
+    onChange(body.doc.id, body.doc.url);
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={imageUrl} alt="" className="size-12 shrink-0 rounded-md border object-cover" />
+      ) : (
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-md border border-dashed text-muted-foreground">
+          <ImageIcon className="size-4" />
+        </div>
+      )}
+      <div className="flex min-w-0 flex-col gap-1">
+        <Label className="text-xs text-muted-foreground">{label}</Label>
+        <div className="flex items-center gap-2">
+          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => inputRef.current?.click()}>
+            {loading ? 'Uploading…' : imageUrl ? 'Replace' : 'Upload'}
+          </Button>
+          {imageUrl ? (
+            <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null, null)}>
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // One dialog for both add and edit, same pattern as staff-dialog.tsx/
 // store-dialog.tsx - the trigger button is built inside this component's
 // own render rather than passed in as a prop, which is what actually
 // fixed a real "Primitive.button failed to slot onto its children" error
 // on the Staff page (a pre-built JSX element passed through props across
 // a .map() apparently isn't a safe pattern for Radix's asChild Slot here).
+// The dialog's own working copy of a variant carries an ephemeral imageUrl
+// alongside the real `image` id field, purely so an already-uploaded image
+// (existing variant) or a freshly-uploaded one (new variant) can render a
+// preview without a fresh lookup - stripped back out before the array is
+// sent to the API (see handleSubmit).
+type WorkingVariant = Variant & { imageUrl?: string | null };
+
 export function ProductDialog({
   product,
   stores,
   allProducts,
   stockLevels,
   canSeeCost,
+  mediaUrlById,
 }: {
   product?: Product;
   stores: Store[];
   allProducts: Product[];
   stockLevels: StockLevel[];
   canSeeCost: boolean;
+  mediaUrlById: Record<number, string>;
 }) {
   const router = useRouter();
   const isEdit = Boolean(product);
@@ -164,7 +234,16 @@ export function ProductDialog({
     reorderPoint: product?.reorderPoint != null ? String(product.reorderPoint) : '0',
     maxDiscountAmount: product?.maxDiscountAmount != null ? String(product.maxDiscountAmount) : '0',
   });
-  const [variants, setVariants] = useState<Variant[]>(product?.variants ?? []);
+  const [imageId, setImageId] = useState<number | null>(product?.image ?? null);
+  const [imageUrl, setImageUrl] = useState<string | null>(
+    product?.image != null ? (mediaUrlById[product.image] ?? null) : null,
+  );
+  const [variants, setVariants] = useState<WorkingVariant[]>(
+    (product?.variants ?? []).map((v) => ({
+      ...v,
+      imageUrl: v.image != null ? (mediaUrlById[v.image] ?? null) : null,
+    })),
+  );
   const [relatedProducts, setRelatedProducts] = useState<number[]>(product?.relatedProducts ?? []);
 
   const savedVariants = variants.filter((v): v is Variant & { id: string } => Boolean(v.id));
@@ -185,6 +264,13 @@ export function ProductDialog({
   function updateVariantLabel(index: number) {
     return (e: React.ChangeEvent<HTMLInputElement>) =>
       setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, label: e.target.value } : v)));
+  }
+
+  function updateVariantImage(index: number) {
+    return (nextImageId: number | null, nextImageUrl: string | null) =>
+      setVariants((prev) =>
+        prev.map((v, i) => (i === index ? { ...v, image: nextImageId, imageUrl: nextImageUrl } : v)),
+      );
   }
 
   // Blank means "inherit the product's own price" - stored as undefined
@@ -219,12 +305,23 @@ export function ProductDialog({
         barcode: form.barcode || null,
         name: form.name,
         category: form.category,
+        image: imageId,
         costPrice: Number(form.costPrice) || 0,
         sellPrice: Number(form.sellPrice) || 0,
         taxRate: Number(form.taxRate) || 0,
         reorderPoint: Number(form.reorderPoint) || 0,
         maxDiscountAmount: Number(form.maxDiscountAmount) || 0,
-        variants: variants.filter((v) => v.label.trim()),
+        variants: variants
+          .filter((v) => v.label.trim())
+          .map((v) => ({
+            id: v.id,
+            label: v.label,
+            sku: v.sku,
+            barcode: v.barcode,
+            sellPrice: v.sellPrice,
+            costPrice: v.costPrice,
+            image: v.image,
+          })),
         relatedProducts,
       }),
     });
@@ -338,6 +435,14 @@ export function ProductDialog({
             <Label htmlFor="category">Category</Label>
             <Input id="category" value={form.category} onChange={update('category')} />
           </div>
+          <ImageField
+            label="Product image"
+            imageUrl={imageUrl}
+            onChange={(nextId, nextUrl) => {
+              setImageId(nextId);
+              setImageUrl(nextUrl);
+            }}
+          />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="costPrice">Cost price</Label>
@@ -403,6 +508,11 @@ export function ProductDialog({
                         <X className="size-4" />
                       </Button>
                     </div>
+                    <ImageField
+                      label="Variant image"
+                      imageUrl={variant.imageUrl ?? null}
+                      onChange={updateVariantImage(index)}
+                    />
                     <div className="grid grid-cols-2 gap-2">
                       <div className="flex flex-col gap-1">
                         <Label className="text-xs text-muted-foreground">Sell price</Label>

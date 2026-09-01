@@ -45,6 +45,7 @@ export function SellClient({
   tenant,
   customers: initialCustomers,
   stockLevels,
+  mediaUrlById,
 }: {
   me: CurrentUser;
   products: Product[];
@@ -52,6 +53,7 @@ export function SellClient({
   tenant: TenantReceiptInfo;
   customers: CustomerRef[];
   stockLevels: StockLevel[];
+  mediaUrlById: Record<number, string>;
 }) {
   const router = useRouter();
   const isMobile = useIsMobile();
@@ -416,7 +418,7 @@ export function SellClient({
       ) : (
         <div className={isMobile ? 'flex flex-col gap-4 pb-20' : 'flex flex-col gap-6 lg:flex-row'}>
           <div className={isMobile ? '' : 'min-w-0 flex-1'}>
-            <ProductSearch products={products} stockByKey={stockByKey} onSelect={requestAdd} />
+            <ProductSearch products={products} stockByKey={stockByKey} mediaUrlById={mediaUrlById} onSelect={requestAdd} />
           </div>
           {isMobile ? null : (
             <aside className="w-full shrink-0 rounded-lg border p-4 lg:w-96">

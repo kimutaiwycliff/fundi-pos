@@ -5,6 +5,7 @@ import * as migration_20260901_051440_add_credit_payments from './20260901_05144
 import * as migration_20260901_052220_rename_max_discount_to_amount from './20260901_052220_rename_max_discount_to_amount';
 import * as migration_20260901_072707_add_variant_prices from './20260901_072707_add_variant_prices';
 import * as migration_20260901_081105_default_tax_and_optional_codes from './20260901_081105_default_tax_and_optional_codes';
+import * as migration_20260901_084514_add_media_and_product_images from './20260901_084514_add_media_and_product_images';
 
 export const migrations = [
   {
@@ -40,6 +41,11 @@ export const migrations = [
   {
     up: migration_20260901_081105_default_tax_and_optional_codes.up,
     down: migration_20260901_081105_default_tax_and_optional_codes.down,
-    name: '20260901_081105_default_tax_and_optional_codes'
+    name: '20260901_081105_default_tax_and_optional_codes',
+  },
+  {
+    up: migration_20260901_084514_add_media_and_product_images.up,
+    down: migration_20260901_084514_add_media_and_product_images.down,
+    name: '20260901_084514_add_media_and_product_images'
   },
 ];

@@ -1,12 +1,14 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { postgresAdapter } from '@payloadcms/db-postgres';
+import { s3Storage } from '@payloadcms/storage-s3';
 import { buildConfig } from 'payload';
 
 import { Tenants } from './collections/Tenants.ts';
 import { Stores } from './collections/Stores.ts';
 import { Users } from './collections/Users.ts';
 import { Products } from './collections/Products.ts';
+import { Media } from './collections/Media.ts';
 import { StoreProductOverrides } from './collections/StoreProductOverrides.ts';
 import { StockMovements } from './collections/StockMovements.ts';
 import { Orders } from './collections/Orders.ts';
@@ -40,6 +42,7 @@ export default buildConfig({
     Stores,
     Users,
     Products,
+    Media,
     StoreProductOverrides,
     StockMovements,
     Orders,
@@ -70,6 +73,37 @@ export default buildConfig({
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
+  plugins: [
+    // Cloudflare R2 (S3-compatible) - see apps/api/.env for the actual
+    // credentials. Chosen over Payload's local-disk default specifically
+    // for S3-compatibility with a self-hosted MinIO, should the user move
+    // this off R2 onto their own VPS later - only the env values change.
+    // disablePayloadAccessControl + generateFileURL: R2's S3 API endpoint
+    // is upload-only, so reads go straight to R2's own public URL instead
+    // of being proxied through this app.
+    s3Storage({
+      enabled: Boolean(process.env.R2_BUCKET),
+      collections: {
+        media: {
+          disablePayloadAccessControl: true,
+          generateFileURL: ({ filename, prefix }) => {
+            const key = prefix ? `${prefix}/${filename}` : filename;
+            return `${process.env.R2_PUBLIC_URL}/${key}`;
+          },
+        },
+      },
+      bucket: process.env.R2_BUCKET || '',
+      config: {
+        credentials: {
+          accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+        },
+        region: 'auto',
+        endpoint: process.env.R2_ENDPOINT,
+        forcePathStyle: true,
+      },
+    }),
+  ],
   db: postgresAdapter({
     pool: {
       connectionString: process.env.DATABASE_URI || '',

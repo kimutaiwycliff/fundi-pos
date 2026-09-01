@@ -73,6 +73,7 @@ export interface Config {
     stores: Store;
     users: User;
     products: Product;
+    media: Media;
     'store-product-overrides': StoreProductOverride;
     'stock-movements': StockMovement;
     orders: Order;
@@ -96,6 +97,7 @@ export interface Config {
     stores: StoresSelect<false> | StoresSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
     products: ProductsSelect<false> | ProductsSelect<true>;
+    media: MediaSelect<false> | MediaSelect<true>;
     'store-product-overrides': StoreProductOverridesSelect<false> | StoreProductOverridesSelect<true>;
     'stock-movements': StockMovementsSelect<false> | StockMovementsSelect<true>;
     orders: OrdersSelect<false> | OrdersSelect<true>;
@@ -280,6 +282,10 @@ export interface Product {
   name: string;
   category?: string | null;
   /**
+   * Optional. Shown on the Sell page and Products list. A variant without its own image below falls back to this one.
+   */
+  image?: (number | null) | Media;
+  /**
    * Archived products are hidden from the Sell page and the default Products list, but stay intact on past orders, stock movements, and reports.
    */
   isActive?: boolean | null;
@@ -288,6 +294,10 @@ export interface Product {
         label: string;
         sku?: string | null;
         barcode?: string | null;
+        /**
+         * Optional. Leave blank to use the product's own image.
+         */
+        image?: (number | null) | Media;
         /**
          * Leave blank to use the product's own sell price.
          */
@@ -321,6 +331,29 @@ export interface Product {
   relatedProducts?: (number | Product)[] | null;
   updatedAt: string;
   createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "media".
+ */
+export interface Media {
+  id: number;
+  tenant: number | Tenant;
+  /**
+   * Optional - describes the image for accessibility.
+   */
+  alt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -603,6 +636,10 @@ export interface PayloadLockedDocument {
         value: number | Product;
       } | null)
     | ({
+        relationTo: 'media';
+        value: number | Media;
+      } | null)
+    | ({
         relationTo: 'store-product-overrides';
         value: number | StoreProductOverride;
       } | null)
@@ -786,6 +823,7 @@ export interface ProductsSelect<T extends boolean = true> {
   barcode?: T;
   name?: T;
   category?: T;
+  image?: T;
   isActive?: T;
   variants?:
     | T
@@ -793,6 +831,7 @@ export interface ProductsSelect<T extends boolean = true> {
         label?: T;
         sku?: T;
         barcode?: T;
+        image?: T;
         sellPrice?: T;
         costPrice?: T;
         id?: T;
@@ -813,6 +852,25 @@ export interface ProductsSelect<T extends boolean = true> {
   relatedProducts?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "media_select".
+ */
+export interface MediaSelect<T extends boolean = true> {
+  tenant?: T;
+  alt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  url?: T;
+  thumbnailURL?: T;
+  filename?: T;
+  mimeType?: T;
+  filesize?: T;
+  width?: T;
+  height?: T;
+  focalX?: T;
+  focalY?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

@@ -25,6 +25,7 @@ export function ProductsTable({
   stores,
   stockLevels,
   archivedView = false,
+  mediaUrlById,
 }: {
   products: Product[];
   canSeeCost: boolean;
@@ -33,6 +34,7 @@ export function ProductsTable({
   stores: Store[];
   stockLevels: StockLevel[];
   archivedView?: boolean;
+  mediaUrlById: Record<number, string>;
 }) {
   const [query, setQuery] = useState('');
 
@@ -91,11 +93,19 @@ export function ProductsTable({
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((product) => (
+              filtered.map((product) => {
+                const imageUrl = product.image != null ? mediaUrlById[product.image] : undefined;
+                return (
                 <TableRow key={product.id}>
                   <TableCell className="font-mono text-xs">{product.sku}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
+                      {imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={imageUrl} alt="" className="size-8 shrink-0 rounded-md border object-cover" />
+                      ) : (
+                        <div className="size-8 shrink-0 rounded-md border border-dashed bg-muted/30" />
+                      )}
                       {product.name}
                       {product.variants.length > 0 ? (
                         <Badge variant="outline">
@@ -130,10 +140,12 @@ export function ProductsTable({
                       allProducts={products}
                       stockLevels={stockLevels}
                       canSeeCost={canSeeCost}
+                      mediaUrlById={mediaUrlById}
                     />
                   </TableCell>
                 </TableRow>
-              ))
+                );
+              })
             )}
           </TableBody>
         </Table>
