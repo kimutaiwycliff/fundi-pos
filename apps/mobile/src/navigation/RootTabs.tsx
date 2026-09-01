@@ -7,6 +7,7 @@ import type { PayloadUser } from '../lib/auth';
 import { SellScreen as RealSellScreen } from '../sell/SellScreen';
 import { CustomersScreen as RealCustomersScreen } from '../customers/CustomersScreen';
 import { InventoryScreen as RealInventoryScreen } from '../inventory/InventoryScreen';
+import { SalesScreen as RealSalesScreen } from '../sales/SalesScreen';
 
 function MoreScreen({ user, terminalName, onSignOut }: { user: PayloadUser; terminalName: string; onSignOut: () => void }) {
   return (
@@ -29,6 +30,7 @@ const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   Sell: 'cart-outline',
   Inventory: 'cube-outline',
   Customers: 'people-outline',
+  Sales: 'receipt-outline',
   More: 'ellipsis-horizontal-circle-outline',
 };
 
@@ -60,6 +62,7 @@ export function RootTabs({
       </Tab.Screen>
       <Tab.Screen name="Inventory">{() => <RealInventoryScreen user={user} terminalId={terminalId} storeId={storeId} />}</Tab.Screen>
       <Tab.Screen name="Customers">{() => <RealCustomersScreen user={user} payloadToken={payloadToken} storeId={storeId} />}</Tab.Screen>
+      <Tab.Screen name="Sales">{() => <RealSalesScreen user={user} payloadToken={payloadToken} storeId={storeId} />}</Tab.Screen>
       <Tab.Screen name="More">{() => <MoreScreen user={user} terminalName={terminalName} onSignOut={onSignOut} />}</Tab.Screen>
     </Tab.Navigator>
   );
