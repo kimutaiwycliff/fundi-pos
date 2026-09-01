@@ -1,6 +1,6 @@
 import '../../global.css';
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, Pressable, ActivityIndicator, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, ActivityIndicator, SafeAreaView, KeyboardAvoidingView, Platform, Linking } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { loginToPayload, loginWithPin, type PayloadUser } from '../lib/auth';
@@ -10,6 +10,7 @@ import { checkPinLocallyById } from '../lib/pin';
 import { loadSession, saveSession, clearSession, updateSessionStore, type PersistedSession } from '../lib/session';
 import { getDb } from '../db/database';
 import { RootTabs } from '../navigation/RootTabs';
+import { checkForUpdate, type AvailableUpdate } from '../lib/updateCheck';
 
 type ConnectionState = 'idle' | 'logging-in' | 'connecting' | 'connected' | 'error';
 type LoginMode = 'pin' | 'password';
@@ -44,6 +45,15 @@ function AppInner() {
   const [resumeCandidate, setResumeCandidate] = useState<PersistedSession | null>(null);
   const [resumePin, setResumePin] = useState('');
   const [resumeError, setResumeError] = useState<string | null>(null);
+  const [availableUpdate, setAvailableUpdate] = useState<AvailableUpdate | null>(null);
+
+  // "Notify + redownload", not a silent auto-updater - same as
+  // apps/desktop's identical checkForUpdate(). Fires once on launch;
+  // production builds only in spirit (there's no public manifest for local
+  // dev builds to compare against, so this is naturally a no-op there).
+  useEffect(() => {
+    checkForUpdate().then(setAvailableUpdate);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -211,16 +221,28 @@ function AppInner() {
       );
     }
     return (
-      <NavigationContainer>
-        <RootTabs
-          user={user}
-          payloadToken={payloadTokenRef.current}
-          terminalId={terminalIdRef.current ?? ''}
-          terminalName={terminalName}
-          storeId={activeStoreId}
-          onSignOut={handleSignOut}
-        />
-      </NavigationContainer>
+      <View className="flex-1">
+        {availableUpdate ? (
+          <Pressable
+            className="items-center bg-primary px-4 py-2"
+            onPress={() => Linking.openURL(availableUpdate.downloadUrl)}
+          >
+            <Text className="text-sm font-medium text-primary-foreground">
+              Update available (v{availableUpdate.latestVersion}) - tap to download
+            </Text>
+          </Pressable>
+        ) : null}
+        <NavigationContainer>
+          <RootTabs
+            user={user}
+            payloadToken={payloadTokenRef.current}
+            terminalId={terminalIdRef.current ?? ''}
+            terminalName={terminalName}
+            storeId={activeStoreId}
+            onSignOut={handleSignOut}
+          />
+        </NavigationContainer>
+      </View>
     );
   }
 

@@ -1,0 +1,95 @@
+name: Build and release Android app
+
+# Mirrors desktop-release.yml's own pattern exactly: not EAS's paid cloud
+# build service (self-host everything, same as PowerSync/R2 backups), and
+# the same public-R2-bucket distribution (this repo is private, downloads
+# need to be public) instead of GitHub Releases.
+#
+# NOTE before this workflow is first run for real: `expo prebuild
+# --platform android` has not yet been run and committed/inspected in this
+# repo (only `expo prebuild --platform ios` has, for local dev-client
+# testing), so the exact Gradle release-signing property names below
+# (MYAPP_UPLOAD_*) are the standard React Native/Expo convention, not yet
+# verified against this project's actual generated android/app/build.gradle
+# - confirm that file reads these same names (or adjust to match) before
+# relying on this workflow.
+#
+# Signing keystore is a one-way door (see the plan doc: Android treats a
+# differently-signed APK as a conflicting app, not an update) - generate it
+# once, store as ANDROID_KEYSTORE_BASE64 (base64 of the .jks/.keystore
+# file) plus ANDROID_KEYSTORE_PASSWORD/ANDROID_KEY_ALIAS/ANDROID_KEY_PASSWORD,
+# and never rotate it. None of that is done by this workflow file itself.
+on:
+  push:
+    tags:
+      - 'android-v*'
+  workflow_dispatch: {}
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build workspace dependencies
+        run: npx nx run mobile:build-deps
+
+      - name: Prebuild native Android project
+        working-directory: apps/mobile
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Decode signing keystore
+        working-directory: apps/mobile/android/app
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
+
+      - name: Build signed release APK
+        working-directory: apps/mobile/android
+        env:
+          MYAPP_UPLOAD_STORE_FILE: release.keystore
+          MYAPP_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          MYAPP_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          MYAPP_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+
+      - name: Rename artifact to a stable filename
+        run: |
+          set -euo pipefail
+          src=$(find apps/mobile/android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          mkdir -p dist-upload
+          cp "$src" dist-upload/FundiTill.apk
+
+      - name: Upload to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#android-v}"
+          aws s3 cp dist-upload/FundiTill.apk \
+            "s3://${{ secrets.R2_RELEASES_BUCKET }}/latest/FundiTill.apk" \
+            --endpoint-url "${{ secrets.R2_RELEASES_ENDPOINT }}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            aws s3 cp dist-upload/FundiTill.apk \
+              "s3://${{ secrets.R2_RELEASES_BUCKET }}/v${VERSION}/FundiTill.apk" \
+              --endpoint-url "${{ secrets.R2_RELEASES_ENDPOINT }}"
+          fi
+          cat > android-version.json <<EOF
+          {"version": "${VERSION}", "android": "FundiTill.apk"}
+          EOF
+          aws s3 cp android-version.json \
+            "s3://${{ secrets.R2_RELEASES_BUCKET }}/latest/android-version.json" \
+            --endpoint-url "${{ secrets.R2_RELEASES_ENDPOINT }}"
