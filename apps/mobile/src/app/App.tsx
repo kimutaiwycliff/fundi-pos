@@ -212,7 +212,14 @@ function AppInner() {
     }
     return (
       <NavigationContainer>
-        <RootTabs user={user} terminalName={terminalName} onSignOut={handleSignOut} />
+        <RootTabs
+          user={user}
+          payloadToken={payloadTokenRef.current}
+          terminalId={terminalIdRef.current ?? ''}
+          terminalName={terminalName}
+          storeId={activeStoreId}
+          onSignOut={handleSignOut}
+        />
       </NavigationContainer>
     );
   }

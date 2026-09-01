@@ -6,39 +6,13 @@ import { getDb } from '../db/database';
 import { disconnectPowerSync } from '../db/database';
 import { clearSession } from '../lib/session';
 import type { PayloadUser } from '../lib/auth';
+import { SellScreen as RealSellScreen } from '../sell/SellScreen';
 
 // Placeholder screens for Phase 0 - just enough to prove the navigation
 // shell + NativeWind theming + local synced-data reads all work end to
-// end. Phase 1/2/3 replace each of these with the real Sell/Inventory/
-// Customers screens described in the plan.
-function SellScreen() {
-  const [productCount, setProductCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getDb()
-      .getOptional<{ count: number }>('SELECT COUNT(*) as count FROM products WHERE is_active = 1')
-      .then((row) => {
-        if (!cancelled) setProductCount(row?.count ?? 0);
-      })
-      .catch(() => {
-        if (!cancelled) setProductCount(0);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return (
-    <View className="flex-1 items-center justify-center bg-background px-6">
-      <Text className="text-2xl font-semibold text-foreground">Sell</Text>
-      <Text className="mt-2 text-center text-muted-foreground">
-        {productCount === null ? 'Loading synced catalog...' : `${productCount} active products synced locally`}
-      </Text>
-    </View>
-  );
-}
-
+// end. Phase 2/3 replace each of the remaining ones with the real
+// Inventory/Customers screens described in the plan - Sell (Phase 1) is
+// now the real thing, see ../sell/SellScreen.tsx.
 function InventoryScreen() {
   return (
     <View className="flex-1 items-center justify-center bg-background px-6">
@@ -100,7 +74,21 @@ const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   More: 'ellipsis-horizontal-circle-outline',
 };
 
-export function RootTabs({ user, terminalName, onSignOut }: { user: PayloadUser; terminalName: string; onSignOut: () => void }) {
+export function RootTabs({
+  user,
+  payloadToken,
+  terminalId,
+  terminalName,
+  storeId,
+  onSignOut,
+}: {
+  user: PayloadUser;
+  payloadToken: string;
+  terminalId: string;
+  terminalName: string;
+  storeId: number | null;
+  onSignOut: () => void;
+}) {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -109,7 +97,9 @@ export function RootTabs({ user, terminalName, onSignOut }: { user: PayloadUser;
         tabBarIcon: ({ color, size }) => <Ionicons name={TAB_ICONS[route.name]} size={size} color={color} />,
       })}
     >
-      <Tab.Screen name="Sell" component={SellScreen} />
+      <Tab.Screen name="Sell">
+        {() => <RealSellScreen user={user} payloadToken={payloadToken} terminalId={terminalId} terminalName={terminalName} storeId={storeId} />}
+      </Tab.Screen>
       <Tab.Screen name="Inventory" component={InventoryScreen} />
       <Tab.Screen name="Customers" component={CustomersScreen} />
       <Tab.Screen name="More">{() => <MoreScreen user={user} terminalName={terminalName} onSignOut={onSignOut} />}</Tab.Screen>
