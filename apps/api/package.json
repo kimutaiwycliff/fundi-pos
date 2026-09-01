@@ -13,6 +13,7 @@
     "start": "next start -p 3011"
   },
   "dependencies": {
+    "@eslint/eslintrc": "^3.3.7",
     "@hardware-pos/business-logic": "^0.0.0",
     "@hardware-pos/shared-types": "^0.0.0",
     "@payloadcms/db-postgres": "^3.88.0",
@@ -21,6 +22,7 @@
     "exceljs": "^4.4.0",
     "graphql": "^16.14.2",
     "jose": "^6.2.9",
+    "lodash.merge": "^4.6.2",
     "next": "16.3.1",
     "payload": "^3.88.0"
   },

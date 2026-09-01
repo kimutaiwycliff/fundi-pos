@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "nx": {
-    "tags": ["scope:app"]
+    "tags": [
+      "scope:app"
+    ]
   },
   "scripts": {
     "dev": "vite",
@@ -21,7 +23,8 @@
     "@tauri-apps/plugin-http": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "rollup": "^4.63.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

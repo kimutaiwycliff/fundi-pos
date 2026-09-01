@@ -6,16 +6,25 @@
   "private": true,
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@expo/cli": "~56.1.14",
     "@nx/eslint": "23.1.1",
     "@nx/eslint-plugin": "23.1.1",
+    "@nx/expo": "23.1.1",
     "@nx/js": "23.1.1",
     "@nx/vite": "23.1.1",
     "@nx/vitest": "23.1.1",
     "@nx/web": "23.1.1",
+    "@swc/helpers": "~0.5.18",
     "@types/node": "24.13.3",
+    "@types/react": "^19.2.0",
     "@vitest/coverage-v8": "~4.1.10",
     "@vitest/ui": "~4.1.10",
+    "babel-preset-expo": "~56.0.14",
     "eslint": "~10.6.0",
+    "eslint-plugin-import": "2.31.0",
+    "eslint-plugin-jsx-a11y": "6.10.1",
+    "eslint-plugin-react": "^7.35.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "jiti": "2.4.2",
     "jsonc-eslint-parser": "^2.1.0",
     "nx": "23.1.1",
@@ -31,6 +40,23 @@
     "apps/*",
     "packages/*"
   ],
+  "overrides": {
+    "nativewind": {
+      "tailwindcss": "^3.4.4"
+    },
+    "react-native-css-interop": {
+      "tailwindcss": "^3.4.4"
+    },
+    "eslint-plugin-import": {
+      "eslint": "$eslint"
+    },
+    "eslint-plugin-jsx-a11y": {
+      "eslint": "$eslint"
+    },
+    "eslint-plugin-react": {
+      "eslint": "$eslint"
+    }
+  },
   "nx": {
     "includedScripts": [],
     "targets": {
@@ -43,5 +69,20 @@
         }
       }
     }
+  },
+  "dependencies": {
+    "@expo/metro": "~56.0.0",
+    "@expo/metro-runtime": "~56.0.14",
+    "@expo/vector-icons": "~15.1.0",
+    "expo": "~56.0.0",
+    "expo-splash-screen": "~56.0.10",
+    "expo-status-bar": "~56.0.4",
+    "expo-system-ui": "~56.0.5",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-native": "0.85.3",
+    "react-native-svg": "15.12.1",
+    "react-native-svg-transformer": "~1.5.1",
+    "react-native-web": "~0.21.0"
   }
 }

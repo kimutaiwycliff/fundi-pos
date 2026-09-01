@@ -1,0 +1,40 @@
+{
+  "name": "mobile",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "eas-build-post-install": "cd ../../ && node tools/scripts/eas-build-post-install.mjs . apps/mobile"
+  },
+  "dependencies": {
+    "@expo/metro": "*",
+    "@expo/vector-icons": "*",
+    "@gorhom/bottom-sheet": "^5.2.14",
+    "@hardware-pos/business-logic": "^0.0.0",
+    "@op-engineering/op-sqlite": "~17.2.0",
+    "@powersync/common": "2.1.0",
+    "@powersync/react": "2.0.0",
+    "@powersync/react-native": "2.1.0",
+    "@react-navigation/bottom-tabs": "^7.18.18",
+    "@react-navigation/native": "^7.3.18",
+    "@testing-library/react-native": "*",
+    "expo": "*",
+    "expo-haptics": "~56.0.3",
+    "expo-secure-store": "~56.0.4",
+    "expo-splash-screen": "*",
+    "expo-status-bar": "*",
+    "expo-system-ui": "*",
+    "jest-expo": "*",
+    "nativewind": "^4.2.6",
+    "react": "*",
+    "react-native": "*",
+    "react-native-gesture-handler": "~2.31.1",
+    "react-native-reanimated": "4.3.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-svg": "*",
+    "react-native-svg-transformer": "*",
+    "react-native-web": "*",
+    "scrypt-js": "^3.0.1",
+    "tailwindcss": "^3.4.4"
+  }
+}

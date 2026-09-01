@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "files": [],
+  "include": ["nativewind-env.d.ts"],
+  "references": [
+    {
+      "path": "../../packages/business-logic"
+    },
+    {
+      "path": "./tsconfig.app.json"
+    }
+  ]
+}

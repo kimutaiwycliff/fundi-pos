@@ -78,3 +78,19 @@ apps/desktop/src-tauri/gen/
 
 # Postgres data volume (bind-mounted locally, if ever used instead of a named volume)
 docker/pgdata/
+
+# Expo
+node_modules/
+.expo/
+.yarn/
+dist/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+cache/
+

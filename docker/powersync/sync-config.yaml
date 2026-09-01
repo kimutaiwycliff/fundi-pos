@@ -29,6 +29,20 @@ streams:
     auto_subscribe: true
     query: SELECT * FROM products WHERE tenant_id = auth.parameter('tenant_id')
 
+  # Variant sub-rows of products (Payload normalizes the Products.variants
+  # array field into this child table, same _parent_id/no-own-tenant-column
+  # shape as orders_line_items below) - scoped by joining back to the
+  # parent product's tenant, same tenant-only (not store) scoping as
+  # products itself, since a variant's price isn't store-specific (only its
+  # STOCK is, tracked via the already-synced, store-scoped stock_movements
+  # ledger keyed by this row's own id in its `variant` text column).
+  products_variants:
+    auto_subscribe: true
+    query: |
+      SELECT pv.* FROM products_variants pv
+      JOIN products p ON p.id = pv._parent_id
+      WHERE p.tenant_id = auth.parameter('tenant_id')
+
   store_product_overrides:
     auto_subscribe: true
     query: |

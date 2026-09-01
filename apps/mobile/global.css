@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Same warm tool-belt amber brand palette as apps/web's globals.css,
+   converted from its OKLCH tokens to hex (react-native-css-interop's CSS
+   variable support resolves var() but RN's underlying color parser has no
+   oklch() support, unlike a browser's). Values computed via the standard
+   OKLCH->linear-sRGB->sRGB conversion against the exact same L/C/H triples
+   web uses, not eyeballed, so the two apps' brand color actually matches. */
+:root {
+  --color-background: #ffffff;
+  --color-foreground: #16100e;
+  --color-card: #ffffff;
+  --color-card-foreground: #16100e;
+  --color-primary: #df5102;
+  --color-primary-foreground: #fcfcfc;
+  --color-secondary: #feeee6;
+  --color-secondary-foreground: #3b2921;
+  --color-muted: #fbefe9;
+  --color-muted-foreground: #6e605a;
+  --color-accent: #ffe5d2;
+  --color-accent-foreground: #43251a;
+  --color-destructive: #e7000b;
+  --color-border: #e7dbd5;
+  --color-ring: #df5102;
+  --color-chart-1: #127eee;
+  --color-chart-2: #25ab3a;
+  --color-chart-3: #954be3;
+  --color-chart-4: #e38500;
+  --color-chart-5: #7c6e68;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #110c0a;
+    --color-foreground: #f8f0ec;
+    --color-card: #1e1613;
+    --color-card-foreground: #f8f0ec;
+    --color-primary: #f3680f;
+    --color-primary-foreground: #110c0a;
+    --color-secondary: #322621;
+    --color-secondary-foreground: #f8f0ec;
+    --color-muted: #322621;
+    --color-muted-foreground: #a99b94;
+    --color-accent: #442d20;
+    --color-accent-foreground: #f8f0ec;
+    --color-destructive: #ff6467;
+    --color-border: #3a2d26;
+    --color-ring: #f3680f;
+    --color-chart-1: #2a8eff;
+    --color-chart-2: #3bbc4a;
+    --color-chart-3: #aa63fc;
+    --color-chart-4: #f49500;
+    --color-chart-5: #9a8c85;
+  }
+}
