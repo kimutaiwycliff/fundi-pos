@@ -176,7 +176,7 @@ export function ProductDialog({
     sellPrice: product ? String(product.sellPrice) : '',
     taxRate: product ? String(product.taxRate) : '0.16',
     reorderPoint: product?.reorderPoint != null ? String(product.reorderPoint) : '0',
-    maxDiscountPercent: product?.maxDiscountPercent != null ? String(product.maxDiscountPercent) : '0',
+    maxDiscountAmount: product?.maxDiscountAmount != null ? String(product.maxDiscountAmount) : '0',
   });
   const [variants, setVariants] = useState<Variant[]>(product?.variants ?? []);
   const [relatedProducts, setRelatedProducts] = useState<number[]>(product?.relatedProducts ?? []);
@@ -237,7 +237,7 @@ export function ProductDialog({
         sellPrice: Number(form.sellPrice) || 0,
         taxRate: Number(form.taxRate) || 0,
         reorderPoint: Number(form.reorderPoint) || 0,
-        maxDiscountPercent: Number(form.maxDiscountPercent) || 0,
+        maxDiscountAmount: Number(form.maxDiscountAmount) || 0,
         variants: variants.filter((v) => v.label.trim() && v.sku.trim()),
         relatedProducts,
       }),
@@ -386,15 +386,14 @@ export function ProductDialog({
               <Input id="reorderPoint" type="number" step="1" value={form.reorderPoint} onChange={update('reorderPoint')} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="maxDiscountPercent">Max discount %</Label>
+              <Label htmlFor="maxDiscountAmount">Max discount</Label>
               <Input
-                id="maxDiscountPercent"
+                id="maxDiscountAmount"
                 type="number"
-                step="1"
+                step="0.01"
                 min="0"
-                max="100"
-                value={form.maxDiscountPercent}
-                onChange={update('maxDiscountPercent')}
+                value={form.maxDiscountAmount}
+                onChange={update('maxDiscountAmount')}
               />
             </div>
           </div>

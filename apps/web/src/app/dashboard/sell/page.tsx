@@ -9,7 +9,7 @@ export type Product = {
   name: string;
   sellPrice: number;
   taxRate: number;
-  maxDiscountPercent: number;
+  maxDiscountAmount: number;
   // Fetched at depth=0 below, so this is bare ids, not populated docs.
   relatedProducts: number[];
 };

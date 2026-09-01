@@ -10,8 +10,8 @@ describe('buildTemplateWorkbook + parseInventoryWorkbook round-trip', () => {
 
     expect(errors).toHaveLength(0);
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ sku: 'HW-HAMMER-01', name: 'Claw Hammer 16oz', costPrice: 450, sellPrice: 799 });
-    expect(rows[1]).toMatchObject({ sku: 'HW-PAINT-5L', name: 'Emulsion Paint 5L - White' });
+    expect(rows[0]).toMatchObject({ sku: 'SKU-001', name: 'Sample Product', costPrice: 450, sellPrice: 799 });
+    expect(rows[1]).toMatchObject({ sku: 'SKU-002', name: 'Another Sample Product' });
   });
 });
 

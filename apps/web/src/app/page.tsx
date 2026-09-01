@@ -140,8 +140,8 @@ const FAQS = [
     a: 'Yes. Fundi is built for multi-store from the ground up — stock, staff, and reporting all work across as many branches as you have, with one owner login over all of them.',
   },
   {
-    q: 'What hardware do I need to get started?',
-    a: 'A computer or POS terminal for your till, and any phone or laptop for the owner/manager dashboard. No special hardware is required, though Fundi supports standard ESC/POS receipt printers and cash drawers if you already have them.',
+    q: 'What equipment do I need to get started?',
+    a: 'A computer or POS terminal for your till, and any phone or laptop for the owner/manager dashboard. No special equipment is required, though Fundi supports standard ESC/POS receipt printers and cash drawers if you already have them.',
   },
   {
     q: 'Is my data kept separate from other businesses?',
@@ -198,7 +198,7 @@ export default function LandingPage() {
           <div className="relative mx-auto grid max-w-6xl gap-12 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-2 lg:items-center lg:px-8 lg:py-32">
             <Reveal>
               <Badge variant="secondary" className="mb-5">
-                Built for Kenyan hardware &amp; building-supply stores
+                Built for small businesses across Kenya
               </Badge>
               <h1 className="font-heading text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
                 The point of sale that keeps selling when the power doesn&apos;t.
@@ -238,9 +238,9 @@ export default function LandingPage() {
                   </div>
                   <div className="mt-4 space-y-2">
                     {[
-                      ['Cement 50kg — Bamburi', 'x2', 'KES 2,400'],
-                      ['Binding wire 1.6mm', 'x1', 'KES 450'],
-                      ['Wheelbarrow — heavy duty', 'x1', 'KES 6,800'],
+                      ['Assorted stock item', 'x2', 'KES 2,400'],
+                      ['Everyday essential', 'x1', 'KES 450'],
+                      ['Popular product', 'x1', 'KES 6,800'],
                     ].map(([name, qty, price]) => (
                       <div key={name} className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2 text-sm">
                         <span className="truncate">{name}</span>
@@ -282,7 +282,7 @@ export default function LandingPage() {
         <section id="features" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
           <Reveal className="mx-auto max-w-2xl text-center">
             <h2 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
-              Built for how Kenyan hardware stores actually run
+              Built for how Kenyan small businesses actually run
             </h2>
             <p className="mt-4 text-muted-foreground text-pretty">
               Blackouts, patchy internet, multiple branches, staff you can&apos;t watch every minute — Fundi is built
@@ -438,7 +438,7 @@ export default function LandingPage() {
               Ready to stop losing sales to blackouts?
             </h2>
             <p className="max-w-xl text-background/70 text-pretty">
-              Start your free trial today and see why hardware stores are moving off cloud-only POS systems.
+              Start your free trial today and see why small businesses are moving off cloud-only POS systems.
             </p>
             <Button size="lg" variant="secondary" asChild>
               <Link href="/signup">
@@ -456,7 +456,7 @@ export default function LandingPage() {
             <LogoMark className="size-6" />
             <span className="font-heading font-semibold">Fundi</span>
           </Link>
-          <p>Point of sale built for Kenyan hardware &amp; building-supply stores.</p>
+          <p>Point of sale built for small businesses across Kenya.</p>
           <p>© 2026 Fundi. Built in Kenya.</p>
         </div>
       </footer>

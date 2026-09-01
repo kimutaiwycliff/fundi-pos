@@ -79,7 +79,7 @@ describe('Phase 6 - StockTransfers receiving + Shifts cash-up', () => {
 
     const product = await payload.create({
       collection: 'products',
-      data: { tenant: tenantId, sku: 'SKU-X', name: 'Widget', costPrice: 10, sellPrice: 100, taxRate: 0.16, reorderPoint: 0, maxDiscountPercent: 0 },
+      data: { tenant: tenantId, sku: 'SKU-X', name: 'Widget', costPrice: 10, sellPrice: 100, taxRate: 0.16, reorderPoint: 0, maxDiscountAmount: 0 },
       overrideAccess: true,
       draft: false,
     });

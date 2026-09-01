@@ -8,7 +8,7 @@ import type { OrderTotals } from '@hardware-pos/business-logic';
 import type { CartLine } from './types';
 
 function maxDiscountAmountForLine(quantity: number, product: CartLine['product']): number {
-  return (quantity * product.sellPrice * product.maxDiscountPercent) / 100;
+  return quantity * product.maxDiscountAmount;
 }
 
 export function CartPanel({
@@ -80,7 +80,7 @@ export function CartPanel({
                   <X />
                 </Button>
               </div>
-              {line.product.maxDiscountPercent > 0 ? (
+              {line.product.maxDiscountAmount > 0 ? (
                 <label className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   Discount
                   <Input

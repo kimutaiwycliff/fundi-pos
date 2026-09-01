@@ -21,7 +21,7 @@ export type Product = {
   sellPrice: number;
   taxRate: number;
   reorderPoint?: number;
-  maxDiscountPercent?: number;
+  maxDiscountAmount?: number;
   isActive: boolean;
   variants: { id?: string; label: string; sku: string; barcode?: string | null }[];
   // Fetched at depth=0 below, so relations come back as bare ids, not

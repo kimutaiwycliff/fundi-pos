@@ -33,7 +33,7 @@ import {
 const ACTIVE_STORE_KEY = 'hardware-pos-web-active-store';
 
 function maxDiscountAmountForLine(quantity: number, product: Product): number {
-  return (quantity * product.sellPrice * product.maxDiscountPercent) / 100;
+  return quantity * product.maxDiscountAmount;
 }
 
 export function SellClient({

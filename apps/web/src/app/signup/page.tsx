@@ -55,7 +55,7 @@ export default function SignupPage() {
           <CardHeader>
             <LogoMark className="mb-2 size-10 rounded-md" />
             <CardTitle>Start your free trial</CardTitle>
-            <CardDescription>Set up your hardware store in under a minute.</CardDescription>
+            <CardDescription>Set up your shop in under a minute.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -66,7 +66,7 @@ export default function SignupPage() {
                   required
                   value={businessName}
                   onChange={(e) => setBusinessName(e.target.value)}
-                  placeholder="e.g. Westlands Hardware Co"
+                  placeholder="e.g. Westlands General Store"
                 />
               </div>
               <div className="flex flex-col gap-2">

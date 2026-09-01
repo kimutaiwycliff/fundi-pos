@@ -123,7 +123,7 @@ export function ProductsTable({
                   ) : null}
                   <TableCell className="text-right">{(product.taxRate * 100).toFixed(0)}%</TableCell>
                   <TableCell className="text-right">
-                    {product.maxDiscountPercent ? `${product.maxDiscountPercent}%` : '—'}
+                    {product.maxDiscountAmount ? product.maxDiscountAmount.toFixed(2) : '—'}
                   </TableCell>
                   {branchStock ? (
                     <TableCell className="text-right">{branchStock[product.id] ?? 0}</TableCell>

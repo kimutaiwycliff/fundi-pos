@@ -17,11 +17,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Fundi — POS for hardware stores",
+    default: "Fundi — POS for small businesses",
     template: "%s · Fundi",
   },
   description:
-    "Offline-first point of sale and inventory management for Kenyan hardware and building-supply stores. Sell through blackouts, take M-Pesa at the till, and sync automatically when you're back online.",
+    "Offline-first point of sale and inventory management for Kenyan retail and service businesses. Sell through blackouts, take M-Pesa at the till, and sync automatically when you're back online.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
