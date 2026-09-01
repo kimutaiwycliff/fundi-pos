@@ -10,6 +10,7 @@ import { Products } from './collections/Products.ts';
 import { StoreProductOverrides } from './collections/StoreProductOverrides.ts';
 import { StockMovements } from './collections/StockMovements.ts';
 import { Orders } from './collections/Orders.ts';
+import { CreditPayments } from './collections/CreditPayments.ts';
 import { PurchaseOrders } from './collections/PurchaseOrders.ts';
 import { Suppliers } from './collections/Suppliers.ts';
 import { StockTransfers } from './collections/StockTransfers.ts';
@@ -42,6 +43,7 @@ export default buildConfig({
     StoreProductOverrides,
     StockMovements,
     Orders,
+    CreditPayments,
     PurchaseOrders,
     Suppliers,
     StockTransfers,

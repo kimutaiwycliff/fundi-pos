@@ -16,6 +16,7 @@ interface AuditEntry {
     | 'price_changed'
     | 'order_voided'
     | 'order_refunded'
+    | 'credit_payment_recorded'
     | 'sale_settled'
     | 'login'
     | 'login_blocked'
@@ -35,6 +36,7 @@ const ACTION_LABELS: Record<AuditEntry['action'], string> = {
   price_changed: 'Price changed',
   order_voided: 'Order voided',
   order_refunded: 'Order refunded',
+  credit_payment_recorded: 'Credit payment recorded',
   sale_settled: 'Credit sale settled',
   login: 'Login',
   login_blocked: 'Login blocked',
@@ -49,6 +51,7 @@ const ACTION_VARIANTS: Record<AuditEntry['action'], 'secondary' | 'destructive'>
   price_changed: 'secondary',
   order_voided: 'destructive',
   order_refunded: 'destructive',
+  credit_payment_recorded: 'secondary',
   sale_settled: 'secondary',
   login: 'secondary',
   login_blocked: 'destructive',

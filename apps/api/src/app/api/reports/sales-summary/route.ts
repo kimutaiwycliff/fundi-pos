@@ -99,7 +99,30 @@ export async function GET(request: Request) {
     depth: 0,
     overrideAccess: true,
   });
-  const unpaidCreditTotal = unpaidCredit.docs.reduce((sum, order) => sum + ((order.total as number) ?? 0), 0);
+
+  // "Unpaid" now means "has a balance", not "has never had a payment
+  // recorded against it" - a tab someone's chipped away at via installments
+  // still shows its true remaining balance here, not its original total.
+  const unpaidOrderIds = unpaidCredit.docs.map((order) => String(order.id));
+  const amountPaidByOrder = new Map<string, number>();
+  if (unpaidOrderIds.length > 0) {
+    const payments = await payload.find({
+      collection: 'credit-payments',
+      where: { order: { in: unpaidOrderIds } },
+      pagination: false,
+      depth: 0,
+      overrideAccess: true,
+    });
+    for (const payment of payments.docs) {
+      const orderId = String(payment.order);
+      amountPaidByOrder.set(orderId, (amountPaidByOrder.get(orderId) ?? 0) + ((payment.amount as number) ?? 0));
+    }
+  }
+  const unpaidCreditTotal = unpaidCredit.docs.reduce((sum, order) => {
+    const total = (order.total as number) ?? 0;
+    const paid = amountPaidByOrder.get(String(order.id)) ?? 0;
+    return sum + Math.max(0, total - paid);
+  }, 0);
 
   return Response.json({
     totalSales,

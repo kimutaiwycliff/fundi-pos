@@ -1,9 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { CheckCircle2, Mail, MessageCircle, MoreHorizontal, Receipt as ReceiptIcon, ShieldAlert } from 'lucide-react';
-import { toast } from 'sonner';
+import { CreditCard, Mail, MessageCircle, MoreHorizontal, Receipt as ReceiptIcon, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -14,9 +12,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { buildInvoiceText, invoiceSubject, mailtoInvoiceHref, whatsappInvoiceHref } from '@/lib/invoice-message';
 import type { InvoiceData } from '@/lib/invoice-message';
-import type { ManagerRef, Order, TenantReceiptInfo } from './page';
+import type { CreditPayment, ManagerRef, Order, TenantReceiptInfo } from './page';
 import { ReceiptDialog } from './receipt-dialog';
 import { VoidOrderDialog } from './void-order-dialog';
+import { CreditPaymentDialog } from './credit-payment-dialog';
 
 // One "..." menu per row instead of a growing row of buttons - which of
 // these actions even apply varies a lot per order (credit vs cash, settled
@@ -30,6 +29,7 @@ export function SaleRowActions({
   canSettle,
   contact,
   invoiceData,
+  payments,
 }: {
   order: Order;
   tenant: TenantReceiptInfo;
@@ -37,11 +37,11 @@ export function SaleRowActions({
   canSettle: boolean;
   contact: { phone: string | null; email: string | null };
   invoiceData: InvoiceData;
+  payments: CreditPayment[];
 }) {
-  const router = useRouter();
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
-  const [settling, setSettling] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
 
   const canShowSettle =
     canSettle && order.tenderType === 'credit' && order.paymentStatus === 'pending' && order.status === 'completed';
@@ -49,26 +49,6 @@ export function SaleRowActions({
   const canShowInvoice = order.tenderType === 'credit' && order.status === 'completed';
   const invoiceMessage = canShowInvoice ? buildInvoiceText(invoiceData, tenant) : '';
   const invoiceSubjectLine = canShowInvoice ? invoiceSubject(invoiceData, tenant) : '';
-
-  async function handleSettle() {
-    setSettling(true);
-    const response = await fetch(`/api/payload/orders/${order.id}/settle`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
-    });
-
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      toast.error(body?.error ?? 'Failed to settle sale');
-      setSettling(false);
-      return;
-    }
-
-    toast.success('Sale marked as settled');
-    setSettling(false);
-    router.refresh();
-  }
 
   return (
     <>
@@ -120,9 +100,9 @@ export function SaleRowActions({
           ) : null}
           {canShowVoid || canShowSettle ? <DropdownMenuSeparator /> : null}
           {canShowSettle ? (
-            <DropdownMenuItem disabled={settling} onSelect={handleSettle}>
-              <CheckCircle2 data-icon="inline-start" />
-              {settling ? 'Marking as settled…' : 'Mark as settled'}
+            <DropdownMenuItem onSelect={() => setPaymentOpen(true)}>
+              <CreditCard data-icon="inline-start" />
+              Record payment
             </DropdownMenuItem>
           ) : null}
           {canShowVoid ? (
@@ -137,6 +117,15 @@ export function SaleRowActions({
       <ReceiptDialog order={order} tenant={tenant} open={receiptOpen} onOpenChange={setReceiptOpen} />
       {canShowVoid ? (
         <VoidOrderDialog order={order} managers={managers} open={voidOpen} onOpenChange={setVoidOpen} />
+      ) : null}
+      {canShowSettle ? (
+        <CreditPaymentDialog
+          order={order}
+          payments={payments}
+          managers={managers}
+          open={paymentOpen}
+          onOpenChange={setPaymentOpen}
+        />
       ) : null}
     </>
   );

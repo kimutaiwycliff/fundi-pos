@@ -22,8 +22,12 @@ import {
 import { EmptyState } from '@/components/empty-state';
 import { formatDate, formatDateTime } from '@/lib/format-date';
 import type { InvoiceData } from '@/lib/invoice-message';
-import type { ManagerRef, Order, TenantReceiptInfo } from './page';
+import type { CreditPayment, ManagerRef, Order, TenantReceiptInfo } from './page';
 import { SaleRowActions } from './sale-row-actions';
+
+function amountPaidFor(orderId: string, paymentsByOrder: Record<string, CreditPayment[]>): number {
+  return (paymentsByOrder[orderId] ?? []).reduce((sum, p) => sum + p.amount, 0);
+}
 
 type StatusFilter = 'all' | 'unpaid' | 'paid' | 'voided' | 'refunded';
 
@@ -95,21 +99,21 @@ function TenderBadge({ tenderType }: { tenderType: Order['tenderType'] }) {
   return <Badge variant={tenderType === 'credit' ? 'secondary' : 'outline'}>{TENDER_LABEL[tenderType]}</Badge>;
 }
 
-function PaymentStatusBadge({ order }: { order: Order }) {
+function PaymentStatusBadge({ order, amountPaid }: { order: Order; amountPaid: number }) {
   if (order.paymentStatus === 'paid') {
     return <Badge variant="secondary">Paid</Badge>;
   }
   if (order.paymentStatus === 'failed') {
     return <Badge variant="destructive">Failed</Badge>;
   }
-  // pending - a credit tab gets the attention-grabbing "Unpaid" treatment
-  // (this is the state the page is built to surface); any other pending
-  // tender (e.g. an M-Pesa STK push still awaiting confirmation) is
+  // pending - a credit tab gets the attention-grabbing "Unpaid"/"Partial"
+  // treatment (this is the state the page is built to surface); any other
+  // pending tender (e.g. an M-Pesa STK push still awaiting confirmation) is
   // transient and gets a quieter label.
   if (order.tenderType === 'credit') {
     return (
       <Badge className="border-amber-600/30 bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400">
-        Unpaid
+        {amountPaid > 0 ? `Partial (${amountPaid.toFixed(2)} of ${order.total.toFixed(2)})` : 'Unpaid'}
       </Badge>
     );
   }
@@ -127,11 +131,13 @@ export function SalesTable({
   tenant,
   canSettle,
   managers,
+  paymentsByOrder,
 }: {
   orders: Order[];
   tenant: TenantReceiptInfo;
   canSettle: boolean;
   managers: ManagerRef[];
+  paymentsByOrder: Record<string, CreditPayment[]>;
 }) {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -235,7 +241,7 @@ export function SalesTable({
                       <TenderBadge tenderType={order.tenderType} />
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      <PaymentStatusBadge order={order} />
+                      <PaymentStatusBadge order={order} amountPaid={amountPaidFor(order.id, paymentsByOrder)} />
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={order.status} />
@@ -249,6 +255,7 @@ export function SalesTable({
                           canSettle={canSettle}
                           contact={contact}
                           invoiceData={toInvoiceData(order)}
+                          payments={paymentsByOrder[order.id] ?? []}
                         />
                       </div>
                     </TableCell>

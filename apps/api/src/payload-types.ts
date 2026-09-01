@@ -76,6 +76,7 @@ export interface Config {
     'store-product-overrides': StoreProductOverride;
     'stock-movements': StockMovement;
     orders: Order;
+    'credit-payments': CreditPayment;
     'purchase-orders': PurchaseOrder;
     suppliers: Supplier;
     'stock-transfers': StockTransfer;
@@ -98,6 +99,7 @@ export interface Config {
     'store-product-overrides': StoreProductOverridesSelect<false> | StoreProductOverridesSelect<true>;
     'stock-movements': StockMovementsSelect<false> | StockMovementsSelect<true>;
     orders: OrdersSelect<false> | OrdersSelect<true>;
+    'credit-payments': CreditPaymentsSelect<false> | CreditPaymentsSelect<true>;
     'purchase-orders': PurchaseOrdersSelect<false> | PurchaseOrdersSelect<true>;
     suppliers: SuppliersSelect<false> | SuppliersSelect<true>;
     'stock-transfers': StockTransfersSelect<false> | StockTransfersSelect<true>;
@@ -293,9 +295,9 @@ export interface Product {
   sellPrice: number;
   taxRate: number;
   /**
-   * Maximum % a cashier may discount this product at the till. 0 = no discount allowed.
+   * Maximum amount a cashier may discount this product by per unit at the till. 0 = no discount allowed.
    */
-  maxDiscountPercent: number;
+  maxDiscountAmount: number;
   /**
    * Dashboard flags this product as low-stock per store once on-hand quantity drops to or below this.
    */
@@ -408,6 +410,22 @@ export interface Customer {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "credit-payments".
+ */
+export interface CreditPayment {
+  id: number;
+  tenant: number | Tenant;
+  order: string | Order;
+  amount: number;
+  method: 'cash' | 'mpesa' | 'card' | 'other';
+  note?: string | null;
+  recordedBy: number | User;
+  paidAt: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "purchase-orders".
  */
 export interface PurchaseOrder {
@@ -507,6 +525,7 @@ export interface AuditLog {
     | 'price_changed'
     | 'order_voided'
     | 'order_refunded'
+    | 'credit_payment_recorded'
     | 'sale_settled'
     | 'login'
     | 'login_blocked'
@@ -586,6 +605,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'orders';
         value: string | Order;
+      } | null)
+    | ({
+        relationTo: 'credit-payments';
+        value: number | CreditPayment;
       } | null)
     | ({
         relationTo: 'purchase-orders';
@@ -767,7 +790,7 @@ export interface ProductsSelect<T extends boolean = true> {
   costPrice?: T;
   sellPrice?: T;
   taxRate?: T;
-  maxDiscountPercent?: T;
+  maxDiscountAmount?: T;
   reorderPoint?: T;
   isBundle?: T;
   bundleComponents?:
@@ -853,6 +876,21 @@ export interface OrdersSelect<T extends boolean = true> {
   kraQrCode?: T;
   kraCuSerial?: T;
   kraSubmissionStatus?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "credit-payments_select".
+ */
+export interface CreditPaymentsSelect<T extends boolean = true> {
+  tenant?: T;
+  order?: T;
+  amount?: T;
+  method?: T;
+  note?: T;
+  recordedBy?: T;
+  paidAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }

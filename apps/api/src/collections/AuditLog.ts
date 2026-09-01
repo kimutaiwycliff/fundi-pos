@@ -26,6 +26,7 @@ export const AuditLog: CollectionConfig = {
         'price_changed',
         'order_voided',
         'order_refunded',
+        'credit_payment_recorded',
         'sale_settled',
         'login',
         'login_blocked',
