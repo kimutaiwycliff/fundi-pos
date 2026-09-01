@@ -1,51 +1,22 @@
-import { useEffect, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { getDb } from '../db/database';
 import { disconnectPowerSync } from '../db/database';
 import { clearSession } from '../lib/session';
 import type { PayloadUser } from '../lib/auth';
 import { SellScreen as RealSellScreen } from '../sell/SellScreen';
+import { CustomersScreen as RealCustomersScreen } from '../customers/CustomersScreen';
 
-// Placeholder screens for Phase 0 - just enough to prove the navigation
-// shell + NativeWind theming + local synced-data reads all work end to
-// end. Phase 2/3 replace each of the remaining ones with the real
-// Inventory/Customers screens described in the plan - Sell (Phase 1) is
-// now the real thing, see ../sell/SellScreen.tsx.
+// Placeholder screen for Phase 0 - just enough to prove the navigation
+// shell + NativeWind theming + local synced-data reads work end to end.
+// Phase 3 replaces this with the real Inventory screen described in the
+// plan - Sell (Phase 1) and Customers (Phase 2) are now the real thing,
+// see ../sell/SellScreen.tsx and ../customers/CustomersScreen.tsx.
 function InventoryScreen() {
   return (
     <View className="flex-1 items-center justify-center bg-background px-6">
       <Text className="text-2xl font-semibold text-foreground">Inventory</Text>
       <Text className="mt-2 text-center text-muted-foreground">Stock levels, adjustments and transfers land here in Phase 3.</Text>
-    </View>
-  );
-}
-
-function CustomersScreen() {
-  const [customerCount, setCustomerCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getDb()
-      .getOptional<{ count: number }>('SELECT COUNT(*) as count FROM customers')
-      .then((row) => {
-        if (!cancelled) setCustomerCount(row?.count ?? 0);
-      })
-      .catch(() => {
-        if (!cancelled) setCustomerCount(0);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return (
-    <View className="flex-1 items-center justify-center bg-background px-6">
-      <Text className="text-2xl font-semibold text-foreground">Customers</Text>
-      <Text className="mt-2 text-center text-muted-foreground">
-        {customerCount === null ? 'Loading synced customers...' : `${customerCount} customers synced locally`}
-      </Text>
     </View>
   );
 }
@@ -101,7 +72,7 @@ export function RootTabs({
         {() => <RealSellScreen user={user} payloadToken={payloadToken} terminalId={terminalId} terminalName={terminalName} storeId={storeId} />}
       </Tab.Screen>
       <Tab.Screen name="Inventory" component={InventoryScreen} />
-      <Tab.Screen name="Customers" component={CustomersScreen} />
+      <Tab.Screen name="Customers">{() => <RealCustomersScreen user={user} payloadToken={payloadToken} storeId={storeId} />}</Tab.Screen>
       <Tab.Screen name="More">{() => <MoreScreen user={user} terminalName={terminalName} onSignOut={onSignOut} />}</Tab.Screen>
     </Tab.Navigator>
   );

@@ -179,3 +179,31 @@ export async function authorizeSettlement(
   }
   return { ok: true };
 }
+
+/**
+ * Records one installment against a credit sale - same Option-A shape as
+ * authorizeSettlement (managerId/pin are only actually read server-side when
+ * the requesting session's own role is cashier; an owner/manager session
+ * settles under its own identity and these are ignored, but are still sent
+ * unconditionally by callers here for one uniform call shape).
+ */
+export async function recordCreditPayment(
+  payloadToken: string,
+  orderId: string,
+  amount: number,
+  method: 'cash' | 'mpesa' | 'card' | 'other',
+  note: string | undefined,
+  managerId: number,
+  pin: string,
+): Promise<{ ok: true; amountPaid: number; balance: number } | { ok: false; error: string }> {
+  const res = await fetch(`${API_BASE_URL}/api/orders/${orderId}/record-payment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+    body: JSON.stringify({ amount, method, note, managerId, pin }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
+  }
+  return { ok: true, amountPaid: body.amountPaid, balance: body.balance };
+}
