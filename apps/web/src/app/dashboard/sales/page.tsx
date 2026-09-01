@@ -1,6 +1,8 @@
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
+import { nairobiDateToUTC } from '@/lib/format-date';
 import { SalesTable } from './sales-table';
+import { DateRangeFilter } from './date-range-filter';
 
 export type StoreRef = { id: number; name: string };
 export type UserRef = { id: number; name: string | null; email: string };
@@ -49,12 +51,31 @@ export type CreditPayment = {
   paidAt: string;
 };
 
-export default async function SalesPage() {
+export default async function SalesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
   const me = await getCurrentUser();
   const tenantId = typeof me.tenant === 'object' ? me.tenant.id : me.tenant;
+  const { from, to } = await searchParams;
+
+  // Nairobi calendar days, not UTC-shifted slices of them - see
+  // nairobiDateToUTC's own comment. `to` is inclusive of that whole day, so
+  // the upper bound is midnight at the START of the day AFTER it.
+  let ordersQuery = '/api/orders?sort=-createdAt&limit=200';
+  const [fromYear, fromMonth, fromDay] = from ? from.split('-').map(Number) : [];
+  const [toYear, toMonth, toDay] = to ? to.split('-').map(Number) : [];
+  if (fromYear) {
+    ordersQuery += `&where[createdAt][greater_than_equal]=${encodeURIComponent(nairobiDateToUTC(fromYear, fromMonth, fromDay).toISOString())}`;
+  }
+  if (toYear) {
+    const exclusiveUpperBound = new Date(nairobiDateToUTC(toYear, toMonth, toDay).getTime() + 24 * 60 * 60 * 1000);
+    ordersQuery += `&where[createdAt][less_than]=${encodeURIComponent(exclusiveUpperBound.toISOString())}`;
+  }
 
   const [{ docs: orders }, tenant, { docs: managers }, { docs: creditPayments }] = await Promise.all([
-    payloadFetch<{ docs: Order[] }>('/api/orders?sort=-createdAt&limit=200'),
+    payloadFetch<{ docs: Order[] }>(ordersQuery),
     payloadFetch<TenantReceiptInfo>(`/api/tenants/${tenantId}`),
     // Void/refund (VoidOrderDialog) requires picking a real manager/owner to
     // authorize with - authorize-status always PIN-checks server-side
@@ -90,7 +111,13 @@ export default async function SalesPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Sales</h1>
+        <DateRangeFilter />
       </div>
+      {orders.length === 200 ? (
+        <p className="text-xs text-muted-foreground">
+          Showing the most recent 200 orders{from || to ? ' in this range' : ''} - narrow the date filter to see more.
+        </p>
+      ) : null}
       <SalesTable
         orders={orders}
         tenant={tenant}

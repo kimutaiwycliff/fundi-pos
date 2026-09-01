@@ -25,3 +25,14 @@ export function formatDate(iso: string): string {
 export function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString(LOCALE, { timeZone: TIME_ZONE });
 }
+
+// East Africa Time is a fixed UTC+3 offset year-round (no DST), so this is
+// pure arithmetic - no Intl API needed, unlike converting an arbitrary
+// instant BACK into a Nairobi calendar date (apps/api/src/lib/
+// salesAggregate.ts's own nairobiDateToUTC does the same thing server-side,
+// for the same reason: a "YYYY-MM-DD" typed into a date filter means that
+// full Nairobi calendar day, not a UTC-shifted slice of it that could start
+// or end 3 hours off from what the person actually meant).
+export function nairobiDateToUTC(year: number, month: number, day: number): Date {
+  return new Date(Date.UTC(year, month - 1, day, -3, 0, 0));
+}
