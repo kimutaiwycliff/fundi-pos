@@ -1,6 +1,30 @@
 import path from 'path';
 import { defineConfig } from 'vitest/config';
 
+const DEFAULT_TEST_DATABASE_URI = 'postgres://pos_admin:dev_only_change_me@localhost:5433/pos_saas_test';
+
+// Integration tests truncate every table in their own beforeEach - if
+// whatever set DATABASE_URI actually points at the real dev/prod database,
+// running these tests silently destroys real data. Caught live: Nx's own
+// env-file auto-loading populated process.env.DATABASE_URI from
+// apps/api/.env (pos_saas, the hand-seeded dev DB) before this file's old
+// bare `??` fallback ever got a chance to apply, and a routine test run
+// wiped the dev database's demo data. A hard "must end in _test" guard
+// turns that into an immediate, loud failure instead of a silent one - CI's
+// own Postgres service is provisioned as pos_saas_test (.github/workflows/
+// ci.yml), so this doesn't affect CI.
+function resolveDatabaseUri(): string {
+  const provided = process.env.DATABASE_URI;
+  if (!provided) return DEFAULT_TEST_DATABASE_URI;
+  const dbName = provided.split('/').pop()?.split('?')[0] ?? '';
+  if (!dbName.endsWith('_test')) {
+    throw new Error(
+      `Refusing to run integration tests against database "${dbName}" - DATABASE_URI must point at a *_test database (got: ${provided}).`,
+    );
+  }
+  return provided;
+}
+
 export default defineConfig({
   test: {
     environment: 'node',
@@ -26,7 +50,7 @@ export default defineConfig({
     // "ECONNREFUSED ...:5433" error once CI had a real, reachable
     // Postgres on 5432 that this config was never even trying to use.
     env: {
-      DATABASE_URI: process.env.DATABASE_URI ?? 'postgres://pos_admin:dev_only_change_me@localhost:5433/pos_saas_test',
+      DATABASE_URI: resolveDatabaseUri(),
       PAYLOAD_SECRET: process.env.PAYLOAD_SECRET ?? 'test_only_secret',
     },
   },
