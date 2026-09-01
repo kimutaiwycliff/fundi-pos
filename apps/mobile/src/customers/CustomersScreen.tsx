@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, ScrollView } from 'react-native';
 import { getDb } from '../db/database';
@@ -122,7 +123,8 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
         keyExtractor={(c) => c.id}
         ListEmptyComponent={<Text className="mt-8 text-center text-muted-foreground">No customers yet.</Text>}
         renderItem={({ item }) => (
-          <Pressable className="mb-2 rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setDetailCustomer(item)}>
+          <Animated.View entering={FadeInDown.duration(220)}>
+          <Pressable android_ripple={{}} className="mb-2 rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setDetailCustomer(item)}>
             <View className="flex-row items-center justify-between">
               <View className="shrink">
                 <Text className="font-medium text-foreground">{item.name}</Text>
@@ -140,6 +142,7 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
               ) : null}
             </View>
           </Pressable>
+          </Animated.View>
         )}
       />
 
@@ -152,7 +155,7 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
                 {detailCustomer?.phone ?? 'No phone'} · {detailCustomer?.loyalty_points} loyalty points
               </Text>
             </View>
-            <Pressable onPress={() => setDetailCustomer(null)}>
+            <Pressable android_ripple={{}} onPress={() => setDetailCustomer(null)}>
               <Text className="text-muted-foreground">Close</Text>
             </Pressable>
           </View>
@@ -173,7 +176,7 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
                       </View>
                       <View className="flex-row items-center gap-3">
                         <Text className="font-semibold text-destructive">{o.total.toFixed(2)}</Text>
-                        <Pressable
+                        <Pressable android_ripple={{ color: '#ffffff40' }}
                           className="rounded-md bg-primary px-3 py-1.5 active:opacity-80"
                           onPress={() => setPaymentOrder({ id: o.id, total: o.total, created_at: o.created_at, synced_at: o.synced_at })}
                         >

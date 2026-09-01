@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Alert, Modal } from 'react-native';
 import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
@@ -326,7 +327,7 @@ export function SellScreen({
             shift={activeShift}
             onShiftChange={setActiveShift}
           />
-          <Pressable className="ml-2 rounded-md border border-border px-3 py-1.5 active:opacity-70" onPress={() => setHeldSalesOpen(true)}>
+          <Pressable android_ripple={{}} className="ml-2 rounded-md border border-border px-3 py-1.5 active:opacity-70" onPress={() => setHeldSalesOpen(true)}>
             <Text className="text-sm text-foreground">
               Held{heldSales.length > 0 ? ` (${heldSales.length})` : ''}
             </Text>
@@ -353,8 +354,9 @@ export function SellScreen({
           renderItem={({ item }) => {
             const outOfStock = item.variant_count === 0 && item.stock_on_hand <= 0;
             return (
-              <Pressable
-                className={`flex-1 rounded-lg border border-border bg-card p-3 ${outOfStock ? 'opacity-50' : 'active:opacity-70'}`}
+              <Animated.View entering={FadeInDown.duration(200)} className="flex-1">
+              <Pressable android_ripple={{}}
+                className={`rounded-lg border border-border bg-card p-3 ${outOfStock ? 'opacity-50' : 'active:opacity-70'}`}
                 disabled={outOfStock}
                 onPress={() => requestAdd(item)}
               >
@@ -371,6 +373,7 @@ export function SellScreen({
                   </Text>
                 </View>
               </Pressable>
+              </Animated.View>
             );
           }}
         />
@@ -383,7 +386,7 @@ export function SellScreen({
         </View>
       )}
 
-      <Pressable className="border-t border-border bg-card px-4 py-3 active:opacity-80" onPress={() => setCartOpen(true)}>
+      <Pressable android_ripple={{}} className="border-t border-border bg-card px-4 py-3 active:opacity-80" onPress={() => setCartOpen(true)}>
         <View className="flex-row items-center justify-between">
           <Text className="font-medium text-foreground">
             {cart.length} item{cart.length === 1 ? '' : 's'}
@@ -405,7 +408,7 @@ export function SellScreen({
         <View className="flex-1 bg-background pt-14">
           <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
             <Text className="text-lg font-semibold text-foreground">Current sale</Text>
-            <Pressable onPress={() => setCartOpen(false)}>
+            <Pressable android_ripple={{}} onPress={() => setCartOpen(false)}>
               <Text className="text-muted-foreground">Close</Text>
             </Pressable>
           </View>
@@ -424,18 +427,18 @@ export function SellScreen({
                 const max = maxDiscountAmountForLine(item);
                 const price = lineUnitPrice(item);
                 return (
-                  <View className="rounded-lg border border-border p-3">
+                  <Animated.View entering={FadeInDown.duration(180)} className="rounded-lg border border-border p-3">
                     <View className="flex-row items-center justify-between">
                       <View className="shrink">
                         <Text className="font-medium text-foreground">{lineDisplayLabel(item)}</Text>
                         <Text className="text-xs text-muted-foreground">{price.toFixed(2)} each</Text>
                       </View>
                       <View className="flex-row items-center gap-3">
-                        <Pressable className="h-8 w-8 items-center justify-center rounded-md border border-border" onPress={() => updateQuantity(item, item.quantity - 1)}>
+                        <Pressable android_ripple={{}} className="h-8 w-8 items-center justify-center rounded-md border border-border" onPress={() => updateQuantity(item, item.quantity - 1)}>
                           <Text className="text-foreground">−</Text>
                         </Pressable>
                         <Text className="w-6 text-center text-foreground">{item.quantity}</Text>
-                        <Pressable className="h-8 w-8 items-center justify-center rounded-md border border-border" onPress={() => updateQuantity(item, item.quantity + 1)}>
+                        <Pressable android_ripple={{}} className="h-8 w-8 items-center justify-center rounded-md border border-border" onPress={() => updateQuantity(item, item.quantity + 1)}>
                           <Text className="text-foreground">+</Text>
                         </Pressable>
                       </View>
@@ -455,7 +458,7 @@ export function SellScreen({
                         <Text className="text-xs text-muted-foreground">(max {max.toFixed(2)})</Text>
                       </View>
                     ) : null}
-                  </View>
+                  </Animated.View>
                 );
               }}
             />
@@ -481,7 +484,7 @@ export function SellScreen({
 
             <View className="flex-row gap-1.5">
               {TENDER_OPTIONS.map((option) => (
-                <Pressable
+                <Pressable android_ripple={{ color: '#ffffff40' }}
                   key={option.value}
                   className={`flex-1 items-center rounded-md border py-2 ${tenderType === option.value ? 'border-primary bg-primary' : 'border-border'}`}
                   onPress={() => setTenderType(option.value)}
@@ -495,14 +498,14 @@ export function SellScreen({
               <CustomerPicker payloadToken={payloadToken} tenantId={tenantId} value={selectedCustomer} onChange={setSelectedCustomer} />
             ) : null}
 
-            <Pressable
+            <Pressable android_ripple={{ color: '#ffffff40' }}
               className={`items-center rounded-lg bg-primary py-3 ${checkoutDisabled ? 'opacity-50' : 'active:opacity-80'}`}
               disabled={checkoutDisabled}
               onPress={completeSale}
             >
               <Text className="font-medium text-primary-foreground">{checkoutLabel}</Text>
             </Pressable>
-            <Pressable
+            <Pressable android_ripple={{}}
               className={`items-center rounded-lg border border-border py-3 ${cart.length === 0 ? 'opacity-50' : 'active:opacity-70'}`}
               disabled={cart.length === 0}
               onPress={handleHoldSale}

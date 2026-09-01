@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { Modal, View, Text, TextInput, Pressable, FlatList } from 'react-native';
 import { getDb } from '../db/database';
@@ -147,12 +148,12 @@ export function StockAdjustmentModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable className="flex-1 justify-end bg-black/40" onPress={onClose}>
-        <Pressable className="max-h-[85%] rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
+      <Pressable android_ripple={{}} className="flex-1 justify-end bg-black/40" onPress={onClose}>
+        <Pressable android_ripple={{}} className="max-h-[85%] rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
           <Text className="mb-3 text-lg font-semibold text-foreground">Adjust stock</Text>
 
           {selectedProduct ? (
-            <Pressable
+            <Pressable android_ripple={{}}
               className="rounded-lg border border-border bg-card p-3"
               onPress={() => {
                 setSelectedProduct(null);
@@ -177,10 +178,12 @@ export function StockAdjustmentModal({
                     data={productResults}
                     keyExtractor={(p) => p.id}
                     renderItem={({ item }) => (
-                      <Pressable className="border-b border-border px-3 py-2 last:border-b-0 active:bg-muted" onPress={() => setSelectedProduct(item)}>
+                      <Animated.View entering={FadeInDown.duration(180)}>
+                      <Pressable android_ripple={{}} className="border-b border-border px-3 py-2 last:border-b-0 active:bg-muted" onPress={() => setSelectedProduct(item)}>
                         <Text className="text-sm text-foreground">{item.name}</Text>
                         <Text className="text-xs text-muted-foreground">{item.sku}</Text>
                       </Pressable>
+                      </Animated.View>
                     )}
                   />
                 </View>
@@ -193,7 +196,7 @@ export function StockAdjustmentModal({
               <Text className="mb-1 mt-3 text-sm text-muted-foreground">Variant</Text>
               <View className="flex-row flex-wrap gap-1.5">
                 {variants.map((v) => (
-                  <Pressable
+                  <Pressable android_ripple={{ color: '#ffffff40' }}
                     key={v.id}
                     className={`rounded-md border px-3 py-1.5 ${selectedVariant?.id === v.id ? 'border-primary bg-primary' : 'border-border'}`}
                     onPress={() => setSelectedVariant(v)}
@@ -208,7 +211,7 @@ export function StockAdjustmentModal({
           <Text className="mb-1 mt-3 text-sm text-muted-foreground">Type</Text>
           <View className="gap-1.5">
             {TYPES.map((t) => (
-              <Pressable
+              <Pressable android_ripple={{ color: '#ffffff40' }}
                 key={t.value}
                 className={`rounded-md border px-3 py-2 ${type === t.value ? 'border-primary bg-primary' : 'border-border'}`}
                 onPress={() => setType(t.value)}
@@ -228,10 +231,10 @@ export function StockAdjustmentModal({
 
           {error ? <Text className="mt-3 text-destructive">{error}</Text> : null}
 
-          <Pressable className={`mt-4 items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`} disabled={busy} onPress={handleSubmit}>
+          <Pressable android_ripple={{ color: '#ffffff40' }} className={`mt-4 items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`} disabled={busy} onPress={handleSubmit}>
             <Text className="font-medium text-primary-foreground">{busy ? 'Saving...' : 'Record movement'}</Text>
           </Pressable>
-          <Pressable className="mt-2 items-center py-2" onPress={onClose}>
+          <Pressable android_ripple={{}} className="mt-2 items-center py-2" onPress={onClose}>
             <Text className="text-muted-foreground">Cancel</Text>
           </Pressable>
         </Pressable>

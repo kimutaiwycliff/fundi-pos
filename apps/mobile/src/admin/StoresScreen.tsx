@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, Alert } from 'react-native';
 import { API_BASE_URL } from '../lib/auth';
@@ -86,7 +87,7 @@ export function StoresScreen({ payloadToken, tenantId }: { payloadToken: string;
     <View className="flex-1 bg-background">
       <View className="flex-row items-center justify-between border-b border-border p-3">
         <Text className="text-lg font-semibold text-foreground">Stores</Text>
-        <Pressable className="rounded-md bg-primary px-3 py-1.5 active:opacity-80" onPress={() => setEditing('new')}>
+        <Pressable android_ripple={{ color: '#ffffff40' }} className="rounded-md bg-primary px-3 py-1.5 active:opacity-80" onPress={() => setEditing('new')}>
           <Text className="text-sm font-medium text-primary-foreground">New store</Text>
         </Pressable>
       </View>
@@ -95,10 +96,12 @@ export function StoresScreen({ payloadToken, tenantId }: { payloadToken: string;
         data={stores}
         keyExtractor={(s) => String(s.id)}
         renderItem={({ item }) => (
-          <Pressable className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setEditing(item)}>
+          <Animated.View entering={FadeInDown.duration(200)}>
+          <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setEditing(item)}>
             <Text className="font-medium text-foreground">{item.name}</Text>
             <Text className="text-xs text-muted-foreground">{item.address ?? 'No address'} · {item.timezone}</Text>
           </Pressable>
+          </Animated.View>
         )}
       />
 
@@ -106,7 +109,7 @@ export function StoresScreen({ payloadToken, tenantId }: { payloadToken: string;
         <View className="flex-1 bg-background pt-14">
           <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
             <Text className="text-lg font-semibold text-foreground">{editing === 'new' ? 'New store' : 'Edit store'}</Text>
-            <Pressable onPress={() => setEditing(null)}>
+            <Pressable android_ripple={{}} onPress={() => setEditing(null)}>
               <Text className="text-muted-foreground">Close</Text>
             </Pressable>
           </View>
@@ -115,11 +118,11 @@ export function StoresScreen({ payloadToken, tenantId }: { payloadToken: string;
             <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Address" placeholderTextColor={placeholderColor} value={address} onChangeText={setAddress} />
             <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Timezone" placeholderTextColor={placeholderColor} value={timezone} onChangeText={setTimezone} />
             {error ? <Text className="text-destructive">{error}</Text> : null}
-            <Pressable className={`items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`} disabled={busy} onPress={handleSubmit}>
+            <Pressable android_ripple={{ color: '#ffffff40' }} className={`items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`} disabled={busy} onPress={handleSubmit}>
               <Text className="font-medium text-primary-foreground">{busy ? 'Saving...' : editing === 'new' ? 'Create store' : 'Save changes'}</Text>
             </Pressable>
             {editing !== 'new' ? (
-              <Pressable className="items-center rounded-lg border border-destructive py-3 active:opacity-70" onPress={handleDelete}>
+              <Pressable android_ripple={{}} className="items-center rounded-lg border border-destructive py-3 active:opacity-70" onPress={handleDelete}>
                 <Text className="font-medium text-destructive">Delete store</Text>
               </Pressable>
             ) : null}

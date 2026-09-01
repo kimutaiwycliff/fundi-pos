@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Alert } from 'react-native';
 import { getDb } from '../db/database';
@@ -90,7 +91,7 @@ export function CustomerPicker({
           Customer: <Text className="font-semibold">{value.name}</Text>
           {value.phone ? ` · ${value.phone}` : ''}
         </Text>
-        <Pressable onPress={() => onChange(null)}>
+        <Pressable android_ripple={{}} onPress={() => onChange(null)}>
           <Text className="text-sm text-muted-foreground">Change</Text>
         </Pressable>
       </View>
@@ -117,17 +118,19 @@ export function CustomerPicker({
             data={results}
             keyExtractor={(c) => c.id}
             renderItem={({ item }) => (
-              <Pressable className="px-3 py-2 active:bg-muted" onPress={() => onChange(item)}>
+              <Animated.View entering={FadeInDown.duration(180)}>
+              <Pressable android_ripple={{}} className="px-3 py-2 active:bg-muted" onPress={() => onChange(item)}>
                 <Text className="text-sm text-foreground">
                   {item.name} {item.phone ? `(${item.phone})` : ''}
                 </Text>
               </Pressable>
+              </Animated.View>
             )}
           />
         </View>
       ) : null}
       {trimmed && results.length === 0 && !creating ? (
-        <Pressable className="items-center rounded-md border border-border py-2 active:opacity-70" onPress={() => setCreating(true)}>
+        <Pressable android_ripple={{}} className="items-center rounded-md border border-border py-2 active:opacity-70" onPress={() => setCreating(true)}>
           <Text className="text-sm text-foreground">+ Add &quot;{trimmed}&quot; as a new customer</Text>
         </Pressable>
       ) : null}
@@ -150,7 +153,7 @@ export function CustomerPicker({
             value={newEmail}
             onChangeText={setNewEmail}
           />
-          <Pressable
+          <Pressable android_ripple={{ color: '#ffffff40' }}
             className={`items-center rounded-md bg-primary py-2 ${saving || !newPhone.trim() ? 'opacity-50' : 'active:opacity-80'}`}
             onPress={handleCreate}
             disabled={saving || !newPhone.trim()}

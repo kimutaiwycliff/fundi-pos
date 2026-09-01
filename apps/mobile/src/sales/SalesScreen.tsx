@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal } from 'react-native';
 import { getDb } from '../db/database';
@@ -109,7 +110,7 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
         renderItem={({ item }) => {
           const isUnpaidCredit = item.tender_type === 'credit' && item.payment_status === 'pending';
           return (
-            <View className="rounded-lg border border-border bg-card p-3">
+            <Animated.View entering={FadeInDown.duration(220)} className="rounded-lg border border-border bg-card p-3">
               <View className="flex-row items-center justify-between">
                 <Text className="font-medium text-foreground">
                   #{item.id.slice(0, 8)} · {item.total.toFixed(2)}
@@ -122,11 +123,11 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
                 {isUnpaidCredit ? ' · unpaid' : ''}
               </Text>
               <View className="mt-2 flex-row flex-wrap gap-1.5">
-                <Pressable className="rounded-md border border-border px-3 py-1.5 active:opacity-70" onPress={() => openReceipt(item)}>
+                <Pressable android_ripple={{}} className="rounded-md border border-border px-3 py-1.5 active:opacity-70" onPress={() => openReceipt(item)}>
                   <Text className="text-sm text-foreground">Receipt</Text>
                 </Pressable>
                 {isUnpaidCredit ? (
-                  <Pressable
+                  <Pressable android_ripple={{ color: '#ffffff40' }}
                     className="rounded-md bg-primary px-3 py-1.5 active:opacity-80"
                     onPress={() => setPaymentOrder({ id: item.id, total: item.total, created_at: item.created_at, synced_at: null })}
                   >
@@ -134,19 +135,19 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
                   </Pressable>
                 ) : null}
                 {item.status === 'completed' ? (
-                  <Pressable className="rounded-md border border-destructive px-3 py-1.5 active:opacity-70" onPress={() => setVoidOrder({ id: item.id, total: item.total })}>
+                  <Pressable android_ripple={{}} className="rounded-md border border-destructive px-3 py-1.5 active:opacity-70" onPress={() => setVoidOrder({ id: item.id, total: item.total })}>
                     <Text className="text-sm text-destructive">Void/Refund</Text>
                   </Pressable>
                 ) : null}
               </View>
-            </View>
+            </Animated.View>
           );
         }}
       />
 
       <Modal visible={receiptOrder != null} animationType="slide" transparent onRequestClose={() => setReceiptOrder(null)}>
-        <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setReceiptOrder(null)}>
-          <Pressable className="max-h-[85%] rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
+        <Pressable android_ripple={{}} className="flex-1 justify-end bg-black/40" onPress={() => setReceiptOrder(null)}>
+          <Pressable android_ripple={{}} className="max-h-[85%] rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
             <Text className="mb-1 text-lg font-semibold text-foreground">Order #{receiptOrder?.id.slice(0, 8)}</Text>
             <Text className="mb-3 text-xs text-muted-foreground">
               {receiptOrder?.created_at ? new Date(receiptOrder.created_at).toLocaleString() : ''} · {receiptOrder?.tender_type}
@@ -155,14 +156,14 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
               data={receiptLines}
               keyExtractor={(_, i) => String(i)}
               renderItem={({ item }) => (
-                <View className="flex-row items-center justify-between border-b border-border py-1.5 last:border-b-0">
+                <Animated.View entering={FadeInDown.duration(180)} className="flex-row items-center justify-between border-b border-border py-1.5 last:border-b-0">
                   <View className="shrink">
                     <Text className="text-sm text-foreground">
                       {item.quantity} × {item.product_name}
                     </Text>
                   </View>
                   <Text className="text-sm text-foreground">{(item.quantity * item.unit_price - item.discount).toFixed(2)}</Text>
-                </View>
+                </Animated.View>
               )}
             />
             <View className="mt-3 gap-1 border-t border-border pt-3">
@@ -184,7 +185,7 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
             {receiptOrder?.tender_type === 'credit' && receiptOrder.payment_status === 'pending' ? (
               <Text className="mt-3 text-center font-medium text-destructive">UNPAID - PAY LATER</Text>
             ) : null}
-            <Pressable className="mt-4 items-center py-2" onPress={() => setReceiptOrder(null)}>
+            <Pressable android_ripple={{}} className="mt-4 items-center py-2" onPress={() => setReceiptOrder(null)}>
               <Text className="text-muted-foreground">Close</Text>
             </Pressable>
           </Pressable>

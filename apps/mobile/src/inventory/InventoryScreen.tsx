@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { View, Text, Pressable, FlatList } from 'react-native';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
@@ -95,16 +96,16 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
     <View className="flex-1 bg-background">
       <View className="flex-row items-center justify-between gap-2 border-b border-border p-3">
         <View className="flex-1 flex-row gap-1.5">
-          <Pressable className={`flex-1 items-center rounded-md border py-2 ${tab === 'levels' ? 'border-primary bg-primary' : 'border-border'}`} onPress={() => setTab('levels')}>
+          <Pressable android_ripple={{ color: '#ffffff40' }} className={`flex-1 items-center rounded-md border py-2 ${tab === 'levels' ? 'border-primary bg-primary' : 'border-border'}`} onPress={() => setTab('levels')}>
             <Text className={tab === 'levels' ? 'font-medium text-primary-foreground' : 'text-foreground'}>Levels</Text>
           </Pressable>
-          <Pressable className={`flex-1 items-center rounded-md border py-2 ${tab === 'exceptions' ? 'border-primary bg-primary' : 'border-border'}`} onPress={() => setTab('exceptions')}>
+          <Pressable android_ripple={{ color: '#ffffff40' }} className={`flex-1 items-center rounded-md border py-2 ${tab === 'exceptions' ? 'border-primary bg-primary' : 'border-border'}`} onPress={() => setTab('exceptions')}>
             <Text className={tab === 'exceptions' ? 'font-medium text-primary-foreground' : 'text-foreground'}>
               Exceptions{flagged.length > 0 ? ` (${flagged.length})` : ''}
             </Text>
           </Pressable>
         </View>
-        <Pressable className="rounded-md bg-primary px-3 py-2 active:opacity-80" onPress={() => setAdjustOpen(true)}>
+        <Pressable android_ripple={{ color: '#ffffff40' }} className="rounded-md bg-primary px-3 py-2 active:opacity-80" onPress={() => setAdjustOpen(true)}>
           <Text className="text-sm font-medium text-primary-foreground">Adjust</Text>
         </Pressable>
       </View>
@@ -119,7 +120,7 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
           renderItem={({ item }) => {
             const low = isLowStock(item);
             return (
-              <View className={`flex-row items-center justify-between rounded-lg border p-3 ${low ? 'border-destructive bg-destructive/5' : 'border-border bg-card'}`}>
+              <Animated.View entering={FadeInDown.duration(200)} className={`flex-row items-center justify-between rounded-lg border p-3 ${low ? 'border-destructive bg-destructive/5' : 'border-border bg-card'}`}>
                 <View className="shrink">
                   <Text className="font-medium text-foreground">{item.variant_label ? `${item.product_name} — ${item.variant_label}` : item.product_name}</Text>
                   <Text className="text-xs text-muted-foreground">
@@ -128,7 +129,7 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
                   </Text>
                 </View>
                 <Text className={low ? 'font-semibold text-destructive' : 'font-semibold text-foreground'}>{item.quantity}</Text>
-              </View>
+              </Animated.View>
             );
           }}
         />
@@ -140,7 +141,7 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
           keyExtractor={(m) => m.id}
           ListEmptyComponent={<Text className="mt-8 text-center text-muted-foreground">No exceptions - nothing has gone negative.</Text>}
           renderItem={({ item }) => (
-            <View className="rounded-lg border border-border bg-card p-3">
+            <Animated.View entering={FadeInDown.duration(200)} className="rounded-lg border border-border bg-card p-3">
               <View className="flex-row items-center justify-between">
                 <Text className="font-medium text-foreground">{item.product_name}</Text>
                 <Text className="font-semibold text-destructive">{item.quantity_delta}</Text>
@@ -148,7 +149,7 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
               <Text className="text-xs text-muted-foreground">
                 {item.reason} · {item.source_terminal} · {new Date(item.client_timestamp).toLocaleString()}
               </Text>
-            </View>
+            </Animated.View>
           )}
         />
       )}

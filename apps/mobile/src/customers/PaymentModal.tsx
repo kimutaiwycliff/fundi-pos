@@ -140,8 +140,8 @@ export function PaymentModal({
 
   return (
     <Modal visible={order != null} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable className="flex-1 justify-end bg-black/40" onPress={onClose}>
-        <Pressable className="max-h-[85%] rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
+      <Pressable android_ripple={{}} className="flex-1 justify-end bg-black/40" onPress={onClose}>
+        <Pressable android_ripple={{}} className="max-h-[85%] rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
           <ScrollView>
             <Text className="mb-3 text-lg font-semibold text-foreground">Record payment — order #{order?.id.slice(0, 8)}</Text>
 
@@ -183,7 +183,7 @@ export function PaymentModal({
             <Text className="mb-1 mt-3 text-sm text-muted-foreground">Method</Text>
             <View className="flex-row gap-1.5">
               {METHOD_OPTIONS.map((option) => (
-                <Pressable
+                <Pressable android_ripple={{ color: '#ffffff40' }}
                   key={option.value}
                   className={`flex-1 items-center rounded-md border py-2 ${method === option.value ? 'border-primary bg-primary' : 'border-border'}`}
                   onPress={() => setMethod(option.value)}
@@ -222,7 +222,7 @@ export function PaymentModal({
 
             {error ? <Text className="mt-3 text-destructive">{error}</Text> : null}
 
-            <Pressable
+            <Pressable android_ripple={{ color: '#ffffff40' }}
               className={`mt-4 items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`}
               disabled={busy}
               onPress={handleSubmit}
@@ -231,7 +231,7 @@ export function PaymentModal({
                 {busy ? 'Recording...' : Number(amount) >= balance ? 'Record & settle in full' : 'Record payment'}
               </Text>
             </Pressable>
-            <Pressable className="mt-2 items-center py-2" onPress={onClose}>
+            <Pressable android_ripple={{}} className="mt-2 items-center py-2" onPress={onClose}>
               <Text className="text-muted-foreground">Cancel</Text>
             </Pressable>
           </ScrollView>

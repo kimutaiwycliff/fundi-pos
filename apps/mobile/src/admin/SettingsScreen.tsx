@@ -90,7 +90,7 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
       {error ? <Text className="text-destructive">{error}</Text> : null}
       {saved ? <Text className="text-primary">Settings saved</Text> : null}
 
-      <Pressable className={`mt-2 items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`} disabled={busy} onPress={handleSubmit}>
+      <Pressable android_ripple={{ color: '#ffffff40' }} className={`mt-2 items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`} disabled={busy} onPress={handleSubmit}>
         <Text className="font-medium text-primary-foreground">{busy ? 'Saving...' : 'Save settings'}</Text>
       </Pressable>
     </View>

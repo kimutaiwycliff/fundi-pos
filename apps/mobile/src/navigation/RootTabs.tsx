@@ -44,24 +44,24 @@ function MoreScreen({
 
       {canManage ? (
         <View className="mt-6 gap-2">
-          <Pressable className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('staff')}>
+          <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('staff')}>
             <Text className="text-foreground">Staff</Text>
           </Pressable>
-          <Pressable className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('stores')}>
+          <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('stores')}>
             <Text className="text-foreground">Stores</Text>
           </Pressable>
           {user.role === 'owner' ? (
-            <Pressable className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('settings')}>
+            <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('settings')}>
               <Text className="text-foreground">Settings</Text>
             </Pressable>
           ) : null}
-          <Pressable className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('audit')}>
+          <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('audit')}>
             <Text className="text-foreground">Audit log</Text>
           </Pressable>
         </View>
       ) : null}
 
-      <Pressable
+      <Pressable android_ripple={{ color: '#ffffff40' }}
         className="mt-8 items-center rounded-lg bg-destructive px-4 py-3 active:opacity-80"
         onPress={onSignOut}
       >
@@ -72,7 +72,7 @@ function MoreScreen({
         <View className="flex-1 bg-background pt-14">
           <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
             <Text className="text-lg font-semibold capitalize text-foreground">{section === 'audit' ? 'Audit log' : section}</Text>
-            <Pressable onPress={() => setSection(null)}>
+            <Pressable android_ripple={{}} onPress={() => setSection(null)}>
               <Text className="text-muted-foreground">Close</Text>
             </Pressable>
           </View>

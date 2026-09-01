@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { View, Text, FlatList } from 'react-native';
 import { API_BASE_URL } from '../lib/auth';
 
@@ -32,14 +33,14 @@ export function AuditLogScreen({ payloadToken }: { payloadToken: string }) {
         keyExtractor={(e) => String(e.id)}
         ListEmptyComponent={<Text className="mt-8 text-center text-muted-foreground">Nothing logged yet.</Text>}
         renderItem={({ item }) => (
-          <View className="rounded-lg border border-border bg-card p-3">
+          <Animated.View entering={FadeInDown.duration(200)} className="rounded-lg border border-border bg-card p-3">
             <View className="flex-row items-center justify-between">
               <Text className={`text-xs font-medium ${DESTRUCTIVE_ACTIONS.has(item.action) ? 'text-destructive' : 'text-foreground'}`}>{item.action.replace(/_/g, ' ')}</Text>
               <Text className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</Text>
             </View>
             <Text className="mt-1 text-sm text-foreground">{item.summary}</Text>
             <Text className="mt-1 text-xs text-muted-foreground">by {typeof item.actor === 'object' ? item.actor.email : `#${item.actor}`}</Text>
-          </View>
+          </Animated.View>
         )}
       />
     </View>

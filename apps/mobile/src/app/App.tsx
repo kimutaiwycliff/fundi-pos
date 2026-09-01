@@ -213,7 +213,7 @@ function AppInner() {
             <Text className="text-center text-muted-foreground">No stores found yet.</Text>
           ) : (
             storeOptions.map((store) => (
-              <Pressable
+              <Pressable android_ripple={{}}
                 key={store.id}
                 className="rounded-lg border border-border bg-card px-4 py-3 active:opacity-70"
                 onPress={() => handleSwitchStore(store.id)}
@@ -228,7 +228,7 @@ function AppInner() {
     return (
       <View className="flex-1">
         {availableUpdate ? (
-          <Pressable
+          <Pressable android_ripple={{ color: '#ffffff40' }}
             className="items-center bg-primary px-4 py-2"
             onPress={() => Linking.openURL(availableUpdate.downloadUrl)}
           >
@@ -269,7 +269,7 @@ function AppInner() {
           <PrimaryButton label={resumeBusy ? 'Continuing...' : 'Continue'} onPress={() => handleResume()} disabled={resumeBusy} />
         ) : null}
         {resumeError && <Text className="text-center text-destructive">{resumeError}</Text>}
-        <Pressable className="items-center py-2" onPress={handleUseDifferentAccount} disabled={resumeBusy}>
+        <Pressable android_ripple={{}} className="items-center py-2" onPress={handleUseDifferentAccount} disabled={resumeBusy}>
           <Text className="text-muted-foreground">Use a different account</Text>
         </Pressable>
         <Text className="text-center text-xs text-muted-foreground">Works offline - this till already signed in as this person within the last 24h.</Text>
@@ -321,7 +321,7 @@ function AppInner() {
 
       {error && <Text className="text-center text-destructive">{error}</Text>}
 
-      <Pressable
+      <Pressable android_ripple={{}}
         className="items-center py-1"
         onPress={() => {
           setMode(mode === 'pin' ? 'password' : 'pin');

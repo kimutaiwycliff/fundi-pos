@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, Alert, ScrollView } from 'react-native';
 import { API_BASE_URL } from '../lib/auth';
@@ -68,7 +69,7 @@ export function StaffScreen({ payloadToken, tenantId }: { payloadToken: string; 
     <View className="flex-1 bg-background">
       <View className="flex-row items-center justify-between border-b border-border p-3">
         <Text className="text-lg font-semibold text-foreground">Staff</Text>
-        <Pressable className="rounded-md bg-primary px-3 py-1.5 active:opacity-80" onPress={() => setEditing('new')}>
+        <Pressable android_ripple={{ color: '#ffffff40' }} className="rounded-md bg-primary px-3 py-1.5 active:opacity-80" onPress={() => setEditing('new')}>
           <Text className="text-sm font-medium text-primary-foreground">Add staff</Text>
         </Pressable>
       </View>
@@ -77,7 +78,8 @@ export function StaffScreen({ payloadToken, tenantId }: { payloadToken: string; 
         data={staff}
         keyExtractor={(s) => String(s.id)}
         renderItem={({ item }) => (
-          <Pressable className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setEditing(item)}>
+          <Animated.View entering={FadeInDown.duration(200)}>
+          <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setEditing(item)}>
             <View className="flex-row items-center justify-between">
               <View>
                 <Text className="font-medium text-foreground">{item.name || item.email}</Text>
@@ -88,6 +90,7 @@ export function StaffScreen({ payloadToken, tenantId }: { payloadToken: string; 
               {item.status === 'banned' ? <Text className="text-xs font-medium text-destructive">banned</Text> : null}
             </View>
           </Pressable>
+          </Animated.View>
         )}
       />
       <StaffFormModal
@@ -179,7 +182,7 @@ function StaffFormModal({
       <View className="flex-1 bg-background pt-14">
         <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
           <Text className="text-lg font-semibold text-foreground">{isEdit ? 'Edit staff' : 'Add staff'}</Text>
-          <Pressable onPress={onClose}>
+          <Pressable android_ripple={{}} onPress={onClose}>
             <Text className="text-muted-foreground">Close</Text>
           </Pressable>
         </View>
@@ -223,7 +226,7 @@ function StaffFormModal({
           <Text className="text-sm text-muted-foreground">Role</Text>
           <View className="flex-row gap-1.5">
             {ROLES.map((r) => (
-              <Pressable key={r} className={`flex-1 items-center rounded-md border py-2 ${role === r ? 'border-primary bg-primary' : 'border-border'}`} onPress={() => setRole(r)}>
+              <Pressable android_ripple={{ color: '#ffffff40' }} key={r} className={`flex-1 items-center rounded-md border py-2 ${role === r ? 'border-primary bg-primary' : 'border-border'}`} onPress={() => setRole(r)}>
                 <Text className={role === r ? 'font-medium text-primary-foreground' : 'text-foreground'}>{r}</Text>
               </Pressable>
             ))}
@@ -231,11 +234,11 @@ function StaffFormModal({
 
           <Text className="text-sm text-muted-foreground">Store</Text>
           <View className="flex-row flex-wrap gap-1.5">
-            <Pressable className={`rounded-md border px-3 py-1.5 ${storeId == null ? 'border-primary bg-primary' : 'border-border'}`} onPress={() => setStoreId(null)}>
+            <Pressable android_ripple={{ color: '#ffffff40' }} className={`rounded-md border px-3 py-1.5 ${storeId == null ? 'border-primary bg-primary' : 'border-border'}`} onPress={() => setStoreId(null)}>
               <Text className={storeId == null ? 'text-sm font-medium text-primary-foreground' : 'text-sm text-foreground'}>All stores</Text>
             </Pressable>
             {stores.map((s) => (
-              <Pressable key={s.id} className={`rounded-md border px-3 py-1.5 ${storeId === s.id ? 'border-primary bg-primary' : 'border-border'}`} onPress={() => setStoreId(s.id)}>
+              <Pressable android_ripple={{ color: '#ffffff40' }} key={s.id} className={`rounded-md border px-3 py-1.5 ${storeId === s.id ? 'border-primary bg-primary' : 'border-border'}`} onPress={() => setStoreId(s.id)}>
                 <Text className={storeId === s.id ? 'text-sm font-medium text-primary-foreground' : 'text-sm text-foreground'}>{s.name}</Text>
               </Pressable>
             ))}
@@ -243,12 +246,12 @@ function StaffFormModal({
 
           {error ? <Text className="text-destructive">{error}</Text> : null}
 
-          <Pressable className={`items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`} disabled={busy} onPress={handleSubmit}>
+          <Pressable android_ripple={{ color: '#ffffff40' }} className={`items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`} disabled={busy} onPress={handleSubmit}>
             <Text className="font-medium text-primary-foreground">{busy ? 'Saving...' : isEdit ? 'Save changes' : 'Add staff'}</Text>
           </Pressable>
 
           {onToggleBan ? (
-            <Pressable
+            <Pressable android_ripple={{}}
               className="items-center rounded-lg border border-destructive py-3 active:opacity-70"
               onPress={() => onToggleBan()}
             >

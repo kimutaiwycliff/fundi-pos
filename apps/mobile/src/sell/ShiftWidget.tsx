@@ -76,7 +76,7 @@ export function ShiftWidget({
           value={openingFloat}
           onChangeText={setOpeningFloat}
         />
-        <Pressable
+        <Pressable android_ripple={{ color: '#ffffff40' }}
           className={`rounded-md bg-primary px-3 py-1.5 ${busy ? 'opacity-50' : 'active:opacity-80'}`}
           onPress={handleOpen}
           disabled={busy}
@@ -100,19 +100,19 @@ export function ShiftWidget({
             value={closingCash}
             onChangeText={setClosingCash}
           />
-          <Pressable
+          <Pressable android_ripple={{ color: '#ffffff40' }}
             className={`rounded-md bg-destructive px-3 py-1.5 ${busy ? 'opacity-50' : 'active:opacity-80'}`}
             onPress={handleClose}
             disabled={busy}
           >
             <Text className="text-sm font-medium text-primary-foreground">{busy ? 'Closing...' : 'Confirm close'}</Text>
           </Pressable>
-          <Pressable className="px-2 py-1.5" onPress={() => setClosing(false)}>
+          <Pressable android_ripple={{}} className="px-2 py-1.5" onPress={() => setClosing(false)}>
             <Text className="text-sm text-muted-foreground">Cancel</Text>
           </Pressable>
         </>
       ) : (
-        <Pressable className="rounded-md border border-border px-3 py-1.5 active:opacity-70" onPress={() => setClosing(true)}>
+        <Pressable android_ripple={{}} className="rounded-md border border-border px-3 py-1.5 active:opacity-70" onPress={() => setClosing(true)}>
           <Text className="text-sm text-foreground">Close shift</Text>
         </Pressable>
       )}
