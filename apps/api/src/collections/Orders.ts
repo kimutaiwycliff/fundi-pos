@@ -142,10 +142,10 @@ export const Orders: CollectionConfig = {
           quantity: Number(line.quantity),
           unitPrice: Number(line.unitPrice),
           discount: Number(line.discount ?? 0),
-          // Falls back to the same 0.16 Products.taxRate's own schema
-          // default uses - only reachable if a line references a product
-          // that's since been deleted, not the normal case.
-          taxRate: taxRateByProductId.get(Number(line.product)) ?? 0.16,
+          // Falls back to the same 0 Products.taxRate's own schema default
+          // uses - only reachable if a line references a product that's
+          // since been deleted, not the normal case.
+          taxRate: taxRateByProductId.get(Number(line.product)) ?? 0,
         }));
 
         const totals = computeOrderTotals(lines);

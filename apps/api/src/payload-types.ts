@@ -275,7 +275,7 @@ export interface User {
 export interface Product {
   id: number;
   tenant: number | Tenant;
-  sku: string;
+  sku?: string | null;
   barcode?: string | null;
   name: string;
   category?: string | null;
@@ -286,7 +286,7 @@ export interface Product {
   variants?:
     | {
         label: string;
-        sku: string;
+        sku?: string | null;
         barcode?: string | null;
         /**
          * Leave blank to use the product's own sell price.

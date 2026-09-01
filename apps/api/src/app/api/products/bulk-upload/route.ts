@@ -5,11 +5,15 @@ import { parseInventoryWorkbook } from '@/lib/inventoryImport';
 import { isTenantUser, toID } from '@/lib/relations';
 
 // Bulk product import from an uploaded spreadsheet - manager/owner only,
-// same as manually creating products. Idempotent by design: a row whose
-// SKU already exists for this tenant is skipped rather than overwritten,
-// so re-uploading the same file (or a corrected version of it) is always
-// safe. Opening-stock rows go through the same StockMovements ledger every
-// other stock change does - never a direct stock-count write.
+// same as manually creating products. Idempotent for rows that give an
+// explicit SKU: a row whose SKU already exists for this tenant is skipped
+// rather than overwritten, so re-uploading the same file (or a corrected
+// version of it) is safe. A row that leaves SKU blank is NOT idempotent -
+// it's always treated as a brand new product/variant with a freshly
+// generated code, so re-uploading a file full of blank-SKU rows creates
+// duplicates rather than skipping them. Opening-stock rows go through the
+// same StockMovements ledger every other stock change does - never a
+// direct stock-count write.
 //
 // Two passes: standalone product rows first (kind: 'product'), then variant
 // rows (kind: 'variant') - a variant's Parent SKU might point at a product
@@ -68,23 +72,27 @@ export async function POST(request: Request) {
   for (const row of rows) {
     if (row.kind !== 'product') continue;
 
-    const existing = await payload.find({
-      collection: 'products',
-      where: { tenant: { equals: tenantId }, sku: { equals: row.sku } },
-      limit: 1,
-      overrideAccess: true,
-    });
-    if (existing.docs.length > 0) {
-      skippedCount++;
-      rowErrors.push({ row: row.rowNumber, message: `SKU "${row.sku}" already exists - skipped` });
-      continue;
+    // A blank SKU always means "create a new one, let it be generated" -
+    // there's nothing to check for a duplicate against.
+    if (row.sku) {
+      const existing = await payload.find({
+        collection: 'products',
+        where: { tenant: { equals: tenantId }, sku: { equals: row.sku } },
+        limit: 1,
+        overrideAccess: true,
+      });
+      if (existing.docs.length > 0) {
+        skippedCount++;
+        rowErrors.push({ row: row.rowNumber, message: `SKU "${row.sku}" already exists - skipped` });
+        continue;
+      }
     }
 
     const product = await payload.create({
       collection: 'products',
       data: {
         tenant: Number(tenantId),
-        sku: row.sku,
+        sku: row.sku || undefined,
         barcode: row.barcode ?? undefined,
         name: row.name,
         category: row.category ?? undefined,
@@ -98,7 +106,7 @@ export async function POST(request: Request) {
       overrideAccess: true,
     });
     createdCount++;
-    skuToProductId.set(row.sku, Number(product.id));
+    if (row.sku) skuToProductId.set(row.sku, Number(product.id));
 
     await recordOpeningStock(Number(product.id), null, row.openingStock, row.rowNumber);
   }
@@ -125,8 +133,8 @@ export async function POST(request: Request) {
     }
 
     const parent = await payload.findByID({ collection: 'products', id: parentId, overrideAccess: true });
-    const existingVariants = (parent.variants ?? []) as Array<{ sku: string }>;
-    if (existingVariants.some((v) => v.sku === row.sku)) {
+    const existingVariants = (parent.variants ?? []) as Array<{ id?: string; sku: string }>;
+    if (row.sku && existingVariants.some((v) => v.sku === row.sku)) {
       skippedCount++;
       rowErrors.push({ row: row.rowNumber, message: `Variant SKU "${row.sku}" already exists on "${row.parentSku}" - skipped` });
       continue;
@@ -140,7 +148,7 @@ export async function POST(request: Request) {
           ...existingVariants,
           {
             label: row.label,
-            sku: row.sku,
+            sku: row.sku || undefined,
             barcode: row.barcode ?? undefined,
             sellPrice: row.sellPrice ?? undefined,
             costPrice: row.costPrice ?? undefined,
@@ -151,11 +159,12 @@ export async function POST(request: Request) {
     });
     variantsAddedCount++;
 
-    // The new variant's id is only assigned by this update - match it back
-    // by sku (unique within the product) to tag the opening-stock movement
-    // with the right sub-document, not the product's bare stock bucket.
+    // The new variant's id (and, when row.sku was blank, its generated sku)
+    // is only assigned by this update - the one sub-document whose id
+    // wasn't already present before the update is the one just added.
     const newVariants = (updated.variants ?? []) as Array<{ id?: string; sku: string }>;
-    const newVariantId = newVariants.find((v) => v.sku === row.sku)?.id ?? null;
+    const existingIds = new Set(existingVariants.map((v) => v.id));
+    const newVariantId = newVariants.find((v) => v.id && !existingIds.has(v.id))?.id ?? null;
     await recordOpeningStock(parentId, newVariantId, row.openingStock, row.rowNumber);
   }
 

@@ -52,9 +52,36 @@ describe('parseInventoryWorkbook validation', () => {
 
     const minimal = rows.find((r) => r.sku === 'HW-MINIMAL' && r.kind === 'product') as ParsedProductRow | undefined;
     expect(minimal).toBeDefined();
-    expect(minimal!.taxRate).toBe(0.16);
+    expect(minimal!.taxRate).toBe(0);
     expect(minimal!.reorderPoint).toBe(0);
     expect(minimal!.openingStock).toBe(0);
+  });
+
+  it('accepts a product row with a blank SKU, leaving it for the collection to auto-generate', async () => {
+    const workbook = buildTemplateWorkbook();
+    const sheet = workbook.getWorksheet('Products')!;
+    sheet.addRow({ name: 'No Sku Product', costPrice: 100, sellPrice: 200 });
+
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const { rows, errors } = await parseInventoryWorkbook(buffer);
+
+    expect(errors).toHaveLength(0);
+    const row = rows.find((r) => r.kind === 'product' && r.name === 'No Sku Product') as ParsedProductRow | undefined;
+    expect(row).toBeDefined();
+    expect(row!.sku).toBe('');
+  });
+
+  it('accepts a variant row with a blank SKU', async () => {
+    const workbook = buildTemplateWorkbook();
+    const sheet = workbook.getWorksheet('Products')!;
+    sheet.addRow({ parentSku: 'SKU-001', variantLabel: 'XL' });
+
+    const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+    const { rows, errors } = await parseInventoryWorkbook(buffer);
+
+    expect(errors).toHaveLength(0);
+    const variant = rows.find((r) => r.kind === 'variant' && r.label === 'XL');
+    expect(variant).toMatchObject({ kind: 'variant', parentSku: 'SKU-001', sku: '' });
   });
 
   it('skips fully blank rows without producing an error', async () => {

@@ -37,7 +37,11 @@ export interface InventoryColumn {
 // same file, or already existing in the catalog), same "one row per shared
 // key" convention Shopify's own product CSV import uses.
 export const INVENTORY_COLUMNS: InventoryColumn[] = [
-  { header: 'SKU', key: 'sku', required: true, type: 'string', example: 'SKU-001' },
+  // SKU/Barcode are optional on both product and variant rows - a blank
+  // one is auto-generated (unique per tenant) by the same Products
+  // collection hook that backs the dashboard's product dialog, which
+  // doesn't show these fields at all any more.
+  { header: 'SKU', key: 'sku', required: false, type: 'string', example: 'SKU-001' },
   { header: 'Parent SKU', key: 'parentSku', required: false, type: 'string', example: '' },
   { header: 'Variant Label', key: 'variantLabel', required: false, type: 'string', example: '' },
   { header: 'Barcode', key: 'barcode', required: false, type: 'string', example: '6001234567890' },
@@ -45,7 +49,7 @@ export const INVENTORY_COLUMNS: InventoryColumn[] = [
   { header: 'Category', key: 'category', required: false, type: 'string', example: 'General' },
   { header: 'Cost Price', key: 'costPrice', required: true, type: 'number', example: 450 },
   { header: 'Sell Price', key: 'sellPrice', required: true, type: 'number', example: 799 },
-  { header: 'Tax Rate', key: 'taxRate', required: false, type: 'number', example: 0.16 },
+  { header: 'Tax Rate', key: 'taxRate', required: false, type: 'number', example: 0 },
   { header: 'Reorder Point', key: 'reorderPoint', required: false, type: 'number', example: 5 },
   { header: 'Max Discount', key: 'maxDiscountAmount', required: false, type: 'number', example: 0 },
   { header: 'Active (Yes/No)', key: 'active', required: false, type: 'string', example: 'Yes' },
@@ -146,15 +150,15 @@ export function buildTemplateWorkbook(): ExcelJS.Workbook {
     ['Bulk product import - how to fill this in'],
     [''],
     ['1. Fill in the "Products" sheet, one row per product (or per variant - see #10). Delete the example rows first.'],
-    ['2. Required columns for a standalone product: SKU, Name, Cost Price, Sell Price.'],
-    ['3. SKU must be unique within your business - a row whose SKU already exists is skipped, not overwritten.'],
-    ['4. Tax Rate is a decimal, not a percentage - e.g. 16% is 0.16. Leave blank to default to 0.16.'],
+    ['2. Required columns for a standalone product: Name, Cost Price, Sell Price.'],
+    ['3. SKU and Barcode are both optional - leave either blank and a unique one is generated automatically. If you do set a SKU, it must be unique within your business; a row whose SKU already exists is skipped, not overwritten.'],
+    ['4. Tax Rate is a decimal, not a percentage - e.g. 16% is 0.16. Leave blank to default to 0 (no tax).'],
     ['5. Reorder Point triggers the low-stock alert once on-hand quantity drops to or below it. Leave blank to default to 0.'],
     ['6. Max Discount is a flat amount, not a percentage - how much a cashier may knock off this product per unit at the till. Leave blank or 0 to disallow discounts entirely - this is the default unless you state otherwise.'],
     ['7. Active (Yes/No) - leave blank or Yes for a normal product. Set to No to import it already archived (hidden from the Sell page and Products list, but still on record).'],
     ['8. Opening Stock creates one initial stock movement per product (or per variant) for the store you pick when uploading. Leave blank or 0 for none.'],
     ['9. This template only supports simple products and variants - add bundles or related-product links afterward in the dashboard.'],
-    ['10. To add variants (e.g. sizes or colors), fill Parent SKU with an existing product\'s SKU (either from an earlier row in this file, or already in your catalog) and Variant Label with the option name (e.g. "Red / L"). SKU on that row becomes the variant\'s own SKU. Cost Price/Sell Price can be left blank on a variant row to use the parent product\'s price, or filled in if that option costs/sells differently.'],
+    ['10. To add variants (e.g. sizes or colors), fill Parent SKU with an existing product\'s SKU (either from an earlier row in this file, or already in your catalog) and Variant Label with the option name (e.g. "Red / L"). SKU on that row becomes the variant\'s own SKU, or is auto-generated if left blank. Cost Price/Sell Price can be left blank on a variant row to use the parent product\'s price, or filled in if that option costs/sells differently. Note: if you want to add variants to a product within this same file, give that product row an explicit SKU so you have something to put in Parent SKU - an auto-generated one can\'t be referenced since you won\'t know it in advance.'],
   ]);
   instructions.getRow(1).font = { bold: true, size: 14 };
 
@@ -206,8 +210,8 @@ export async function parseInventoryWorkbook(buffer: Buffer): Promise<ParsedInve
       // only carries label/sku/barcode/price), so they're simply ignored
       // here rather than erroring on an unused column.
       const variantLabel = values.variantLabel ? String(values.variantLabel).trim() : '';
-      if (!values.sku || !variantLabel) {
-        errors.push({ rowNumber, message: 'Variant rows (with a Parent SKU) need both SKU and Variant Label' });
+      if (!variantLabel) {
+        errors.push({ rowNumber, message: 'Variant rows (with a Parent SKU) need a Variant Label' });
         return;
       }
       const costPrice = values.costPrice != null ? Number(values.costPrice) : null;
@@ -220,7 +224,9 @@ export async function parseInventoryWorkbook(buffer: Buffer): Promise<ParsedInve
         rowNumber,
         kind: 'variant',
         parentSku,
-        sku: String(values.sku),
+        // Blank means "generate one" - handled by the same Products
+        // collection hook the dashboard's product dialog relies on.
+        sku: values.sku ? String(values.sku) : '',
         barcode: values.barcode ? String(values.barcode) : null,
         label: variantLabel,
         costPrice,
@@ -248,13 +254,15 @@ export async function parseInventoryWorkbook(buffer: Buffer): Promise<ParsedInve
     rows.push({
       rowNumber,
       kind: 'product',
-      sku: String(values.sku),
+      // Blank means "generate one" - handled by the same Products
+      // collection hook the dashboard's product dialog relies on.
+      sku: values.sku ? String(values.sku) : '',
       barcode: values.barcode ? String(values.barcode) : null,
       name: String(values.name),
       category: values.category ? String(values.category) : null,
       costPrice,
       sellPrice,
-      taxRate: values.taxRate != null && Number.isFinite(Number(values.taxRate)) ? Number(values.taxRate) : 0.16,
+      taxRate: values.taxRate != null && Number.isFinite(Number(values.taxRate)) ? Number(values.taxRate) : 0,
       reorderPoint: values.reorderPoint != null && Number.isFinite(Number(values.reorderPoint)) ? Number(values.reorderPoint) : 0,
       // No discount unless the sheet explicitly says otherwise - matches
       // the Products collection's own maxDiscountAmount default of 0.

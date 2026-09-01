@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
+import { generateProductCodes } from '../hooks/generateProductCodes.ts';
 import { isTenantUser, toID } from '../lib/relations.ts';
 
 export const Products: CollectionConfig = {
@@ -14,7 +15,12 @@ export const Products: CollectionConfig = {
   },
   fields: [
     { name: 'tenant', type: 'relationship', relationTo: 'tenants', required: true, index: true },
-    { name: 'sku', type: 'text', required: true, index: true },
+    // Not schema-required: a blank sku/barcode (here, and on each variant
+    // below) is always filled in by the generateProductCodes beforeValidate
+    // hook before Payload's own required-field check would ever run - the
+    // dashboard's product dialog hides both fields entirely and never sends
+    // one, per the user's own instruction not to have to deal with them.
+    { name: 'sku', type: 'text', index: true },
     { name: 'barcode', type: 'text', index: true },
     { name: 'name', type: 'text', required: true },
     { name: 'category', type: 'text' },
@@ -32,7 +38,7 @@ export const Products: CollectionConfig = {
       type: 'array',
       fields: [
         { name: 'label', type: 'text', required: true }, // e.g. "Red / L"
-        { name: 'sku', type: 'text', required: true },
+        { name: 'sku', type: 'text' },
         { name: 'barcode', type: 'text' },
         // Null/unset means "use the product's own price" - most variants
         // (e.g. a T-shirt's colors) don't need their own price, but some
@@ -63,7 +69,7 @@ export const Products: CollectionConfig = {
       access: { read: ({ req }) => req.user?.collection === 'platform-admins' || req.user?.role === 'owner' },
     },
     { name: 'sellPrice', type: 'number', required: true, defaultValue: 0, admin: { step: 0.01 } },
-    { name: 'taxRate', type: 'number', required: true, defaultValue: 0.16, admin: { step: 0.01 } },
+    { name: 'taxRate', type: 'number', required: true, defaultValue: 0, admin: { step: 0.01 } },
     {
       // Caps how much a cashier can knock off this specific product's line
       // total at the till (see cart-panel.tsx's discount input, clamped to
@@ -108,6 +114,7 @@ export const Products: CollectionConfig = {
     },
   ],
   hooks: {
+    beforeValidate: [generateProductCodes],
     beforeChange: [enforceOwnTenant()],
     afterChange: [
       // Multi-staff accountability: a manager quietly discounting or

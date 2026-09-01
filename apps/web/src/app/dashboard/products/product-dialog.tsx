@@ -57,19 +57,6 @@ const STOCK_TYPES = [
 
 const NO_VARIANT = '__base__';
 
-// Uppercase, hyphenated slug of the name - a reasonable default SKU so
-// adding a product doesn't require typing one by hand. Only ever runs
-// while creating (never edit) and stops the moment the user types into
-// the SKU field themselves (skuTouched, below).
-function deriveSku(name: string): string {
-  return name
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40);
-}
-
 // Multi-select "related products" picker - same Command+Popover shell as
 // ProductCombobox, but selecting an item toggles it into a list instead of
 // replacing a single value, and the popover stays open so a manager can
@@ -173,7 +160,7 @@ export function ProductDialog({
     category: product?.category ?? '',
     costPrice: product?.costPrice != null ? String(product.costPrice) : '',
     sellPrice: product ? String(product.sellPrice) : '',
-    taxRate: product ? String(product.taxRate) : '0.16',
+    taxRate: product ? String(product.taxRate) : '0',
     reorderPoint: product?.reorderPoint != null ? String(product.reorderPoint) : '0',
     maxDiscountAmount: product?.maxDiscountAmount != null ? String(product.maxDiscountAmount) : '0',
   });
@@ -190,27 +177,14 @@ export function ProductDialog({
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
-  // Edit mode starts "touched" so an existing SKU is never silently
-  // overwritten by a later name edit.
-  const [skuTouched, setSkuTouched] = useState(isEdit);
 
   function update(field: keyof typeof form) {
     return (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [field]: e.target.value }));
   }
 
-  function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const name = e.target.value;
-    setForm((f) => (skuTouched ? { ...f, name } : { ...f, name, sku: deriveSku(name) }));
-  }
-
-  function handleSkuChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setSkuTouched(true);
-    setForm((f) => ({ ...f, sku: e.target.value }));
-  }
-
-  function updateVariant(index: number, field: 'label' | 'sku' | 'barcode') {
+  function updateVariantLabel(index: number) {
     return (e: React.ChangeEvent<HTMLInputElement>) =>
-      setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [field]: e.target.value } : v)));
+      setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, label: e.target.value } : v)));
   }
 
   // Blank means "inherit the product's own price" - stored as undefined
@@ -250,7 +224,7 @@ export function ProductDialog({
         taxRate: Number(form.taxRate) || 0,
         reorderPoint: Number(form.reorderPoint) || 0,
         maxDiscountAmount: Number(form.maxDiscountAmount) || 0,
-        variants: variants.filter((v) => v.label.trim() && v.sku.trim()),
+        variants: variants.filter((v) => v.label.trim()),
         relatedProducts,
       }),
     });
@@ -358,22 +332,7 @@ export function ProductDialog({
         <form onSubmit={handleSubmit} className="flex min-w-0 flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="name">Name</Label>
-            <Input id="name" required value={form.name} onChange={handleNameChange} />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="sku">
-                SKU
-                {!isEdit && !skuTouched ? (
-                  <span className="ml-1 font-normal text-muted-foreground">(auto)</span>
-                ) : null}
-              </Label>
-              <Input id="sku" required value={form.sku} onChange={handleSkuChange} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="barcode">Barcode</Label>
-              <Input id="barcode" value={form.barcode} onChange={update('barcode')} />
-            </div>
+            <Input id="name" required value={form.name} onChange={update('name')} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="category">Category</Label>
@@ -431,7 +390,7 @@ export function ProductDialog({
                       <Input
                         placeholder="e.g. Red / L"
                         value={variant.label}
-                        onChange={updateVariant(index, 'label')}
+                        onChange={updateVariantLabel(index)}
                         className="min-w-0 flex-1"
                       />
                       <Button
@@ -445,14 +404,6 @@ export function ProductDialog({
                       </Button>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs text-muted-foreground">SKU</Label>
-                        <Input value={variant.sku} onChange={updateVariant(index, 'sku')} />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs text-muted-foreground">Barcode</Label>
-                        <Input value={variant.barcode ?? ''} onChange={updateVariant(index, 'barcode')} />
-                      </div>
                       <div className="flex flex-col gap-1">
                         <Label className="text-xs text-muted-foreground">Sell price</Label>
                         <Input
