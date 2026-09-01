@@ -1,17 +1,8 @@
 import { Suspense } from 'react';
-import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
-import { stockKey } from '@/lib/stock-key';
 import { BranchFilter } from '@/components/branch-filter';
 import { StockAdjustmentDialog } from './stock-adjustment-dialog';
+import { InventoryTable } from './inventory-table';
 
 interface StockLevel {
   store: number;
@@ -38,7 +29,6 @@ export default async function InventoryPage({
     payloadFetch<{ docs: Product[] }>('/api/products?sort=name&limit=200'),
     payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
   ]);
-  const storeName = new Map(stores.map((s) => [s.id, s.name]));
   const sorted = [...levels].sort((a, b) => Number(b.lowStock) - Number(a.lowStock));
 
   return (
@@ -58,49 +48,7 @@ export default async function InventoryPage({
           <StockAdjustmentDialog products={products} stores={stores} />
         </div>
       </div>
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Product</TableHead>
-              <TableHead>Store</TableHead>
-              <TableHead className="text-right">On hand</TableHead>
-              <TableHead className="text-right">Reorder point</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sorted.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                  No stock movements yet.
-                </TableCell>
-              </TableRow>
-            ) : (
-              sorted.map((level) => (
-                <TableRow key={`${level.store}-${stockKey(level.product, level.variant)}`}>
-                  <TableCell>
-                    {level.productName}
-                    {level.variantLabel ? (
-                      <span className="text-muted-foreground"> · {level.variantLabel}</span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>{storeName.get(level.store) ?? `#${level.store}`}</TableCell>
-                  <TableCell className="text-right">{level.quantity}</TableCell>
-                  <TableCell className="text-right">{level.reorderPoint}</TableCell>
-                  <TableCell>
-                    {level.lowStock ? (
-                      <Badge variant="destructive">Low stock</Badge>
-                    ) : (
-                      <Badge variant="secondary">OK</Badge>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      <InventoryTable levels={sorted} stores={stores} />
     </div>
   );
 }
