@@ -6,20 +6,7 @@ import { clearSession } from '../lib/session';
 import type { PayloadUser } from '../lib/auth';
 import { SellScreen as RealSellScreen } from '../sell/SellScreen';
 import { CustomersScreen as RealCustomersScreen } from '../customers/CustomersScreen';
-
-// Placeholder screen for Phase 0 - just enough to prove the navigation
-// shell + NativeWind theming + local synced-data reads work end to end.
-// Phase 3 replaces this with the real Inventory screen described in the
-// plan - Sell (Phase 1) and Customers (Phase 2) are now the real thing,
-// see ../sell/SellScreen.tsx and ../customers/CustomersScreen.tsx.
-function InventoryScreen() {
-  return (
-    <View className="flex-1 items-center justify-center bg-background px-6">
-      <Text className="text-2xl font-semibold text-foreground">Inventory</Text>
-      <Text className="mt-2 text-center text-muted-foreground">Stock levels, adjustments and transfers land here in Phase 3.</Text>
-    </View>
-  );
-}
+import { InventoryScreen as RealInventoryScreen } from '../inventory/InventoryScreen';
 
 function MoreScreen({ user, terminalName, onSignOut }: { user: PayloadUser; terminalName: string; onSignOut: () => void }) {
   return (
@@ -71,7 +58,7 @@ export function RootTabs({
       <Tab.Screen name="Sell">
         {() => <RealSellScreen user={user} payloadToken={payloadToken} terminalId={terminalId} terminalName={terminalName} storeId={storeId} />}
       </Tab.Screen>
-      <Tab.Screen name="Inventory" component={InventoryScreen} />
+      <Tab.Screen name="Inventory">{() => <RealInventoryScreen user={user} terminalId={terminalId} storeId={storeId} />}</Tab.Screen>
       <Tab.Screen name="Customers">{() => <RealCustomersScreen user={user} payloadToken={payloadToken} storeId={storeId} />}</Tab.Screen>
       <Tab.Screen name="More">{() => <MoreScreen user={user} terminalName={terminalName} onSignOut={onSignOut} />}</Tab.Screen>
     </Tab.Navigator>
