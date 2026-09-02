@@ -13,6 +13,11 @@ COPY packages/shared-ui/package.json packages/shared-ui/package.json
 RUN npm ci
 
 COPY . .
+# See apps/api/Dockerfile's identical step for why this has to run first:
+# apps/web also has real TS project references to business-logic (e.g.
+# dashboard/sell/sell-client.tsx, cart-panel.tsx), and Next.js's typecheck
+# expects its dist/*.d.ts to already exist rather than building them itself.
+RUN npm run build --workspace=@hardware-pos/business-logic
 RUN npm run build --workspace=@hardware-pos/web
 
 FROM node:22-slim AS runner
