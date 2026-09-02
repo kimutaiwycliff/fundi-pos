@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
 import { PaymentModal, type LocalOrder } from '../customers/PaymentModal';
@@ -36,35 +38,51 @@ interface OrderLine {
 export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser; payloadToken: string; storeId: number | null }) {
   const placeholderColor = useMutedPlaceholderColor();
   const [query, setQuery] = useState('');
-  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [candidates, setCandidates] = useState<OrderRow[]>([]);
   const [receiptOrder, setReceiptOrder] = useState<OrderRow | null>(null);
   const [receiptLines, setReceiptLines] = useState<OrderLine[]>([]);
   const [paymentOrder, setPaymentOrder] = useState<LocalOrder | null>(null);
   const [voidOrder, setVoidOrder] = useState<VoidableOrder | null>(null);
 
+  // Recent order history for this store loaded once, not per keystroke, so
+  // search can fuzzy-match client-side - same pattern as SellScreen's
+  // product search. Order id is a real id (not free text a person typed),
+  // so it keeps exact-prefix matching below rather than being fuzzed - a
+  // typo-tolerant match on a 36-char id string would just be noise; the
+  // customer-name half is what typos actually happen in.
   const refresh = useCallback(() => {
     if (storeId == null) {
-      setOrders([]);
+      setCandidates([]);
       return;
     }
-    const trimmed = query.trim();
     getDb()
       .getAll<OrderRow>(
         `SELECT o.id, o.total, o.tax_total, o.discount_total, o.tender_type, o.payment_status, o.status,
                 COALESCE(o.created_at, o.synced_at) AS created_at, c.name AS customer_name
          FROM orders o
          LEFT JOIN customers c ON c.id = o.customer_id
-         WHERE o.store_id = ? AND (? = '' OR o.id LIKE ? OR c.name LIKE ?)
-         ORDER BY COALESCE(o.created_at, o.synced_at) DESC LIMIT 30`,
-        [storeId, trimmed, `${trimmed}%`, `%${trimmed}%`],
+         WHERE o.store_id = ?
+         ORDER BY COALESCE(o.created_at, o.synced_at) DESC LIMIT 1000`,
+        [storeId],
       )
-      .then(setOrders);
-  }, [storeId, query]);
+      .then(setCandidates);
+  }, [storeId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, [refresh]);
+
+  const orders = useMemo(() => {
+    const trimmed = query.trim();
+    if (!trimmed) return candidates.slice(0, 30);
+    const lower = trimmed.toLowerCase();
+    const idMatches = candidates.filter((o) => o.id.toLowerCase().startsWith(lower));
+    const fuse = new Fuse(candidates, { threshold: 0.4, ignoreLocation: true, keys: ['customer_name'] });
+    const nameMatches = fuse.search(trimmed).map((r) => r.item);
+    const idMatchIds = new Set(idMatches.map((o) => o.id));
+    return [...idMatches, ...nameMatches.filter((o) => !idMatchIds.has(o.id))].slice(0, 30);
+  }, [query, candidates]);
 
   function openReceipt(order: OrderRow) {
     setReceiptOrder(order);
@@ -82,15 +100,15 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
 
   if (storeId == null) {
     return (
-      <View className="flex-1 items-center justify-center bg-background px-6">
+      <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-background px-6">
         <Text className="text-lg font-semibold text-foreground">Select a branch first</Text>
         <Text className="mt-1 text-center text-muted-foreground">Use the branch switcher in More to pick a store.</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View className="flex-1 bg-background">
+    <SafeAreaView edges={['top']} className="flex-1 bg-background">
       <View className="border-b border-border p-3">
         <TextInput
           className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
@@ -194,6 +212,6 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
 
       <PaymentModal order={paymentOrder} user={user} payloadToken={payloadToken} onClose={() => setPaymentOrder(null)} onRecorded={refresh} />
       <VoidRefundModal order={voidOrder} payloadToken={payloadToken} onClose={() => setVoidOrder(null)} onDone={refresh} />
-    </View>
+    </SafeAreaView>
   );
 }

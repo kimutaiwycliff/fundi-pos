@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { View, Text, Pressable, FlatList } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
@@ -85,15 +86,15 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
 
   if (storeId == null) {
     return (
-      <View className="flex-1 items-center justify-center bg-background px-6">
+      <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-background px-6">
         <Text className="text-lg font-semibold text-foreground">Select a branch first</Text>
         <Text className="mt-1 text-center text-muted-foreground">Use the branch switcher in More to pick a store.</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View className="flex-1 bg-background">
+    <SafeAreaView edges={['top']} className="flex-1 bg-background">
       <View className="flex-row items-center justify-between gap-2 border-b border-border p-3">
         <View className="flex-1 flex-row gap-1.5">
           <Pressable android_ripple={{ color: '#ffffff40' }} className={`flex-1 items-center rounded-md border py-2 ${tab === 'levels' ? 'border-primary bg-primary' : 'border-border'}`} onPress={() => setTab('levels')}>
@@ -165,6 +166,6 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
           refreshFlagged();
         }}
       />
-    </View>
+    </SafeAreaView>
   );
 }

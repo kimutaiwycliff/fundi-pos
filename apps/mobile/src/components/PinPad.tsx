@@ -1,20 +1,24 @@
 import { useEffect } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, useColorScheme } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming, ZoomIn } from 'react-native-reanimated';
+import { MAX_PIN_LENGTH } from '../lib/pin';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
 
-// Standard modern mobile PIN entry (dot progress + numeric keypad,
-// haptic feedback per key, auto-submits once `length` digits are in,
-// shakes on a wrong-PIN error) - shared by both the phone+PIN login form
-// and the offline PIN-resume screen in App.tsx, since they're otherwise
-// the same interaction repeated twice.
+// Standard modern mobile PIN entry (dots that pop in one at a time as you
+// type - not a fixed pre-filled grid, since till PINs are 4-6 digits, not
+// one fixed length, so a fixed dot count would misrepresent how many are
+// actually needed - big circular keypad with per-key press feedback,
+// haptics, auto-submit at `length` digits, shake on a wrong-PIN error).
+// Shared by both the phone+PIN login form and the offline PIN-resume screen
+// in App.tsx, since they're otherwise the same interaction repeated twice.
 export function PinPad({
   value,
   onChange,
   onComplete,
-  length = 6,
+  length = MAX_PIN_LENGTH,
   error,
   disabled,
 }: {
@@ -25,6 +29,8 @@ export function PinPad({
   error?: string | null;
   disabled?: boolean;
 }) {
+  const scheme = useColorScheme();
+  const iconColor = scheme === 'dark' ? '#f8f0ec' : '#16100e';
   const shake = useSharedValue(0);
 
   useEffect(() => {
@@ -60,33 +66,57 @@ export function PinPad({
   }
 
   return (
-    <View className="gap-6">
-      <Animated.View style={shakeStyle} className="flex-row justify-center gap-3">
-        {Array.from({ length }).map((_, i) => (
-          <View
+    <View className="gap-8">
+      <Animated.View style={shakeStyle} className="min-h-4 flex-row justify-center gap-4">
+        {Array.from({ length: value.length }).map((_, i) => (
+          <Animated.View
             key={i}
-            className={`h-3.5 w-3.5 rounded-full ${i < value.length ? 'bg-primary' : 'bg-muted'} ${error ? 'bg-destructive' : ''}`}
+            entering={ZoomIn.duration(120)}
+            className={`h-4 w-4 rounded-full border-2 ${error ? 'border-destructive bg-destructive' : 'border-primary bg-primary'}`}
           />
         ))}
       </Animated.View>
 
-      <View className="flex-row flex-wrap justify-center gap-3">
-        {KEYS.map((key, i) => (
-          <Pressable
-            key={i}
-            disabled={disabled || key === ''}
-            onPress={() => press(key)}
-            android_ripple={key ? { color: '#ffffff30', radius: 32, borderless: true } : undefined}
-            className={`h-16 w-16 items-center justify-center rounded-full ${key ? 'bg-card active:opacity-70' : ''}`}
-          >
-            {key === 'del' ? (
-              <Text className="text-xl text-foreground">⌫</Text>
-            ) : (
-              <Text className="text-xl font-medium text-foreground">{key}</Text>
-            )}
-          </Pressable>
-        ))}
+      <View className="flex-row flex-wrap justify-center gap-4">
+        {KEYS.map((key, i) =>
+          key === '' ? (
+            <View key={i} className="h-[72px] w-[72px]" />
+          ) : (
+            <PinKey
+              key={i}
+              disabled={disabled}
+              onPress={() => press(key)}
+              content={key === 'del' ? <Ionicons name="backspace-outline" size={26} color={iconColor} /> : <Text className="text-2xl font-semibold text-foreground">{key}</Text>}
+            />
+          ),
+        )}
       </View>
     </View>
+  );
+}
+
+function PinKey({ content, onPress, disabled }: { content: React.ReactNode; onPress: () => void; disabled?: boolean }) {
+  const scale = useSharedValue(1);
+  const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  return (
+    <Animated.View style={pressStyle}>
+      <Pressable
+        disabled={disabled}
+        onPress={onPress}
+        onPressIn={() => {
+          // eslint-disable-next-line react-hooks/immutability -- Reanimated's .value setter is the intended mutation API
+          scale.value = withTiming(0.9, { duration: 80 });
+        }}
+        onPressOut={() => {
+          // eslint-disable-next-line react-hooks/immutability -- Reanimated's .value setter is the intended mutation API
+          scale.value = withTiming(1, { duration: 120 });
+        }}
+        android_ripple={{ color: '#ffffff30', radius: 36, borderless: true }}
+        className={`h-[72px] w-[72px] items-center justify-center rounded-full border border-border bg-card ${disabled ? 'opacity-50' : ''}`}
+      >
+        {content}
+      </Pressable>
+    </Animated.View>
   );
 }

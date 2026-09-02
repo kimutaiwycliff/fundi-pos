@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { Modal, View, Text, TextInput, Pressable } from 'react-native';
+import { Modal, View, Text, TextInput, Pressable, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { findManagerAndCheckPinLocally, authorizeOrderStatusChange } from '../lib/pin';
 
 export interface VoidableOrder {
@@ -61,6 +62,7 @@ export function VoidRefundModal({
 
   return (
     <Modal visible={order != null} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <Pressable android_ripple={{}} className="flex-1 justify-end bg-black/40" onPress={onClose}>
         <Pressable android_ripple={{}} className="rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
           <Text className="mb-3 text-lg font-semibold text-foreground">Void or refund — order #{order?.id.slice(0, 8)}</Text>
@@ -114,6 +116,7 @@ export function VoidRefundModal({
           </Pressable>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

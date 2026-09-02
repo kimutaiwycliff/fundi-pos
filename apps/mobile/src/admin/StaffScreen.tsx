@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Modal, Alert, ScrollView } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Modal, ScrollView, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../lib/auth';
+import { showAlert } from '../components/AppNotice';
 
 interface Staff {
   id: number;
@@ -59,7 +62,7 @@ export function StaffScreen({ payloadToken, tenantId }: { payloadToken: string; 
     });
     if (!res.ok) {
       const body = await res.json().catch(() => null);
-      Alert.alert('Failed', body?.errors?.[0]?.message ?? 'Failed to update status');
+      showAlert('Failed', body?.errors?.[0]?.message ?? 'Failed to update status');
       return;
     }
     refresh();
@@ -179,14 +182,15 @@ function StaffFormModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View className="flex-1 bg-background pt-14">
+      <SafeAreaView edges={['top']} className="flex-1 bg-background">
         <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
           <Text className="text-lg font-semibold text-foreground">{isEdit ? 'Edit staff' : 'Add staff'}</Text>
           <Pressable android_ripple={{}} onPress={onClose}>
             <Text className="text-muted-foreground">Close</Text>
           </Pressable>
         </View>
-        <ScrollView contentContainerClassName="gap-3 p-4">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <ScrollView contentContainerClassName="gap-3 p-4" keyboardShouldPersistTaps="handled">
           <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Name" placeholderTextColor={placeholderColor} value={name} onChangeText={setName} />
           <TextInput
             className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
@@ -259,7 +263,8 @@ function StaffFormModal({
             </Pressable>
           ) : null}
         </ScrollView>
-      </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </Modal>
   );
 }

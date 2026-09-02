@@ -1,9 +1,12 @@
-import { useState } from 'react';
-import { View, Text, Pressable, Modal } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, Pressable, Modal, Switch, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { disconnectPowerSync } from '../db/database';
 import { clearSession } from '../lib/session';
+import { isBiometricAvailable, isBiometricEnabledFor, setBiometricEnabledFor, authenticateWithBiometrics } from '../lib/biometric';
 import type { PayloadUser } from '../lib/auth';
 import { SellScreen as RealSellScreen } from '../sell/SellScreen';
 import { CustomersScreen as RealCustomersScreen } from '../customers/CustomersScreen';
@@ -36,11 +39,47 @@ function MoreScreen({
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
   const canManage = user.role === 'owner' || user.role === 'manager';
   const [section, setSection] = useState<AdminSection | null>(null);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnabled, setBiometricEnabledState] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([isBiometricAvailable(), isBiometricEnabledFor(user.id)]).then(([available, enabled]) => {
+      if (!active) return;
+      setBiometricAvailable(available);
+      setBiometricEnabledState(enabled);
+    });
+    return () => {
+      active = false;
+    };
+  }, [user.id]);
+
+  async function handleToggleBiometric(next: boolean) {
+    if (next) {
+      // Confirm the sensor actually works for this person before trusting
+      // it as a login shortcut - same reasoning as apps/web's own "verify
+      // before saving" pattern for anything security-adjacent.
+      const ok = await authenticateWithBiometrics('Confirm to enable fingerprint login');
+      if (!ok) return;
+    }
+    await setBiometricEnabledFor(user.id, next);
+    setBiometricEnabledState(next);
+  }
 
   return (
-    <View className="flex-1 bg-background px-6 pt-8">
+    <SafeAreaView edges={['top']} className="flex-1 bg-background px-6 pt-4">
       <Text className="text-2xl font-semibold text-foreground">{user.name ?? user.email}</Text>
       <Text className="mt-1 text-muted-foreground">{user.role} · {terminalName}</Text>
+
+      {biometricAvailable ? (
+        <View className="mt-6 flex-row items-center justify-between rounded-lg border border-border bg-card p-3">
+          <View className="shrink pr-3">
+            <Text className="text-foreground">Fingerprint login</Text>
+            <Text className="text-xs text-muted-foreground">Skip typing your PIN to resume this till</Text>
+          </View>
+          <Switch value={biometricEnabled} onValueChange={handleToggleBiometric} trackColor={{ true: '#df5102' }} />
+        </View>
+      ) : null}
 
       {canManage ? (
         <View className="mt-6 gap-2">
@@ -69,7 +108,8 @@ function MoreScreen({
       </Pressable>
 
       <Modal visible={section != null} animationType="slide" onRequestClose={() => setSection(null)}>
-        <View className="flex-1 bg-background pt-14">
+        <SafeAreaView edges={['top']} className="flex-1 bg-background">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
             <Text className="text-lg font-semibold capitalize text-foreground">{section === 'audit' ? 'Audit log' : section}</Text>
             <Pressable android_ripple={{}} onPress={() => setSection(null)}>
@@ -80,9 +120,10 @@ function MoreScreen({
           {section === 'stores' ? <StoresScreen payloadToken={payloadToken} tenantId={tenantId} /> : null}
           {section === 'settings' ? <SettingsScreen payloadToken={payloadToken} tenantId={tenantId} /> : null}
           {section === 'audit' ? <AuditLogScreen payloadToken={payloadToken} /> : null}
-        </View>
+        </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 

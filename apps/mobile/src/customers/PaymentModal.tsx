@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { Modal, View, Text, TextInput, Pressable, ScrollView } from 'react-native';
+import { Modal, View, Text, TextInput, Pressable, ScrollView, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { API_BASE_URL, type PayloadUser } from '../lib/auth';
 import { findManagerAndCheckPinLocally, recordCreditPayment } from '../lib/pin';
 
@@ -140,9 +141,10 @@ export function PaymentModal({
 
   return (
     <Modal visible={order != null} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <Pressable android_ripple={{}} className="flex-1 justify-end bg-black/40" onPress={onClose}>
         <Pressable android_ripple={{}} className="max-h-[85%] rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
-          <ScrollView>
+          <ScrollView keyboardShouldPersistTaps="handled">
             <Text className="mb-3 text-lg font-semibold text-foreground">Record payment — order #{order?.id.slice(0, 8)}</Text>
 
             <View className="flex-row justify-between rounded-lg border border-border bg-muted/30 px-3 py-2">
@@ -237,6 +239,7 @@ export function PaymentModal({
           </ScrollView>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

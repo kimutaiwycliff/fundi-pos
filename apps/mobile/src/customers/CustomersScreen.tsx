@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
 import { PaymentModal, type LocalOrder } from './PaymentModal';
@@ -48,34 +50,46 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
 
   const placeholderColor = useMutedPlaceholderColor();
   const [query, setQuery] = useState('');
-  const [customers, setCustomers] = useState<LocalCustomer[]>([]);
+  const [candidates, setCandidates] = useState<LocalCustomer[]>([]);
   const [detailCustomer, setDetailCustomer] = useState<LocalCustomer | null>(null);
   const [orders, setOrders] = useState<RecentOrder[]>([]);
   const [paymentOrder, setPaymentOrder] = useState<LocalOrder | null>(null);
 
+  // Whole store's customer list loaded once (unpaid_total/count included),
+  // not per keystroke, so search can fuzzy-match client-side - same reason
+  // as SellScreen's product search. The default (empty-query) view's
+  // "highest unpaid balance first" ordering is preserved by filtering this
+  // already-sorted list below rather than re-sorting by search relevance.
   const refreshCustomers = useCallback(() => {
     if (storeId == null) {
-      setCustomers([]);
+      setCandidates([]);
       return;
     }
-    const trimmed = query.trim();
     getDb()
       .getAll<LocalCustomer>(
         `SELECT c.id, c.name, c.phone, c.email, c.loyalty_points,
                 COALESCE((SELECT SUM(o.total) FROM orders o WHERE o.customer_id = c.id AND o.store_id = ? AND o.status = 'completed' AND o.tender_type = 'credit' AND o.payment_status = 'pending'), 0) AS unpaid_total,
                 COALESCE((SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id AND o.store_id = ? AND o.status = 'completed' AND o.tender_type = 'credit' AND o.payment_status = 'pending'), 0) AS unpaid_count
          FROM customers c
-         WHERE c.tenant_id = ? AND (c.name LIKE ? OR c.phone LIKE ?)
-         ORDER BY unpaid_total DESC, c.name LIMIT 50`,
-        [storeId, storeId, tenantId, `%${trimmed}%`, `%${trimmed}%`],
+         WHERE c.tenant_id = ?
+         ORDER BY unpaid_total DESC, c.name LIMIT 1000`,
+        [storeId, storeId, tenantId],
       )
-      .then(setCustomers);
-  }, [storeId, tenantId, query]);
+      .then(setCandidates);
+  }, [storeId, tenantId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshCustomers();
   }, [refreshCustomers]);
+
+  const customers = useMemo(() => {
+    const trimmed = query.trim();
+    if (!trimmed) return candidates.slice(0, 50);
+    const fuse = new Fuse(candidates, { threshold: 0.4, ignoreLocation: true, keys: ['name', 'phone'] });
+    const matched = new Set(fuse.search(trimmed).map((r) => r.item.id));
+    return candidates.filter((c) => matched.has(c.id)).slice(0, 50);
+  }, [query, candidates]);
 
   const refreshOrders = useCallback(() => {
     if (!detailCustomer || storeId == null) {
@@ -106,7 +120,7 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
   }
 
   return (
-    <View className="flex-1 bg-background">
+    <SafeAreaView edges={['top']} className="flex-1 bg-background">
       <View className="border-b border-border p-3">
         <TextInput
           className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
@@ -147,7 +161,7 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
       />
 
       <Modal visible={detailCustomer != null} animationType="slide" onRequestClose={() => setDetailCustomer(null)}>
-        <View className="flex-1 bg-background pt-14">
+        <SafeAreaView edges={['top']} className="flex-1 bg-background">
           <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
             <View>
               <Text className="text-lg font-semibold text-foreground">{detailCustomer?.name}</Text>
@@ -206,7 +220,7 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
               ))
             )}
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
 
       <PaymentModal
@@ -219,6 +233,6 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
           refreshCustomers();
         }}
       />
-    </View>
+    </SafeAreaView>
   );
 }

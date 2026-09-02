@@ -91,8 +91,15 @@ npm-debug.*
 *.p8
 *.p12
 *.key
+*.keystore
 *.mobileprovision
 *.orig.*
 web-build/
 cache/
+
+# Local EAS build credentials (see apps/mobile/credentials/ + credentials.json) -
+# real signing key/passwords generated locally as an alternative to EAS's
+# remote credential management, never committed.
+apps/mobile/credentials/
+apps/mobile/credentials.json
 

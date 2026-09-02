@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView } from 'react-native';
 import { API_BASE_URL } from '../lib/auth';
 
 interface Tenant {
@@ -63,7 +63,7 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
   }
 
   return (
-    <View className="flex-1 gap-3 bg-background p-4">
+    <ScrollView className="flex-1 bg-background" contentContainerClassName="gap-3 p-4" keyboardShouldPersistTaps="handled">
       <Text className="text-sm text-muted-foreground">Business name</Text>
       <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" value={name} onChangeText={setName} />
 
@@ -93,6 +93,6 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
       <Pressable android_ripple={{ color: '#ffffff40' }} className={`mt-2 items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`} disabled={busy} onPress={handleSubmit}>
         <Text className="font-medium text-primary-foreground">{busy ? 'Saving...' : 'Save settings'}</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }

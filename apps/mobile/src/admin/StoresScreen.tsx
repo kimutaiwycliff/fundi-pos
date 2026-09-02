@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Modal, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Modal, Platform, ScrollView } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../lib/auth';
+import { showAlert } from '../components/AppNotice';
 
 interface StoreRow {
   id: number;
@@ -76,7 +79,7 @@ export function StoresScreen({ payloadToken, tenantId }: { payloadToken: string;
     });
     if (!res.ok) {
       const body = await res.json().catch(() => null);
-      Alert.alert('Failed to delete store', body?.errors?.[0]?.message ?? 'This branch likely has order/shift history.');
+      showAlert('Failed to delete store', body?.errors?.[0]?.message ?? 'This branch likely has order/shift history.');
       return;
     }
     setEditing(null);
@@ -106,28 +109,30 @@ export function StoresScreen({ payloadToken, tenantId }: { payloadToken: string;
       />
 
       <Modal visible={editing != null} animationType="slide" onRequestClose={() => setEditing(null)}>
-        <View className="flex-1 bg-background pt-14">
+        <SafeAreaView edges={['top']} className="flex-1 bg-background">
           <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
             <Text className="text-lg font-semibold text-foreground">{editing === 'new' ? 'New store' : 'Edit store'}</Text>
             <Pressable android_ripple={{}} onPress={() => setEditing(null)}>
               <Text className="text-muted-foreground">Close</Text>
             </Pressable>
           </View>
-          <View className="gap-3 p-4">
-            <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Name" placeholderTextColor={placeholderColor} value={name} onChangeText={setName} />
-            <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Address" placeholderTextColor={placeholderColor} value={address} onChangeText={setAddress} />
-            <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Timezone" placeholderTextColor={placeholderColor} value={timezone} onChangeText={setTimezone} />
-            {error ? <Text className="text-destructive">{error}</Text> : null}
-            <Pressable android_ripple={{ color: '#ffffff40' }} className={`items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`} disabled={busy} onPress={handleSubmit}>
-              <Text className="font-medium text-primary-foreground">{busy ? 'Saving...' : editing === 'new' ? 'Create store' : 'Save changes'}</Text>
-            </Pressable>
-            {editing !== 'new' ? (
-              <Pressable android_ripple={{}} className="items-center rounded-lg border border-destructive py-3 active:opacity-70" onPress={handleDelete}>
-                <Text className="font-medium text-destructive">Delete store</Text>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+            <ScrollView contentContainerClassName="gap-3 p-4" keyboardShouldPersistTaps="handled">
+              <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Name" placeholderTextColor={placeholderColor} value={name} onChangeText={setName} />
+              <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Address" placeholderTextColor={placeholderColor} value={address} onChangeText={setAddress} />
+              <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" placeholder="Timezone" placeholderTextColor={placeholderColor} value={timezone} onChangeText={setTimezone} />
+              {error ? <Text className="text-destructive">{error}</Text> : null}
+              <Pressable android_ripple={{ color: '#ffffff40' }} className={`items-center rounded-lg bg-primary py-3 ${busy ? 'opacity-50' : 'active:opacity-80'}`} disabled={busy} onPress={handleSubmit}>
+                <Text className="font-medium text-primary-foreground">{busy ? 'Saving...' : editing === 'new' ? 'Create store' : 'Save changes'}</Text>
               </Pressable>
-            ) : null}
-          </View>
-        </View>
+              {editing !== 'new' ? (
+                <Pressable android_ripple={{}} className="items-center rounded-lg border border-destructive py-3 active:opacity-70" onPress={handleDelete}>
+                  <Text className="font-medium text-destructive">Delete store</Text>
+                </Pressable>
+              ) : null}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
     </View>
   );

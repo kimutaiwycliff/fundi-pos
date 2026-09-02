@@ -1,19 +1,24 @@
 import '../../global.css';
 import { StatusBar } from 'expo-status-bar';
-import { useMutedPlaceholderColor } from '../lib/theme';
+import { useMutedPlaceholderColor, useNavigationTheme } from '../lib/theme';
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, Pressable, ActivityIndicator, SafeAreaView, KeyboardAvoidingView, Platform, Linking } from 'react-native';
+import { View, Text, TextInput, Pressable, ActivityIndicator, Platform, Linking, Image } from 'react-native';
+import { KeyboardProvider, KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { loginToPayload, loginWithPin, type PayloadUser } from '../lib/auth';
 import { connectPowerSync, disconnectPowerSync } from '../db/database';
 import { getTerminalId, getTerminalName, setTerminalName } from '../lib/terminal';
-import { checkPinLocallyById } from '../lib/pin';
+import { checkPinLocallyById, MIN_PIN_LENGTH, MAX_PIN_LENGTH } from '../lib/pin';
 import { loadSession, saveSession, clearSession, updateSessionStore, type PersistedSession } from '../lib/session';
 import { getDb } from '../db/database';
 import { RootTabs } from '../navigation/RootTabs';
 import { checkForUpdate, type AvailableUpdate } from '../lib/updateCheck';
 import { PinPad } from '../components/PinPad';
+import { AppNoticeHost } from '../components/AppNotice';
+import { isBiometricAvailable, isBiometricEnabledFor, authenticateWithBiometrics } from '../lib/biometric';
 
 type ConnectionState = 'idle' | 'logging-in' | 'connecting' | 'connected' | 'error';
 type LoginMode = 'pin' | 'password';
@@ -31,8 +36,10 @@ interface StoreOption {
 // expo-secure-store is async.
 function AppInner() {
   const placeholderColor = useMutedPlaceholderColor();
+  const navigationTheme = useNavigationTheme();
   const [initializing, setInitializing] = useState(true);
   const [mode, setMode] = useState<LoginMode>('pin');
+  const [pinStep, setPinStep] = useState<'phone' | 'pin'>('phone');
   const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
@@ -50,6 +57,7 @@ function AppInner() {
   const [resumePin, setResumePin] = useState('');
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [availableUpdate, setAvailableUpdate] = useState<AvailableUpdate | null>(null);
+  const [biometricReady, setBiometricReady] = useState(false);
 
   // "Notify + redownload", not a silent auto-updater - same as
   // apps/desktop's identical checkForUpdate(). Fires once on launch;
@@ -67,6 +75,25 @@ function AppInner() {
       setInitializing(false);
     })();
   }, []);
+
+  // Fingerprint is purely an additive shortcut on top of the same
+  // resumeCandidate PIN flow below (see biometric.ts's own note on why) -
+  // only offered once both the device can actually do it AND this specific
+  // person opted in via the More tab.
+  useEffect(() => {
+    if (!resumeCandidate) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setBiometricReady(false);
+      return;
+    }
+    let active = true;
+    Promise.all([isBiometricAvailable(), isBiometricEnabledFor(resumeCandidate.user.id)]).then(([available, enabled]) => {
+      if (active) setBiometricReady(available && enabled);
+    });
+    return () => {
+      active = false;
+    };
+  }, [resumeCandidate]);
 
   // Once connected, an owner/manager with no fixed store (Users.store is
   // nullable for exactly this) needs to pick which branch to sync - the
@@ -111,6 +138,18 @@ function AppInner() {
     }
   }
 
+  // Shared by both resume paths below once the person's identity is
+  // confirmed (PIN or fingerprint) - reconnects PowerSync under the
+  // already-resident payloadToken, same as a fresh login's own tail end.
+  async function finishResume(candidate: PersistedSession) {
+    payloadTokenRef.current = candidate.payloadToken;
+    setUser(candidate.user);
+    setActiveStoreId(candidate.storeId);
+    setState('connecting');
+    await connectPowerSync(candidate.payloadToken, candidate.storeId);
+    setState('connected');
+  }
+
   // Re-entry for a till that already logged in online at least once
   // (session.ts, up to 24h old) - gated by the same local, zero-network PIN
   // mechanism (pin.ts's checkPinLocallyById). Deliberately checks only
@@ -127,12 +166,27 @@ function AppInner() {
         setState('idle');
         return;
       }
-      payloadTokenRef.current = resumeCandidate.payloadToken;
-      setUser(resumeCandidate.user);
-      setActiveStoreId(resumeCandidate.storeId);
-      setState('connecting');
-      await connectPowerSync(resumeCandidate.payloadToken, resumeCandidate.storeId);
-      setState('connected');
+      await finishResume(resumeCandidate);
+    } catch (err) {
+      setResumeError(err instanceof Error ? err.message : String(err));
+      setState('idle');
+    }
+  }
+
+  // Fingerprint shortcut for the same resume flow - authenticateAsync only
+  // confirms the device owner is present, it never returns a credential, so
+  // success here skips straight past checkPinLocallyById to finishResume
+  // (the payloadToken it unlocks was already sitting in SecureStore either
+  // way). Any failure/cancel just leaves the PIN pad there - never a
+  // dead end.
+  async function handleResumeWithBiometrics() {
+    if (!resumeCandidate) return;
+    setResumeError(null);
+    const ok = await authenticateWithBiometrics(`Sign in as ${resumeCandidate.user.name || resumeCandidate.user.email}`);
+    if (!ok) return;
+    try {
+      setState('logging-in');
+      await finishResume(resumeCandidate);
     } catch (err) {
       setResumeError(err instanceof Error ? err.message : String(err));
       setState('idle');
@@ -237,7 +291,7 @@ function AppInner() {
             </Text>
           </Pressable>
         ) : null}
-        <NavigationContainer>
+        <NavigationContainer theme={navigationTheme}>
           <RootTabs
             user={user}
             payloadToken={payloadTokenRef.current}
@@ -255,6 +309,19 @@ function AppInner() {
     const resumeBusy = state === 'logging-in' || state === 'connecting';
     return (
       <LoginShell title="Welcome back" subtitle={resumeCandidate.user.name || resumeCandidate.user.email}>
+        {biometricReady ? (
+          <Pressable
+            android_ripple={{ color: '#ffffff30', radius: 40, borderless: true }}
+            className={`mb-1 items-center gap-1.5 self-center ${resumeBusy ? 'opacity-50' : ''}`}
+            disabled={resumeBusy}
+            onPress={handleResumeWithBiometrics}
+          >
+            <View className="h-16 w-16 items-center justify-center rounded-full border border-primary bg-card">
+              <Ionicons name="finger-print-outline" size={30} color="#df5102" />
+            </View>
+            <Text className="text-sm text-muted-foreground">Use fingerprint</Text>
+          </Pressable>
+        ) : null}
         <PinPad
           value={resumePin}
           onChange={(v) => {
@@ -265,7 +332,7 @@ function AppInner() {
           disabled={resumeBusy}
           error={resumeError}
         />
-        {resumePin.length > 0 && resumePin.length < 6 ? (
+        {resumePin.length >= MIN_PIN_LENGTH && resumePin.length < MAX_PIN_LENGTH ? (
           <PrimaryButton label={resumeBusy ? 'Continuing...' : 'Continue'} onPress={() => handleResume()} disabled={resumeBusy} />
         ) : null}
         {resumeError && <Text className="text-center text-destructive">{resumeError}</Text>}
@@ -279,6 +346,32 @@ function AppInner() {
 
   const busy = state === 'logging-in' || state === 'connecting';
   const submitLabel = state === 'logging-in' ? 'Logging in...' : state === 'connecting' ? 'Connecting...' : 'Log in';
+  const phoneValid = phone.trim().length >= 9;
+
+  // Split into a phone step then a dedicated, single-focus PIN step - matching
+  // the resume screen above and every modern phone+PIN sign-in (M-Pesa, banking
+  // apps) - rather than cramming a phone field and the full keypad into one
+  // screen at once.
+  if (mode === 'pin' && pinStep === 'pin') {
+    return (
+      <LoginShell title="Enter your PIN" subtitle={`Signing in as ${phone.trim()}`}>
+        <PinPad value={pin} onChange={setPin} onComplete={(v) => handleLogin(v)} disabled={busy} error={error} />
+        {pin.length >= MIN_PIN_LENGTH && pin.length < MAX_PIN_LENGTH ? <PrimaryButton label={submitLabel} onPress={() => handleLogin()} disabled={busy} /> : null}
+        {error && <Text className="text-center text-destructive">{error}</Text>}
+        <Pressable android_ripple={{}}
+          className="items-center py-2"
+          onPress={() => {
+            setPinStep('phone');
+            setPin('');
+            setError(null);
+          }}
+          disabled={busy}
+        >
+          <Text className="text-sm text-muted-foreground">Not you? Change number</Text>
+        </Pressable>
+      </LoginShell>
+    );
+  }
 
   return (
     <LoginShell title="Fundi Till" subtitle={mode === 'pin' ? 'Sign in with your phone and till PIN' : 'Sign in with email and password'}>
@@ -292,9 +385,17 @@ function AppInner() {
             placeholderTextColor={placeholderColor}
             keyboardType="phone-pad"
             autoFocus
+            returnKeyType="next"
+            onSubmitEditing={() => phoneValid && setPinStep('pin')}
           />
-          <PinPad value={pin} onChange={setPin} onComplete={(v) => handleLogin(v)} disabled={busy} error={error} />
-          {pin.length > 0 && pin.length < 6 ? <PrimaryButton label={submitLabel} onPress={() => handleLogin()} disabled={busy} /> : null}
+          <PrimaryButton
+            label="Continue"
+            onPress={() => {
+              setError(null);
+              setPinStep('pin');
+            }}
+            disabled={!phoneValid}
+          />
         </>
       ) : (
         <>
@@ -325,6 +426,8 @@ function AppInner() {
         className="items-center py-1"
         onPress={() => {
           setMode(mode === 'pin' ? 'password' : 'pin');
+          setPinStep('phone');
+          setPin('');
           setError(null);
         }}
         disabled={busy}
@@ -341,7 +444,8 @@ function AppInner() {
 function LoginShell({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <SafeAreaView className="flex-1 bg-background">
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1 justify-center px-6">
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24 }}>
+        <Image source={require('../../assets/images/icon.png')} className="mb-6 h-16 w-16 self-center rounded-2xl" />
         <View className="gap-3 rounded-2xl border border-border bg-card p-6">
           <View className="mb-2 gap-1">
             <Text className="text-2xl font-semibold text-foreground">{title}</Text>
@@ -369,11 +473,16 @@ function PrimaryButton({ label, onPress, disabled }: { label: string; onPress: (
 
 export const App = () => {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      {/* "auto" tracks the OS color scheme itself (light content on dark, dark content on light) - same source of truth as global.css's prefers-color-scheme tokens, so the status bar never mismatches the app's own theme. */}
-      <StatusBar style="auto" />
-      <AppInner />
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <KeyboardProvider>
+          {/* "auto" tracks the OS color scheme itself (light content on dark, dark content on light) - same source of truth as global.css's prefers-color-scheme tokens, so the status bar never mismatches the app's own theme. */}
+          <StatusBar style="auto" />
+          <AppInner />
+          <AppNoticeHost />
+        </KeyboardProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 };
 

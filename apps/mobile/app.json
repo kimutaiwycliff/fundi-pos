@@ -37,6 +37,12 @@
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ce0ed36b-6866-4fbc-95de-bb24092f48e5"
+      }
+    },
+    "owner": "kcliff"
   }
 }

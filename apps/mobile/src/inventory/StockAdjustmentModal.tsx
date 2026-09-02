@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { Modal, View, Text, TextInput, Pressable, FlatList } from 'react-native';
+import { Modal, View, Text, TextInput, Pressable, FlatList, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { getDb } from '../db/database';
 import { uuid } from '../lib/uuid';
 
@@ -49,7 +51,7 @@ export function StockAdjustmentModal({
 }) {
   const placeholderColor = useMutedPlaceholderColor();
   const [productQuery, setProductQuery] = useState('');
-  const [productResults, setProductResults] = useState<PickableProduct[]>([]);
+  const [catalog, setCatalog] = useState<PickableProduct[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<PickableProduct | null>(null);
   const [variants, setVariants] = useState<PickableVariant[]>([]);
   const [selectedVariant, setSelectedVariant] = useState<PickableVariant | null>(null);
@@ -62,7 +64,6 @@ export function StockAdjustmentModal({
     if (!visible) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setProductQuery('');
-    setProductResults([]);
     setSelectedProduct(null);
     setVariants([]);
     setSelectedVariant(null);
@@ -71,27 +72,27 @@ export function StockAdjustmentModal({
     setError(null);
   }, [visible]);
 
+  // Whole tenant's active-product list loaded once, not per keystroke, so
+  // search can fuzzy-match client-side - same pattern as SellScreen's
+  // product search.
   useEffect(() => {
-    const trimmed = productQuery.trim();
-    if (!trimmed) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setProductResults([]);
-      return;
-    }
     let active = true;
     getDb()
-      .getAll<PickableProduct>(`SELECT id, name, sku FROM products WHERE tenant_id = ? AND is_active = 1 AND (name LIKE ? OR sku LIKE ?) ORDER BY name LIMIT 10`, [
-        tenantId,
-        `%${trimmed}%`,
-        `%${trimmed}%`,
-      ])
+      .getAll<PickableProduct>(`SELECT id, name, sku FROM products WHERE tenant_id = ? AND is_active = 1 ORDER BY name LIMIT 5000`, [tenantId])
       .then((rows) => {
-        if (active) setProductResults(rows);
+        if (active) setCatalog(rows);
       });
     return () => {
       active = false;
     };
-  }, [productQuery, tenantId]);
+  }, [tenantId]);
+
+  const productResults = useMemo(() => {
+    const trimmed = productQuery.trim();
+    if (!trimmed) return [];
+    const fuse = new Fuse(catalog, { threshold: 0.4, ignoreLocation: true, keys: ['name', 'sku'] });
+    return fuse.search(trimmed).slice(0, 10).map((r) => r.item);
+  }, [productQuery, catalog]);
 
   useEffect(() => {
     if (!selectedProduct) {
@@ -148,6 +149,7 @@ export function StockAdjustmentModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <Pressable android_ripple={{}} className="flex-1 justify-end bg-black/40" onPress={onClose}>
         <Pressable android_ripple={{}} className="max-h-[85%] rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
           <Text className="mb-3 text-lg font-semibold text-foreground">Adjust stock</Text>
@@ -239,6 +241,7 @@ export function StockAdjustmentModal({
           </Pressable>
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

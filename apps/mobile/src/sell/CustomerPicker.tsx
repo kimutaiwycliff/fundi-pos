@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList } from 'react-native';
 import { getDb } from '../db/database';
 import { API_BASE_URL } from '../lib/auth';
+import { showAlert } from '../components/AppNotice';
 
 export interface LocalCustomer {
   id: string;
@@ -30,33 +32,33 @@ export function CustomerPicker({
 }) {
   const placeholderColor = useMutedPlaceholderColor();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<LocalCustomer[]>([]);
+  const [catalog, setCatalog] = useState<LocalCustomer[]>([]);
   const [creating, setCreating] = useState(false);
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Whole tenant's customer list loaded once, not per keystroke, so search
+  // can fuzzy-match client-side - same pattern as SellScreen's product
+  // search (see its own note on why, ported from apps/web's fuzzySearch).
   useEffect(() => {
-    const trimmed = query.trim();
-    if (!trimmed) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setResults([]);
-      return;
-    }
     let active = true;
     getDb()
-      .getAll<LocalCustomer>(`SELECT id, name, phone, email FROM customers WHERE tenant_id = ? AND (name LIKE ? OR phone LIKE ?) ORDER BY name LIMIT 10`, [
-        tenantId,
-        `%${trimmed}%`,
-        `%${trimmed}%`,
-      ])
+      .getAll<LocalCustomer>(`SELECT id, name, phone, email FROM customers WHERE tenant_id = ? ORDER BY name LIMIT 2000`, [tenantId])
       .then((rows) => {
-        if (active) setResults(rows);
+        if (active) setCatalog(rows);
       });
     return () => {
       active = false;
     };
-  }, [query, tenantId]);
+  }, [tenantId]);
+
+  const results = useMemo(() => {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    const fuse = new Fuse(catalog, { threshold: 0.4, ignoreLocation: true, keys: ['name', 'phone'] });
+    return fuse.search(trimmed).slice(0, 10).map((r) => r.item);
+  }, [query, catalog]);
 
   async function handleCreate() {
     if (!query.trim() || !newPhone.trim()) return;
@@ -78,7 +80,7 @@ export function CustomerPicker({
       setNewPhone('');
       setNewEmail('');
     } catch (err) {
-      Alert.alert('Failed to add customer', err instanceof Error ? err.message : String(err));
+      showAlert('Failed to add customer', err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }

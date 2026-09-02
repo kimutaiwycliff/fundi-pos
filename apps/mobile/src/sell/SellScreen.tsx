@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Alert, Modal } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Modal, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { showAlert, showToast } from '../components/AppNotice';
 import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
 import { getDb } from '../db/database';
 import { deleteHeldSale, holdSale, listHeldSales, type HeldSale } from '../db/heldSales';
@@ -63,7 +67,7 @@ export function SellScreen({
   const placeholderColor = useMutedPlaceholderColor();
 
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<LocalProduct[]>([]);
+  const [catalog, setCatalog] = useState<LocalProduct[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [tenderType, setTenderType] = useState<TenderType>('cash');
   const [selectedCustomer, setSelectedCustomer] = useState<LocalCustomer | null>(null);
@@ -104,20 +108,16 @@ export function SellScreen({
     setCart([]);
     setSelectedCustomer(null);
     setQuery('');
-    setResults([]);
+    setCatalog([]);
   }, [storeId]);
 
-  // Barcode scanners are plain HID keyboard input, same as desktop/web -
-  // typing into a focused search box already handles a scan with no
-  // special-case code.
+  // Whole active catalog for this store, loaded once (not per keystroke) so
+  // search can fuzzy-match client-side - same "fetch everything, filter in
+  // memory" shape as apps/web's dashboard/sell/page.tsx + product-search.tsx,
+  // just against local SQLite instead of a Payload REST fetch.
   useEffect(() => {
+    if (storeId == null) return;
     let active = true;
-    const trimmed = query.trim();
-    if (!trimmed || storeId == null) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setResults([]);
-      return;
-    }
     getDb()
       .getAll<LocalProduct>(
         `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, p.tax_rate, p.max_discount_amount,
@@ -125,17 +125,35 @@ export function SellScreen({
                           WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS stock_on_hand,
                 (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
          FROM products p
-         WHERE p.tenant_id = ? AND p.is_active = 1 AND (p.sku LIKE ? OR p.barcode = ? OR p.name LIKE ?)
-         ORDER BY p.name LIMIT 20`,
-        [storeId, tenantId, `%${trimmed}%`, trimmed, `%${trimmed}%`],
+         WHERE p.tenant_id = ? AND p.is_active = 1
+         ORDER BY p.name LIMIT 5000`,
+        [storeId, tenantId],
       )
       .then((rows) => {
-        if (active) setResults(rows);
+        if (active) setCatalog(rows);
       });
     return () => {
       active = false;
     };
-  }, [query, tenantId, storeId]);
+  }, [tenantId, storeId]);
+
+  // Barcode scanners are plain HID keyboard input, same as desktop/web -
+  // typing into a focused search box already handles a scan with no
+  // special-case code. A scanned barcode is exact digits typed fast with no
+  // chance for a human to double-check, so an exact hit always short-
+  // circuits past the fuzzy pass below - fuzzy-matching it could ring up a
+  // close-but-wrong product. Free-text name/SKU typos are what the fuzzy
+  // pass is actually for, and carry no such risk (same reasoning as
+  // apps/web/src/app/dashboard/sell/product-search.tsx).
+  const results = useMemo(() => {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    const lower = trimmed.toLowerCase();
+    const exactBarcodeMatch = catalog.find((p) => p.barcode && p.barcode.toLowerCase() === lower);
+    if (exactBarcodeMatch) return [exactBarcodeMatch];
+    const fuse = new Fuse(catalog, { threshold: 0.4, ignoreLocation: true, keys: ['name', 'sku'] });
+    return fuse.search(trimmed).slice(0, 20).map((r) => r.item);
+  }, [query, catalog]);
 
   const lineInputs: LineInput[] = useMemo(
     () =>
@@ -164,7 +182,7 @@ export function SellScreen({
     const nextQuantity = (existing?.quantity ?? 0) + 1;
     const label = variant ? `${product.name} — ${variant.label}` : product.name;
     if (nextQuantity > stock) {
-      Alert.alert('Out of stock', `Only ${stock} ${label} left in stock`);
+      showAlert('Out of stock', `Only ${stock} ${label} left in stock`);
       return;
     }
     setCart((prev) =>
@@ -173,14 +191,13 @@ export function SellScreen({
         : [...prev, { product, variant, quantity: 1, discountAmount: 0 }],
     );
     setQuery('');
-    setResults([]);
     setVariantPickerProduct(null);
   }
 
   function updateQuantity(line: CartLine, quantity: number) {
     const stock = lineStock(line);
     if (quantity > line.quantity && quantity > stock) {
-      Alert.alert('Out of stock', `Only ${stock} ${lineDisplayLabel(line)} left in stock`);
+      showAlert('Out of stock', `Only ${stock} ${lineDisplayLabel(line)} left in stock`);
       return;
     }
     const key = lineKey(line);
@@ -199,7 +216,7 @@ export function SellScreen({
     const max = maxDiscountAmountForLine(line);
     const clamped = Math.min(Math.max(rawValue, 0), max);
     if (rawValue > max) {
-      Alert.alert('Discount too high', `Max discount for ${lineDisplayLabel(line)} is ${max.toFixed(2)}`);
+      showAlert('Discount too high', `Max discount for ${lineDisplayLabel(line)} is ${max.toFixed(2)}`);
     }
     const key = lineKey(line);
     setCart((prev) => prev.map((l) => (lineKey(l) === key ? { ...l, discountAmount: clamped } : l)));
@@ -223,16 +240,16 @@ export function SellScreen({
   async function completeSale() {
     if (cart.length === 0 || storeId == null || tenantId == null) return;
     if (activeShift == null) {
-      Alert.alert('Open a shift before completing a sale');
+      showAlert('Open a shift before completing a sale');
       return;
     }
     if (tenderType === 'credit' && !selectedCustomer) {
-      Alert.alert('Select a customer for a credit sale');
+      showAlert('Select a customer for a credit sale');
       return;
     }
     const oversold = cart.find((line) => line.quantity > lineStock(line));
     if (oversold) {
-      Alert.alert('Out of stock', `Only ${lineStock(oversold)} ${lineDisplayLabel(oversold)} left in stock`);
+      showAlert('Out of stock', `Only ${lineStock(oversold)} ${lineDisplayLabel(oversold)} left in stock`);
       return;
     }
 
@@ -284,12 +301,12 @@ export function SellScreen({
       });
 
       const tenderLabel = TENDER_OPTIONS.find((t) => t.value === tenderType)?.label ?? tenderType;
-      Alert.alert('Sale completed', `${tenderLabel} · ${totals.total.toFixed(2)}`);
+      showToast(`Sale completed · ${tenderLabel} · ${totals.total.toFixed(2)}`);
       setCart([]);
       setSelectedCustomer(null);
       setCartOpen(false);
     } catch (err) {
-      Alert.alert('Error completing sale', err instanceof Error ? err.message : String(err));
+      showAlert('Error completing sale', err instanceof Error ? err.message : String(err));
     } finally {
       setCompleting(false);
     }
@@ -307,15 +324,15 @@ export function SellScreen({
 
   if (storeId == null) {
     return (
-      <View className="flex-1 items-center justify-center bg-background px-6">
+      <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-background px-6">
         <Text className="text-lg font-semibold text-foreground">Select a branch to start selling</Text>
         <Text className="mt-1 text-center text-muted-foreground">Use the branch switcher in More to pick a store.</Text>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View className="flex-1 bg-background">
+    <SafeAreaView edges={['top']} className="flex-1 bg-background">
       <View className="gap-2 border-b border-border p-3">
         <View className="flex-row items-center justify-between">
           <ShiftWidget
@@ -405,7 +422,8 @@ export function SellScreen({
       <HeldSalesModal visible={heldSalesOpen} heldSales={heldSales} onResume={handleResumeSale} onClose={() => setHeldSalesOpen(false)} />
 
       <Modal visible={cartOpen} animationType="slide" onRequestClose={() => setCartOpen(false)}>
-        <View className="flex-1 bg-background pt-14">
+        <SafeAreaView edges={['top']} className="flex-1 bg-background">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
             <Text className="text-lg font-semibold text-foreground">Current sale</Text>
             <Pressable android_ripple={{}} onPress={() => setCartOpen(false)}>
@@ -513,8 +531,9 @@ export function SellScreen({
               <Text className="font-medium text-foreground">Hold sale</Text>
             </Pressable>
           </View>
-        </View>
+        </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }

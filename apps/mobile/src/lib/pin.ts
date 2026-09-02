@@ -21,6 +21,10 @@ const N = 16384;
 const R = 8;
 const P = 1;
 
+/** Till PINs are 4-6 digits (see StaffScreen.tsx's "Till PIN (4-6 digits)" field) - shared so PinPad's dot count and early-submit threshold stay in sync with the actual policy. */
+export const MIN_PIN_LENGTH = 4;
+export const MAX_PIN_LENGTH = 6;
+
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }

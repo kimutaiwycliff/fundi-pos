@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable } from 'react-native';
 import { closeShift, openShift, type Shift } from '../lib/shifts';
+import { showAlert } from '../components/AppNotice';
 
 // Cash-up reconciliation, mirroring apps/web/.../sell/shift-widget.tsx /
 // apps/desktop/src/ShiftPanel.tsx - the server computes expectedCash/
@@ -38,7 +39,7 @@ export function ShiftWidget({
       onShiftChange(created);
       setOpeningFloat('');
     } catch (err) {
-      Alert.alert('Failed to open shift', err instanceof Error ? err.message : String(err));
+      showAlert('Failed to open shift', err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -53,12 +54,9 @@ export function ShiftWidget({
       setClosingCash('');
       setClosing(false);
       const variance = closed.variance ?? 0;
-      Alert.alert(
-        'Shift closed',
-        `Expected ${(closed.expectedCash ?? 0).toFixed(2)}, variance ${variance >= 0 ? '+' : ''}${variance.toFixed(2)}`,
-      );
+      showAlert('Shift closed', `Expected ${(closed.expectedCash ?? 0).toFixed(2)}, variance ${variance >= 0 ? '+' : ''}${variance.toFixed(2)}`);
     } catch (err) {
-      Alert.alert('Failed to close shift', err instanceof Error ? err.message : String(err));
+      showAlert('Failed to close shift', err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -69,7 +67,8 @@ export function ShiftWidget({
       <View className="flex-row flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5">
         <Text className="text-sm text-muted-foreground">No shift open</Text>
         <TextInput
-          className="h-8 w-32 rounded-md border border-border bg-card px-2 text-sm text-foreground"
+          className="h-8 w-32 rounded-md border border-border bg-card px-2 py-0 text-sm text-foreground"
+          textAlignVertical="center"
           placeholder="Opening float"
           placeholderTextColor={placeholderColor}
           keyboardType="decimal-pad"
@@ -93,7 +92,8 @@ export function ShiftWidget({
       {closing ? (
         <>
           <TextInput
-            className="h-8 w-32 rounded-md border border-border bg-card px-2 text-sm text-foreground"
+            className="h-8 w-32 rounded-md border border-border bg-card px-2 py-0 text-sm text-foreground"
+            textAlignVertical="center"
             placeholder="Cash counted"
             placeholderTextColor={placeholderColor}
             keyboardType="decimal-pad"
