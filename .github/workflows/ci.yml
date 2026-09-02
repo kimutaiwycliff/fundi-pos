@@ -60,13 +60,7 @@ jobs:
 
       # Prepend any command with "nx record --" to record its logs to Nx Cloud
       - run: npx nx record -- npx nx format:check --base="remotes/origin/main"
-      # mobile's own "build" target wraps `eas build` (a cloud native build
-      # requiring interactive credential setup, not something CI should ever
-      # trigger on every push) - it's excluded here and instead only runs,
-      # deliberately, from .github/workflows/android-release.yml. mobile's
-      # lint/test/typecheck/e2e all run normally below.
-      - run: npx nx run-many -t build --exclude=mobile
-      - run: npx nx run-many -t lint test typecheck e2e
+      - run: npx nx run-many -t lint test build typecheck e2e
       # Nx Cloud recommends fixes for failures to help you get CI green faster. Learn more: https://nx.dev/docs/features/ci-features/self-healing-ci
       - run: npx nx fix-ci
         if: always()
