@@ -6,7 +6,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { disconnectPowerSync } from '../db/database';
 import { clearSession } from '../lib/session';
-import { isBiometricAvailable, isBiometricEnabledFor, setBiometricEnabledFor, authenticateWithBiometrics } from '../lib/biometric';
+import { isBiometricEnabledFor, setBiometricEnabledFor, authenticateWithBiometrics, getBiometricDiagnostics, type BiometricDiagnostics } from '../lib/biometric';
 import type { PayloadUser } from '../lib/auth';
 import { SellScreen as RealSellScreen } from '../sell/SellScreen';
 import { CustomersScreen as RealCustomersScreen } from '../customers/CustomersScreen';
@@ -42,14 +42,15 @@ function MoreScreen({
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
   const canManage = user.role === 'owner' || user.role === 'manager';
   const [section, setSection] = useState<AdminSection | null>(null);
-  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricDiagnostics, setBiometricDiagnostics] = useState<BiometricDiagnostics | null>(null);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
+  const biometricAvailable = biometricDiagnostics?.hasHardware && biometricDiagnostics?.isEnrolled;
 
   useEffect(() => {
     let active = true;
-    Promise.all([isBiometricAvailable(), isBiometricEnabledFor(user.id)]).then(([available, enabled]) => {
+    Promise.all([getBiometricDiagnostics(), isBiometricEnabledFor(user.id)]).then(([diagnostics, enabled]) => {
       if (!active) return;
-      setBiometricAvailable(available);
+      setBiometricDiagnostics(diagnostics);
       setBiometricEnabledState(enabled);
     });
     return () => {
@@ -87,6 +88,18 @@ function MoreScreen({
             <Text className="text-xs text-muted-foreground">Skip typing your PIN to resume this till</Text>
           </View>
           <Switch value={biometricEnabled} onValueChange={handleToggleBiometric} trackColor={{ true: '#df5102' }} />
+        </View>
+      ) : biometricDiagnostics && !biometricAvailable ? (
+        // Not the normal "hide the row" case - the toggle is expected but the
+        // device is reporting it as unavailable, so show why instead of
+        // silently disappearing. Temporary until confirmed working on a real
+        // sideloaded install (see biometric.ts's own note on MIUI).
+        <View className="mt-6 rounded-lg border border-border bg-card p-3">
+          <Text className="text-foreground">Fingerprint login unavailable</Text>
+          <Text className="mt-1 text-xs text-muted-foreground">
+            hardware: {String(biometricDiagnostics.hasHardware)} · enrolled: {String(biometricDiagnostics.isEnrolled)}
+            {biometricDiagnostics.error ? ` · error: ${biometricDiagnostics.error}` : ''}
+          </Text>
         </View>
       ) : null}
 

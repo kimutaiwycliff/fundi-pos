@@ -3,6 +3,31 @@ import * as SecureStore from 'expo-secure-store';
 
 const ENABLED_KEY_PREFIX = 'biometric-login-enabled:';
 
+export interface BiometricDiagnostics {
+  hasHardware: boolean;
+  isEnrolled: boolean;
+  error: string | null;
+}
+
+/**
+ * Same two-step capability check as isBiometricAvailable(), but reporting
+ * each half individually plus any thrown error - added specifically to
+ * debug a real device (a sideloaded, non-Play-Store install) reporting the
+ * toggle as unavailable despite the phone having a fingerprint enrolled.
+ * MIUI in particular is known to restrict biometric API access for
+ * sideloaded apps in ways that don't necessarily throw a catchable error,
+ * so this surfaces the raw hasHardware/isEnrolled booleans rather than
+ * only the swallowed final boolean isBiometricAvailable() returns.
+ */
+export async function getBiometricDiagnostics(): Promise<BiometricDiagnostics> {
+  try {
+    const [hasHardware, isEnrolled] = await Promise.all([LocalAuthentication.hasHardwareAsync(), LocalAuthentication.isEnrolledAsync()]);
+    return { hasHardware, isEnrolled, error: null };
+  } catch (err) {
+    return { hasHardware: false, isEnrolled: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /**
  * True only when the device both has a sensor AND has something enrolled on
  * it - matches expo-local-authentication's own two-step capability check.
@@ -12,12 +37,8 @@ const ENABLED_KEY_PREFIX = 'biometric-login-enabled:';
  * always the real fallback regardless of what this resolves to.
  */
 export async function isBiometricAvailable(): Promise<boolean> {
-  try {
-    const [hasHardware, isEnrolled] = await Promise.all([LocalAuthentication.hasHardwareAsync(), LocalAuthentication.isEnrolledAsync()]);
-    return hasHardware && isEnrolled;
-  } catch {
-    return false;
-  }
+  const diagnostics = await getBiometricDiagnostics();
+  return diagnostics.hasHardware && diagnostics.isEnrolled;
 }
 
 // Keyed by user id, not a single app-wide flag - a shared till shouldn't let
