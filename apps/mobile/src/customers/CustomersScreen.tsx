@@ -120,7 +120,7 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
   }
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-background">
+    <View className="flex-1 bg-background">
       <View className="border-b border-border p-3">
         <TextInput
           className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
@@ -233,6 +233,6 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
           refreshCustomers();
         }}
       />
-    </SafeAreaView>
+    </View>
   );
 }

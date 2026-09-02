@@ -16,8 +16,9 @@ import { StaffScreen } from '../admin/StaffScreen';
 import { StoresScreen } from '../admin/StoresScreen';
 import { SettingsScreen } from '../admin/SettingsScreen';
 import { AuditLogScreen } from '../admin/AuditLogScreen';
+import { OverviewScreen } from '../overview/OverviewScreen';
 
-type AdminSection = 'staff' | 'stores' | 'settings' | 'audit';
+type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers';
 
 // Back-office admin (Phase 5) is intentionally tucked under More, not its
 // own tabs - this is deliberately last per the plan: none of it happens on
@@ -29,11 +30,13 @@ function MoreScreen({
   user,
   payloadToken,
   terminalName,
+  storeId,
   onSignOut,
 }: {
   user: PayloadUser;
   payloadToken: string;
   terminalName: string;
+  storeId: number | null;
   onSignOut: () => void;
 }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
@@ -70,6 +73,12 @@ function MoreScreen({
     <SafeAreaView edges={['top']} className="flex-1 bg-background px-6 pt-4">
       <Text className="text-2xl font-semibold text-foreground">{user.name ?? user.email}</Text>
       <Text className="mt-1 text-muted-foreground">{user.role} · {terminalName}</Text>
+
+      <View className="mt-6 gap-2">
+        <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('customers')}>
+          <Text className="text-foreground">Customers</Text>
+        </Pressable>
+      </View>
 
       {biometricAvailable ? (
         <View className="mt-6 flex-row items-center justify-between rounded-lg border border-border bg-card p-3">
@@ -120,6 +129,7 @@ function MoreScreen({
           {section === 'stores' ? <StoresScreen payloadToken={payloadToken} tenantId={tenantId} /> : null}
           {section === 'settings' ? <SettingsScreen payloadToken={payloadToken} tenantId={tenantId} /> : null}
           {section === 'audit' ? <AuditLogScreen payloadToken={payloadToken} /> : null}
+          {section === 'customers' ? <RealCustomersScreen user={user} payloadToken={payloadToken} storeId={storeId} /> : null}
         </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
@@ -130,9 +140,9 @@ function MoreScreen({
 const Tab = createBottomTabNavigator();
 
 const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  Overview: 'stats-chart-outline',
   Sell: 'cart-outline',
   Inventory: 'cube-outline',
-  Customers: 'people-outline',
   Sales: 'receipt-outline',
   More: 'ellipsis-horizontal-circle-outline',
 };
@@ -160,13 +170,13 @@ export function RootTabs({
         tabBarIcon: ({ color, size }) => <Ionicons name={TAB_ICONS[route.name]} size={size} color={color} />,
       })}
     >
+      <Tab.Screen name="Overview">{() => <OverviewScreen user={user} storeId={storeId} />}</Tab.Screen>
       <Tab.Screen name="Sell">
         {() => <RealSellScreen user={user} payloadToken={payloadToken} terminalId={terminalId} terminalName={terminalName} storeId={storeId} />}
       </Tab.Screen>
       <Tab.Screen name="Inventory">{() => <RealInventoryScreen user={user} terminalId={terminalId} storeId={storeId} />}</Tab.Screen>
-      <Tab.Screen name="Customers">{() => <RealCustomersScreen user={user} payloadToken={payloadToken} storeId={storeId} />}</Tab.Screen>
       <Tab.Screen name="Sales">{() => <RealSalesScreen user={user} payloadToken={payloadToken} storeId={storeId} />}</Tab.Screen>
-      <Tab.Screen name="More">{() => <MoreScreen user={user} payloadToken={payloadToken} terminalName={terminalName} onSignOut={onSignOut} />}</Tab.Screen>
+      <Tab.Screen name="More">{() => <MoreScreen user={user} payloadToken={payloadToken} terminalName={terminalName} storeId={storeId} onSignOut={onSignOut} />}</Tab.Screen>
     </Tab.Navigator>
   );
 }

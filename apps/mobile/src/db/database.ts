@@ -32,6 +32,15 @@ export async function connectPowerSync(payloadToken: string, storeId: number | n
   const db = getDb();
   connectorInstance = new ApiConnector(payloadToken, storeId);
   await db.connect(connectorInstance);
+  // connect() only opens the connection and starts syncing in the
+  // background - it does not wait for any data to actually land locally.
+  // Without this, the caller's very next local query (the store picker's
+  // own SELECT, or the first screen a user lands on) races the initial
+  // sync and can see an empty database - fine and unnoticeable against a
+  // fast local dev PowerSync, but very visible over a real network. A hard
+  // cap avoids hanging forever if the connection drops mid-sync; the app
+  // proceeds either way, same as before this fix for a fully offline resume.
+  await Promise.race([db.waitForFirstSync(), new Promise((resolve) => setTimeout(resolve, 30000))]);
 }
 
 /** Updates the Payload token the connector uses to mint PowerSync JWTs, without tearing down the sync connection. */

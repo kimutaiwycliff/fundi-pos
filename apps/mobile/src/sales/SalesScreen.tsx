@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Modal } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Modal, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
@@ -19,6 +19,11 @@ interface OrderRow {
   status: string;
   created_at: string | null;
   customer_name: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
+  cashier_name: string | null;
+  cashier_email: string | null;
+  terminal_name: string | null;
 }
 
 interface OrderLine {
@@ -28,16 +33,60 @@ interface OrderLine {
   discount: number;
 }
 
+type StatusFilter = 'all' | 'unpaid' | 'paid' | 'voided' | 'refunded';
+type DatePreset = 'today' | 'week' | 'month' | 'all';
+
+const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'unpaid', label: 'Unpaid' },
+  { value: 'paid', label: 'Paid' },
+  { value: 'voided', label: 'Voided' },
+  { value: 'refunded', label: 'Refunded' },
+];
+
+const DATE_OPTIONS: Array<{ value: DatePreset; label: string }> = [
+  { value: 'today', label: 'Today' },
+  { value: 'week', label: 'This week' },
+  { value: 'month', label: 'This month' },
+  { value: 'all', label: 'All time' },
+];
+
+function datePresetCutoff(preset: DatePreset): string | null {
+  if (preset === 'all') return null;
+  const now = new Date();
+  if (preset === 'today') {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  }
+  if (preset === 'week') {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 7);
+    return d.toISOString();
+  }
+  const d = new Date(now);
+  d.setMonth(d.getMonth() - 1);
+  return d.toISOString();
+}
+
+function matchesStatus(order: OrderRow, filter: StatusFilter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'unpaid') return order.tender_type === 'credit' && order.payment_status === 'pending' && order.status === 'completed';
+  if (filter === 'paid') return order.status === 'completed' && !(order.tender_type === 'credit' && order.payment_status === 'pending');
+  return order.status === filter;
+}
+
 // Phase 4 - sales history, reprint (on-screen only - ESC/POS printing is
 // still deferred, same as Phase 1) and void/refund. Reuses PaymentModal
 // from Customers (Phase 2) for settling an unpaid credit sale found here,
 // rather than duplicating that flow. Reads local orders only (this store's
 // own synced history, offline, same as apps/desktop/src/FindSalePanel.tsx);
 // void/refund and settling both still require connectivity, per the plan's
-// Option-A decision.
+// Option-A decision. Status/date filters and the widened search (phone,
+// cashier, terminal) mirror apps/web's dashboard/sales page's own filters.
 export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser; payloadToken: string; storeId: number | null }) {
   const placeholderColor = useMutedPlaceholderColor();
   const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
   const [candidates, setCandidates] = useState<OrderRow[]>([]);
   const [receiptOrder, setReceiptOrder] = useState<OrderRow | null>(null);
   const [receiptLines, setReceiptLines] = useState<OrderLine[]>([]);
@@ -49,7 +98,8 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
   // product search. Order id is a real id (not free text a person typed),
   // so it keeps exact-prefix matching below rather than being fuzzed - a
   // typo-tolerant match on a 36-char id string would just be noise; the
-  // customer-name half is what typos actually happen in.
+  // free-text fields (customer/cashier name, phone, terminal) are what
+  // typos actually happen in.
   const refresh = useCallback(() => {
     if (storeId == null) {
       setCandidates([]);
@@ -58,9 +108,12 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
     getDb()
       .getAll<OrderRow>(
         `SELECT o.id, o.total, o.tax_total, o.discount_total, o.tender_type, o.payment_status, o.status,
-                COALESCE(o.created_at, o.synced_at) AS created_at, c.name AS customer_name
+                COALESCE(o.created_at, o.synced_at) AS created_at, o.terminal_name,
+                c.name AS customer_name, c.phone AS customer_phone, c.email AS customer_email,
+                u.name AS cashier_name, u.email AS cashier_email
          FROM orders o
          LEFT JOIN customers c ON c.id = o.customer_id
+         LEFT JOIN users u ON u.id = o.cashier_id
          WHERE o.store_id = ?
          ORDER BY COALESCE(o.created_at, o.synced_at) DESC LIMIT 1000`,
         [storeId],
@@ -73,16 +126,30 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
     refresh();
   }, [refresh]);
 
+  const scoped = useMemo(() => {
+    const cutoff = datePresetCutoff(datePreset);
+    return candidates.filter((o) => matchesStatus(o, statusFilter) && (!cutoff || (o.created_at ?? '') >= cutoff));
+  }, [candidates, statusFilter, datePreset]);
+
+  const unpaidCount = useMemo(
+    () => candidates.filter((o) => o.tender_type === 'credit' && o.payment_status === 'pending' && o.status === 'completed').length,
+    [candidates],
+  );
+
   const orders = useMemo(() => {
     const trimmed = query.trim();
-    if (!trimmed) return candidates.slice(0, 30);
+    if (!trimmed) return scoped.slice(0, 30);
     const lower = trimmed.toLowerCase();
-    const idMatches = candidates.filter((o) => o.id.toLowerCase().startsWith(lower));
-    const fuse = new Fuse(candidates, { threshold: 0.4, ignoreLocation: true, keys: ['customer_name'] });
-    const nameMatches = fuse.search(trimmed).map((r) => r.item);
+    const idMatches = scoped.filter((o) => o.id.toLowerCase().startsWith(lower));
+    const fuse = new Fuse(scoped, {
+      threshold: 0.4,
+      ignoreLocation: true,
+      keys: ['customer_name', 'customer_phone', 'cashier_name', 'cashier_email', 'terminal_name'],
+    });
+    const otherMatches = fuse.search(trimmed).map((r) => r.item);
     const idMatchIds = new Set(idMatches.map((o) => o.id));
-    return [...idMatches, ...nameMatches.filter((o) => !idMatchIds.has(o.id))].slice(0, 30);
-  }, [query, candidates]);
+    return [...idMatches, ...otherMatches.filter((o) => !idMatchIds.has(o.id))].slice(0, 30);
+  }, [query, scoped]);
 
   function openReceipt(order: OrderRow) {
     setReceiptOrder(order);
@@ -98,6 +165,28 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
       .then(setReceiptLines);
   }
 
+  // WhatsApp/email are more natural on a phone than desktop for chasing an
+  // unpaid tab - mirrors apps/web's dashboard/sales page's invoice-message
+  // send action, without needing that same shared message-builder module.
+  function invoiceMessage(order: OrderRow): string {
+    const name = order.customer_name ?? 'there';
+    return `Hi ${name}, this is a reminder that your order #${order.id.slice(0, 8)} for ${order.total.toFixed(2)} is still unpaid. Please settle at your earliest convenience. Thank you!`;
+  }
+
+  function sendInvoiceWhatsApp(order: OrderRow) {
+    if (!order.customer_phone) return;
+    const digits = order.customer_phone.replace(/[^\d]/g, '');
+    const withCountryCode = digits.startsWith('0') ? `254${digits.slice(1)}` : digits;
+    Linking.openURL(`https://wa.me/${withCountryCode}?text=${encodeURIComponent(invoiceMessage(order))}`).catch(() => undefined);
+  }
+
+  function sendInvoiceEmail(order: OrderRow) {
+    if (!order.customer_email) return;
+    Linking.openURL(`mailto:${order.customer_email}?subject=${encodeURIComponent(`Unpaid order #${order.id.slice(0, 8)}`)}&body=${encodeURIComponent(invoiceMessage(order))}`).catch(
+      () => undefined,
+    );
+  }
+
   if (storeId == null) {
     return (
       <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-background px-6">
@@ -109,14 +198,46 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-background">
-      <View className="border-b border-border p-3">
+      <View className="gap-2 border-b border-border p-3">
         <TextInput
           className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
-          placeholder="Search by order id or customer name..."
+          placeholder="Search by order id, customer, cashier, phone..."
           placeholderTextColor={placeholderColor}
           value={query}
           onChangeText={setQuery}
         />
+        <View className="flex-row flex-wrap gap-1.5">
+          {DATE_OPTIONS.map((opt) => (
+            <Pressable
+              android_ripple={{ color: '#ffffff40' }}
+              key={opt.value}
+              className={`rounded-md border px-2.5 py-1 ${datePreset === opt.value ? 'border-primary bg-primary' : 'border-border'}`}
+              onPress={() => setDatePreset(opt.value)}
+            >
+              <Text className={`text-xs ${datePreset === opt.value ? 'font-medium text-primary-foreground' : 'text-foreground'}`}>{opt.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <View className="flex-row flex-wrap items-center gap-1.5">
+          {STATUS_OPTIONS.map((opt) => (
+            <Pressable
+              android_ripple={{ color: '#ffffff40' }}
+              key={opt.value}
+              className={`rounded-md border px-2.5 py-1 ${statusFilter === opt.value ? 'border-primary bg-primary' : 'border-border'}`}
+              onPress={() => setStatusFilter(opt.value)}
+            >
+              <Text className={`text-xs ${statusFilter === opt.value ? 'font-medium text-primary-foreground' : 'text-foreground'}`}>{opt.label}</Text>
+            </Pressable>
+          ))}
+          {unpaidCount > 0 ? (
+            <View className="rounded-md bg-destructive/15 px-2.5 py-1">
+              <Text className="text-xs font-medium text-destructive">{unpaidCount} unpaid</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text className="text-xs text-muted-foreground">
+          {orders.length} of {scoped.length} sale{scoped.length === 1 ? '' : 's'}
+        </Text>
       </View>
 
       <FlatList
@@ -138,6 +259,7 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
               <Text className="text-xs text-muted-foreground">
                 {item.created_at ? new Date(item.created_at).toLocaleString() : ''} · {item.tender_type}
                 {item.customer_name ? ` · ${item.customer_name}` : ''}
+                {item.cashier_name ? ` · ${item.cashier_name}` : ''}
                 {isUnpaidCredit ? ' · unpaid' : ''}
               </Text>
               <View className="mt-2 flex-row flex-wrap gap-1.5">
@@ -150,6 +272,16 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
                     onPress={() => setPaymentOrder({ id: item.id, total: item.total, created_at: item.created_at, synced_at: null })}
                   >
                     <Text className="text-sm font-medium text-primary-foreground">Pay</Text>
+                  </Pressable>
+                ) : null}
+                {isUnpaidCredit && item.customer_phone ? (
+                  <Pressable android_ripple={{}} className="rounded-md border border-border px-3 py-1.5 active:opacity-70" onPress={() => sendInvoiceWhatsApp(item)}>
+                    <Text className="text-sm text-foreground">WhatsApp</Text>
+                  </Pressable>
+                ) : null}
+                {isUnpaidCredit && item.customer_email ? (
+                  <Pressable android_ripple={{}} className="rounded-md border border-border px-3 py-1.5 active:opacity-70" onPress={() => sendInvoiceEmail(item)}>
+                    <Text className="text-sm text-foreground">Email</Text>
                   </Pressable>
                 ) : null}
                 {item.status === 'completed' ? (
@@ -169,6 +301,7 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
             <Text className="mb-1 text-lg font-semibold text-foreground">Order #{receiptOrder?.id.slice(0, 8)}</Text>
             <Text className="mb-3 text-xs text-muted-foreground">
               {receiptOrder?.created_at ? new Date(receiptOrder.created_at).toLocaleString() : ''} · {receiptOrder?.tender_type}
+              {receiptOrder?.cashier_name ? ` · ${receiptOrder.cashier_name}` : ''}
             </Text>
             <FlatList
               data={receiptLines}
