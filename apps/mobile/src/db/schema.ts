@@ -74,6 +74,11 @@ const products_variants = new Table(
     sell_price: column.real,
     cost_price: column.real,
     image_id: column.integer,
+    // Denormalized onto each row server-side specifically so this table's
+    // PowerSync stream can filter without a join (PowerSync's sync rules
+    // don't support them) - see docker/powersync/sync-config.yaml's own
+    // note on this stream. Not otherwise used by any local query.
+    tenant_id: column.integer,
   },
   { indexes: { parent: ['_parent_id'] } },
 );
@@ -203,6 +208,9 @@ const orders_line_items = new Table(
     quantity: column.real,
     unit_price: column.real,
     discount: column.real,
+    // Same reasoning as products_variants.tenant_id above.
+    tenant_id: column.integer,
+    store_id: column.integer,
   },
   { indexes: { parent: ['_parent_id'] } },
 );

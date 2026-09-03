@@ -294,6 +294,7 @@ export interface Product {
         label: string;
         sku?: string | null;
         barcode?: string | null;
+        tenantId?: number | null;
         /**
          * Optional. Leave blank to use the product's own image.
          */
@@ -414,6 +415,8 @@ export interface Order {
     quantity: number;
     unitPrice: number;
     discount: number;
+    tenantId?: number | null;
+    storeId?: number | null;
     id?: string | null;
   }[];
   taxTotal: number;
@@ -831,6 +834,7 @@ export interface ProductsSelect<T extends boolean = true> {
         label?: T;
         sku?: T;
         barcode?: T;
+        tenantId?: T;
         image?: T;
         sellPrice?: T;
         costPrice?: T;
@@ -926,6 +930,8 @@ export interface OrdersSelect<T extends boolean = true> {
         quantity?: T;
         unitPrice?: T;
         discount?: T;
+        tenantId?: T;
+        storeId?: T;
         id?: T;
       };
   taxTotal?: T;

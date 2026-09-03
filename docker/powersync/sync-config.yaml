@@ -30,18 +30,22 @@ streams:
     query: SELECT * FROM products WHERE tenant_id = auth.parameter('tenant_id')
 
   # Variant sub-rows of products (Payload normalizes the Products.variants
-  # array field into this child table, same _parent_id/no-own-tenant-column
-  # shape as orders_line_items below) - scoped by joining back to the
-  # parent product's tenant, same tenant-only (not store) scoping as
-  # products itself, since a variant's price isn't store-specific (only its
-  # STOCK is, tracked via the already-synced, store-scoped stock_movements
-  # ledger keyed by this row's own id in its `variant` text column).
+  # array field into this child table, same shape as orders_line_items
+  # below) - tenant-only (not store) scoping, since a variant's price isn't
+  # store-specific (only its STOCK is, tracked via the already-synced,
+  # store-scoped stock_movements ledger keyed by this row's own id in its
+  # `variant` text column).
+  #
+  # PowerSync's sync rules do NOT support joins (confirmed against
+  # PowerSync's own docs: "Joins are not supported in Sync Rules" - the
+  # previous `JOIN products p ON p.id = pv._parent_id` here silently
+  # replicated nothing, ever - Products.tenantId is a denormalized copy of
+  # the parent product's own tenant, stamped server-side in
+  # apps/api/src/collections/Products.ts's beforeChange hook specifically
+  # so this stream can filter directly instead.
   products_variants:
     auto_subscribe: true
-    query: |
-      SELECT pv.* FROM products_variants pv
-      JOIN products p ON p.id = pv._parent_id
-      WHERE p.tenant_id = auth.parameter('tenant_id')
+    query: SELECT * FROM products_variants WHERE tenant_id = auth.parameter('tenant_id')
 
   store_product_overrides:
     auto_subscribe: true
@@ -67,17 +71,22 @@ streams:
       SELECT * FROM orders
       WHERE tenant_id = auth.parameter('tenant_id') AND store_id = auth.parameter('store_id')
 
-  # orders_line_items has no tenant_id/store_id of its own (Payload
-  # normalizes the Orders.lineItems array field into a child table keyed
-  # only by _parent_id -> orders.id) - scope it by joining back to the
-  # parent order's own tenant/store instead of denormalizing columns onto
-  # the child table.
+  # orders_line_items (Payload normalizes the Orders.lineItems array field
+  # into a child table keyed by _parent_id -> orders.id).
+  #
+  # PowerSync's sync rules do NOT support joins (confirmed against
+  # PowerSync's own docs: "Joins are not supported in Sync Rules" - the
+  # previous `JOIN orders o ON o.id = oli._parent_id` here silently
+  # replicated nothing, ever, which is why receipts showed no line items
+  # and owner profit always computed to 0. tenantId/storeId are
+  # denormalized copies of the parent order's own tenant/store, stamped
+  # server-side in apps/api/src/collections/Orders.ts's beforeChange hook
+  # specifically so this stream can filter directly instead.
   orders_line_items:
     auto_subscribe: true
     query: |
-      SELECT oli.* FROM orders_line_items oli
-      JOIN orders o ON o.id = oli._parent_id
-      WHERE o.tenant_id = auth.parameter('tenant_id') AND o.store_id = auth.parameter('store_id')
+      SELECT * FROM orders_line_items
+      WHERE tenant_id = auth.parameter('tenant_id') AND store_id = auth.parameter('store_id')
 
   # Org-level reference data a till needs for staff lookup/PIN login -
   # tenant-scoped, not store-scoped, since owners/managers can float

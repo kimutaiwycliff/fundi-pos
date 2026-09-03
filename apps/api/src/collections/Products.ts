@@ -46,6 +46,13 @@ export const Products: CollectionConfig = {
         { name: 'label', type: 'text', required: true }, // e.g. "Red / L"
         { name: 'sku', type: 'text' },
         { name: 'barcode', type: 'text' },
+        // Denormalized copy of the parent product's own tenant, stamped in
+        // beforeChange below - PowerSync's sync rules don't support joins
+        // (see Orders.ts's lineItems.tenantId for the full explanation),
+        // so products_variants's stream can't reach this via `JOIN
+        // products` the way docker/powersync/sync-config.yaml previously
+        // tried to. Never read/written by any client - hidden on purpose.
+        { name: 'tenantId', type: 'number', admin: { hidden: true } },
         {
           name: 'image',
           type: 'upload',
@@ -127,7 +134,22 @@ export const Products: CollectionConfig = {
   ],
   hooks: {
     beforeValidate: [generateProductCodes],
-    beforeChange: [enforceOwnTenant()],
+    beforeChange: [
+      enforceOwnTenant(),
+      // See variants.tenantId's own comment above. Unlike Orders.lineItems
+      // (create-only), a product's variants array is genuinely editable
+      // after creation (add/remove/reprice a variant), so this re-stamps
+      // on every save rather than only at create.
+      ({ data }) => {
+        if (Array.isArray(data.variants)) {
+          data.variants = data.variants.map((variant: Record<string, unknown>) => ({
+            ...variant,
+            tenantId: Number(data.tenant),
+          }));
+        }
+        return data;
+      },
+    ],
     afterChange: [
       // Multi-staff accountability: a manager quietly discounting or
       // marking up a product should leave a trail. Only fires when a price

@@ -55,6 +55,18 @@ export const Orders: CollectionConfig = {
         { name: 'quantity', type: 'number', required: true, min: 0.001 },
         { name: 'unitPrice', type: 'number', required: true, admin: { step: 0.01 } },
         { name: 'discount', type: 'number', required: true, defaultValue: 0, admin: { step: 0.01 } },
+        // Denormalized copies of the parent order's own tenant/store,
+        // stamped in beforeChange below - PowerSync's sync rules don't
+        // support joins (confirmed against PowerSync's own docs: "Joins
+        // are not supported in Sync Rules", their documented fix is
+        // exactly this denormalization), so orders_line_items's PowerSync
+        // stream can't reach these via `JOIN orders` the way
+        // docker/powersync/sync-config.yaml previously tried to - it
+        // silently replicated nothing. These columns let that stream
+        // filter directly, no join needed. Never read/written by any
+        // client - hidden from the admin UI on purpose.
+        { name: 'tenantId', type: 'number', admin: { hidden: true } },
+        { name: 'storeId', type: 'number', admin: { hidden: true } },
       ],
     },
     // taxTotal/discountTotal/total are always server-recomputed in
@@ -153,6 +165,16 @@ export const Orders: CollectionConfig = {
         data.discountTotal = totals.discountTotal;
         data.total = totals.total;
         data.loyaltyPointsEarned = data.customer ? Math.floor(totals.total / 100) : 0;
+
+        // See lineItems.tenantId/storeId's own comment above - orders are
+        // create-only from every client's perspective, so this only ever
+        // needs to run here (this whole block is already gated to
+        // operation === 'create').
+        data.lineItems = data.lineItems.map((line: Record<string, unknown>) => ({
+          ...line,
+          tenantId: Number(data.tenant),
+          storeId: Number(data.store),
+        }));
 
         if (!data.syncedAt) {
           data.syncedAt = new Date().toISOString();

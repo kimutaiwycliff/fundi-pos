@@ -6,6 +6,7 @@ import * as migration_20260901_052220_rename_max_discount_to_amount from './2026
 import * as migration_20260901_072707_add_variant_prices from './20260901_072707_add_variant_prices';
 import * as migration_20260901_081105_default_tax_and_optional_codes from './20260901_081105_default_tax_and_optional_codes';
 import * as migration_20260901_084514_add_media_and_product_images from './20260901_084514_add_media_and_product_images';
+import * as migration_20260903_064520_add_line_item_variant_tenant_store from './20260903_064520_add_line_item_variant_tenant_store';
 
 export const migrations = [
   {
@@ -46,6 +47,11 @@ export const migrations = [
   {
     up: migration_20260901_084514_add_media_and_product_images.up,
     down: migration_20260901_084514_add_media_and_product_images.down,
-    name: '20260901_084514_add_media_and_product_images'
+    name: '20260901_084514_add_media_and_product_images',
+  },
+  {
+    up: migration_20260903_064520_add_line_item_variant_tenant_store.up,
+    down: migration_20260903_064520_add_line_item_variant_tenant_store.down,
+    name: '20260903_064520_add_line_item_variant_tenant_store'
   },
 ];
