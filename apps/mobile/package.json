@@ -24,6 +24,7 @@
     "expo-local-authentication": "*",
     "expo-print": "~56.0.4",
     "expo-secure-store": "~56.0.4",
+    "expo-sharing": "~56.0.26",
     "expo-splash-screen": "*",
     "expo-status-bar": "*",
     "expo-system-ui": "*",

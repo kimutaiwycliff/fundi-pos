@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
 import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, Linking } from 'react-native';
@@ -98,6 +99,7 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
   const [voidOrder, setVoidOrder] = useState<VoidableOrder | null>(null);
   const [tenantInfo, setTenantInfo] = useState<ReceiptTenantInfo | null>(null);
   const [printing, setPrinting] = useState(false);
+  const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
 
   // Fetched once, not per-receipt - the letterhead a receipt prints doesn't
   // change sale to sale. Same tenants row the Overview screen and desktop's
@@ -169,40 +171,81 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
     return [...idMatches, ...otherMatches.filter((o) => !idMatchIds.has(o.id))].slice(0, 30);
   }, [query, scoped]);
 
+  function fetchOrderLines(orderId: string): Promise<OrderLine[]> {
+    return getDb().getAll<OrderLine>(
+      `SELECT p.name AS product_name, oli.quantity, oli.unit_price, oli.discount
+       FROM orders_line_items oli
+       JOIN products p ON p.id = oli.product_id
+       WHERE oli._parent_id = ?
+       ORDER BY oli._order`,
+      [orderId],
+    );
+  }
+
   function openReceipt(order: OrderRow) {
     setReceiptOrder(order);
-    getDb()
-      .getAll<OrderLine>(
-        `SELECT p.name AS product_name, oli.quantity, oli.unit_price, oli.discount
-         FROM orders_line_items oli
-         JOIN products p ON p.id = oli.product_id
-         WHERE oli._parent_id = ?
-         ORDER BY oli._order`,
-        [order.id],
-      )
-      .then(setReceiptLines);
+    fetchOrderLines(order.id).then(setReceiptLines);
   }
 
-  // WhatsApp/email are more natural on a phone than desktop for chasing an
-  // unpaid tab - mirrors apps/web's dashboard/sales page's invoice-message
-  // send action, without needing that same shared message-builder module.
-  function invoiceMessage(order: OrderRow): string {
-    const name = order.customer_name ?? 'there';
-    return `Hi ${name}, this is a reminder that your order #${order.id.slice(0, 8)} for ${order.total.toFixed(2)} is still unpaid. Please settle at your earliest convenience. Thank you!`;
+  // Shared by the on-screen receipt's Print button and the WhatsApp invoice
+  // send - same letterhead/line-items/totals shape either way, just two
+  // different destinations for the resulting PDF (a real printer/Save-as-
+  // PDF dialog vs the OS share sheet).
+  function buildInvoiceHtml(order: OrderRow, lines: OrderLine[], tenant: ReceiptTenantInfo): string {
+    return buildReceiptHtml(
+      {
+        orderId: order.id,
+        createdAtLabel: order.created_at ? new Date(order.created_at).toLocaleString() : '',
+        cashierLabel: order.cashier_name ?? order.cashier_email ?? 'Unknown',
+        customerLabel: order.customer_name ?? order.customer_phone ?? null,
+        terminalLabel: order.terminal_name,
+        lines: lines.map((l) => ({ label: l.product_name, quantity: l.quantity, lineTotal: l.quantity * l.unit_price - l.discount })),
+        taxTotal: order.tax_total,
+        discountTotal: order.discount_total,
+        total: order.total,
+        tenderType: order.tender_type,
+        isUnpaidCredit: order.tender_type === 'credit' && order.payment_status === 'pending',
+      },
+      tenant,
+    );
   }
 
-  function sendInvoiceWhatsApp(order: OrderRow) {
-    if (!order.customer_phone) return;
-    const digits = order.customer_phone.replace(/[^\d]/g, '');
-    const withCountryCode = digits.startsWith('0') ? `254${digits.slice(1)}` : digits;
-    Linking.openURL(`https://wa.me/${withCountryCode}?text=${encodeURIComponent(invoiceMessage(order))}`).catch(() => undefined);
+  // A wa.me link can only ever pre-fill plain text, never attach a file -
+  // that's a WhatsApp/Android limitation, not something a URL scheme can
+  // work around. A real invoice PDF needs the native share sheet instead:
+  // render the same receipt HTML used for printing, rasterize it to a PDF
+  // via expo-print (already a dependency), then hand that file to
+  // expo-sharing, which opens Android's share sheet with WhatsApp (if
+  // installed) as one of the targets - one extra tap versus a direct deep
+  // link, but the only way to actually deliver a file, not just a message.
+  async function sendInvoiceWhatsApp(order: OrderRow) {
+    if (!order.customer_phone || !tenantInfo) return;
+    setSendingInvoiceId(order.id);
+    try {
+      const lines = await fetchOrderLines(order.id);
+      const html = buildInvoiceHtml(order, lines, tenantInfo);
+      const { uri } = await Print.printToFileAsync({ html, base64: false });
+      const canShare = await Sharing.isAvailableAsync();
+      if (!canShare) {
+        showAlert('Sharing is not available on this device');
+        return;
+      }
+      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: `Invoice for order #${order.id.slice(0, 8)}` });
+    } catch (err) {
+      showAlert('Could not prepare invoice', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSendingInvoiceId(null);
+    }
   }
 
+  // Email keeps the original text-reminder shape (mailto: bodies can't
+  // attach files either, and the user's ask was specifically about
+  // WhatsApp) - a short "you have an unpaid balance" nudge, not the PDF.
   function sendInvoiceEmail(order: OrderRow) {
     if (!order.customer_email) return;
-    Linking.openURL(`mailto:${order.customer_email}?subject=${encodeURIComponent(`Unpaid order #${order.id.slice(0, 8)}`)}&body=${encodeURIComponent(invoiceMessage(order))}`).catch(
-      () => undefined,
-    );
+    const name = order.customer_name ?? 'there';
+    const body = `Hi ${name}, this is a reminder that your order #${order.id.slice(0, 8)} for ${order.total.toFixed(2)} is still unpaid. Please settle at your earliest convenience. Thank you!`;
+    Linking.openURL(`mailto:${order.customer_email}?subject=${encodeURIComponent(`Unpaid order #${order.id.slice(0, 8)}`)}&body=${encodeURIComponent(body)}`).catch(() => undefined);
   }
 
   // Print.printAsync opens Android's native print dialog (any registered
@@ -213,22 +256,7 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
     if (!receiptOrder || !tenantInfo) return;
     setPrinting(true);
     try {
-      const html = buildReceiptHtml(
-        {
-          orderId: receiptOrder.id,
-          createdAtLabel: receiptOrder.created_at ? new Date(receiptOrder.created_at).toLocaleString() : '',
-          cashierLabel: receiptOrder.cashier_name ?? receiptOrder.cashier_email ?? 'Unknown',
-          customerLabel: receiptOrder.customer_name ?? receiptOrder.customer_phone ?? null,
-          terminalLabel: receiptOrder.terminal_name,
-          lines: receiptLines.map((l) => ({ label: l.product_name, quantity: l.quantity, lineTotal: l.quantity * l.unit_price - l.discount })),
-          taxTotal: receiptOrder.tax_total,
-          discountTotal: receiptOrder.discount_total,
-          total: receiptOrder.total,
-          tenderType: receiptOrder.tender_type,
-          isUnpaidCredit: receiptOrder.tender_type === 'credit' && receiptOrder.payment_status === 'pending',
-        },
-        tenantInfo,
-      );
+      const html = buildInvoiceHtml(receiptOrder, receiptLines, tenantInfo);
       await Print.printAsync({ html });
     } catch (err) {
       showAlert('Could not print receipt', err instanceof Error ? err.message : String(err));
@@ -325,8 +353,13 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
                   </Pressable>
                 ) : null}
                 {isUnpaidCredit && item.customer_phone ? (
-                  <Pressable android_ripple={{}} className="rounded-md border border-border px-3 py-1.5 active:opacity-70" onPress={() => sendInvoiceWhatsApp(item)}>
-                    <Text className="text-sm text-foreground">WhatsApp</Text>
+                  <Pressable
+                    android_ripple={{}}
+                    className={`rounded-md border border-border px-3 py-1.5 ${sendingInvoiceId === item.id ? 'opacity-50' : 'active:opacity-70'}`}
+                    disabled={sendingInvoiceId === item.id}
+                    onPress={() => sendInvoiceWhatsApp(item)}
+                  >
+                    <Text className="text-sm text-foreground">{sendingInvoiceId === item.id ? 'Preparing...' : 'WhatsApp'}</Text>
                   </Pressable>
                 ) : null}
                 {isUnpaidCredit && item.customer_email ? (

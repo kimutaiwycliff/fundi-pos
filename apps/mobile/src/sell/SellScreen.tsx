@@ -190,12 +190,10 @@ export function SellScreen({
     return recentProductIds.map((id) => byId.get(id)).filter((p): p is LocalProduct => p != null);
   }, [catalog, recentProductIds]);
 
-  // Idle state shows recently sold products rather than the full catalog
-  // (search still covers everything) - falls back to the full catalog only
-  // for a brand-new store/till with no sales history yet, so the center
-  // area isn't permanently empty before the first sale.
-  const isRecentFallback = recentProducts.length === 0;
-  const displayedProducts = query.trim() ? results : isRecentFallback ? catalog : recentProducts;
+  // Idle state shows only recently sold products (search still covers the
+  // full catalog) - deliberately empty rather than falling back to the
+  // full catalog for a store with no sales history yet, per instruction.
+  const displayedProducts = query.trim() ? results : recentProducts;
 
   const lineInputs: LineInput[] = useMemo(
     () =>
@@ -402,10 +400,9 @@ export function SellScreen({
           />
         </View>
 
-        {/* Browsable by default (not just after a search) - the center area
-            used to sit blank until something was typed/scanned, which wasted
-            the screen's main real estate and forced every sale through
-            search even for a cashier just tapping through a small catalog. */}
+        {/* Idle center area shows recently sold products so there's
+            something tappable without typing/scanning first - search
+            still covers the full catalog regardless. */}
         {displayedProducts.length > 0 ? (
           <FlatList
             className="flex-1"
@@ -415,11 +412,7 @@ export function SellScreen({
             numColumns={2}
             columnWrapperClassName="gap-2"
             ListHeaderComponent={
-              !trimmedQuery ? (
-                <Text className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {isRecentFallback ? `All products (${catalog.length})` : 'Recently sold'}
-                </Text>
-              ) : null
+              !trimmedQuery ? <Text className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Recently sold</Text> : null
             }
             renderItem={({ item }) => {
               const outOfStock = item.variant_count === 0 && item.stock_on_hand <= 0;
@@ -457,7 +450,7 @@ export function SellScreen({
         ) : (
           <View className="flex-1 items-center justify-center px-6">
             <Text className="text-center font-medium text-foreground">
-              {trimmedQuery ? `No products match "${trimmedQuery}"` : catalog.length === 0 ? 'No products synced yet' : 'Ready to sell'}
+              {trimmedQuery ? `No products match "${trimmedQuery}"` : catalog.length === 0 ? 'No products synced yet' : 'No sales yet at this store'}
             </Text>
             <Text className="mt-1 text-center text-muted-foreground">
               {trimmedQuery
