@@ -48,6 +48,25 @@ jobs:
   build-android:
     runs-on: ubuntu-latest
     steps:
+      # Confirmed live: the previous run got past every earlier step (10m47s
+      # in, well into the actual build) and died with "No space left on
+      # device". ubuntu-latest's default free space (~14GB) isn't enough for
+      # this monorepo's npm install + an Android/Gradle release build once
+      # you add in the runner image's large pre-installed toolchains this
+      # job never uses (.NET, Haskell, etc). android: false keeps the
+      # Android SDK this job actually needs (default is to remove it too);
+      # this has to run before setup-node/setup-java below, or tool-cache
+      # removal would delete the JDK those steps are about to install.
+      - uses: jlumbroso/free-disk-space@main
+        with:
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          tool-cache: true
+          swap-storage: true
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
