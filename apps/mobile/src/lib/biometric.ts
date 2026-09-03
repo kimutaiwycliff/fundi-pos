@@ -6,6 +6,10 @@ const ENABLED_KEY_PREFIX = 'biometric-login-enabled:';
 export interface BiometricDiagnostics {
   hasHardware: boolean;
   isEnrolled: boolean;
+  // Independent of hasHardware/isEnrolled above: whether Android's
+  // PackageManager itself reports a fingerprint/face/iris system feature.
+  // See this function's own comment for why this second signal exists.
+  systemReportsSensor: boolean;
   error: string | null;
 }
 
@@ -14,10 +18,18 @@ export interface BiometricDiagnostics {
  * each half individually plus any thrown error - added specifically to
  * debug a real device (a sideloaded, non-Play-Store install) reporting the
  * toggle as unavailable despite the phone having a fingerprint enrolled.
- * MIUI in particular is known to restrict biometric API access for
- * sideloaded apps in ways that don't necessarily throw a catchable error,
- * so this surfaces the raw hasHardware/isEnrolled booleans rather than
- * only the swallowed final boolean isBiometricAvailable() returns.
+ *
+ * hasHardwareAsync()/isEnrolledAsync() both go through AndroidX's
+ * BiometricManager.canAuthenticate() (see expo-local-authentication's own
+ * Android source), which MIUI is documented to restrict for apps not
+ * installed via the Play Store or Xiaomi's own GetApps - it can report
+ * BIOMETRIC_ERROR_HW_UNAVAILABLE/BIOMETRIC_STATUS_UNKNOWN even with real,
+ * enrolled hardware. supportedAuthenticationTypesAsync() instead checks
+ * PackageManager.hasSystemFeature("android.hardware.fingerprint") etc
+ * directly - a completely different, more basic Android API that MIUI's
+ * restriction doesn't touch - so a mismatch between the two (system says
+ * yes, BiometricManager says no) is itself a useful, specific signal
+ * rather than a plain "unavailable".
  */
 export async function getBiometricDiagnostics(): Promise<BiometricDiagnostics> {
   try {
@@ -28,16 +40,16 @@ export async function getBiometricDiagnostics(): Promise<BiometricDiagnostics> {
     // screen's Security section would show "Checking device
     // capabilities..." forever instead of ever settling on an answer.
     const diagnostics = await Promise.race([
-      Promise.all([LocalAuthentication.hasHardwareAsync(), LocalAuthentication.isEnrolledAsync()]),
+      Promise.all([LocalAuthentication.hasHardwareAsync(), LocalAuthentication.isEnrolledAsync(), LocalAuthentication.supportedAuthenticationTypesAsync()]),
       new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 5000)),
     ]);
     if (diagnostics === 'timeout') {
-      return { hasHardware: false, isEnrolled: false, error: 'Detection timed out' };
+      return { hasHardware: false, isEnrolled: false, systemReportsSensor: false, error: 'Detection timed out' };
     }
-    const [hasHardware, isEnrolled] = diagnostics;
-    return { hasHardware, isEnrolled, error: null };
+    const [hasHardware, isEnrolled, supportedTypes] = diagnostics;
+    return { hasHardware, isEnrolled, systemReportsSensor: supportedTypes.length > 0, error: null };
   } catch (err) {
-    return { hasHardware: false, isEnrolled: false, error: err instanceof Error ? err.message : String(err) };
+    return { hasHardware: false, isEnrolled: false, systemReportsSensor: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

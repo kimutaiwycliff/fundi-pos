@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { View, Text, Pressable, FlatList } from 'react-native';
+import { View, Text, Pressable, FlatList, Image } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
@@ -42,16 +43,19 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
     // bare-self row, matching web's identical "tracked separately" rule.
     getDb()
       .getAll<StockLevel>(
-        `SELECT p.id AS product_id, NULL AS variant_id, p.name AS product_name, NULL AS variant_label, p.sku AS sku, p.reorder_point AS reorder_point,
+        `SELECT p.id AS product_id, NULL AS variant_id, p.name AS product_name, NULL AS variant_label, p.sku AS sku, p.reorder_point AS reorder_point, pm.url AS image_url,
                 COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS quantity
          FROM products p
+         LEFT JOIN media pm ON pm.id = p.image_id
          WHERE p.tenant_id = ? AND p.is_active = 1
            AND NOT EXISTS (SELECT 1 FROM products_variants pv WHERE pv._parent_id = p.id)
          UNION ALL
-         SELECT p.id AS product_id, pv.id AS variant_id, p.name AS product_name, pv.label AS variant_label, pv.sku AS sku, p.reorder_point AS reorder_point,
+         SELECT p.id AS product_id, pv.id AS variant_id, p.name AS product_name, pv.label AS variant_label, pv.sku AS sku, p.reorder_point AS reorder_point, COALESCE(vm.url, pm.url) AS image_url,
                 COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS quantity
          FROM products_variants pv
          JOIN products p ON p.id = pv._parent_id
+         LEFT JOIN media pm ON pm.id = p.image_id
+         LEFT JOIN media vm ON vm.id = pv.image_id
          WHERE p.tenant_id = ? AND p.is_active = 1
          ORDER BY product_name`,
         [storeId, tenantId, storeId, tenantId],
@@ -122,12 +126,21 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
             const low = isLowStock(item);
             return (
               <Animated.View entering={FadeInDown.duration(200)} className={`flex-row items-center justify-between rounded-lg border p-3 ${low ? 'border-destructive bg-destructive/5' : 'border-border bg-card'}`}>
-                <View className="shrink">
-                  <Text className="font-medium text-foreground">{item.variant_label ? `${item.product_name} — ${item.variant_label}` : item.product_name}</Text>
-                  <Text className="text-xs text-muted-foreground">
-                    {item.sku}
-                    {item.reorder_point > 0 ? ` · reorder at ${item.reorder_point}` : ''}
-                  </Text>
+                <View className="flex-1 flex-row items-center gap-3">
+                  {item.image_url ? (
+                    <Image source={{ uri: item.image_url }} className="h-10 w-10 rounded-md bg-muted" resizeMode="cover" />
+                  ) : (
+                    <View className="h-10 w-10 items-center justify-center rounded-md bg-muted">
+                      <Ionicons name="image-outline" size={16} color="#71717a" />
+                    </View>
+                  )}
+                  <View className="shrink">
+                    <Text className="font-medium text-foreground">{item.variant_label ? `${item.product_name} — ${item.variant_label}` : item.product_name}</Text>
+                    <Text className="text-xs text-muted-foreground">
+                      {item.sku}
+                      {item.reorder_point > 0 ? ` · reorder at ${item.reorder_point}` : ''}
+                    </Text>
+                  </View>
                 </View>
                 <Text className={low ? 'font-semibold text-destructive' : 'font-semibold text-foreground'}>{item.quantity}</Text>
               </Animated.View>

@@ -146,6 +146,21 @@ function MoreScreen({
                     hardware: {String(biometricDiagnostics.hasHardware)} · enrolled: {String(biometricDiagnostics.isEnrolled)}
                     {biometricDiagnostics.error ? ` · error: ${biometricDiagnostics.error}` : ''}
                   </Text>
+                  {biometricDiagnostics.systemReportsSensor && !biometricDiagnostics.hasHardware ? (
+                    // Android's own PackageManager confirms a sensor is
+                    // physically present (a check independent of the one
+                    // above - see biometric.ts's own note), so this isn't a
+                    // missing-hardware case. Known MIUI behavior for apps
+                    // installed outside the Play Store/GetApps: it can block
+                    // the security API this app checks against without
+                    // actually removing the fingerprint sensor. Only actual
+                    // fix is a device-side permission, not app code.
+                    <Text className="mt-2 text-xs text-muted-foreground">
+                      Your phone reports a fingerprint sensor, but its security settings are blocking this app from using it - common on MIUI/Xiaomi for apps
+                      installed outside the Play Store. Check Settings → Apps → Fundi Till → Permissions (or Settings → Privacy → Special app access) for a
+                      fingerprint/biometric permission to enable.
+                    </Text>
+                  ) : null}
                 </View>
               ) : (
                 <Text className="text-muted-foreground">Checking device capabilities...</Text>

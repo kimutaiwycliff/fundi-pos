@@ -102,7 +102,11 @@ export function OverviewScreen({ user, storeId }: { user: PayloadUser; storeId: 
 
     if (user.role === 'owner') {
       db.getAll<{ profit: number }>(
-        `SELECT COALESCE(SUM((oli.unit_price - oli.discount) * oli.quantity - COALESCE(pv.cost_price, p.cost_price, 0) * oli.quantity), 0) AS profit
+        // oli.discount is a flat per-line amount (see SellScreen's cart:
+        // `item.quantity * price - item.discountAmount`), not per-unit -
+        // this previously multiplied it by quantity too, over-subtracting
+        // for any line with quantity > 1 and understating profit.
+        `SELECT COALESCE(SUM(oli.unit_price * oli.quantity - oli.discount - COALESCE(pv.cost_price, p.cost_price, 0) * oli.quantity), 0) AS profit
          FROM orders_line_items oli
          JOIN orders o ON o.id = oli._parent_id
          LEFT JOIN products p ON p.id = oli.product_id

@@ -14,6 +14,7 @@ export interface LocalProduct {
   max_discount_amount: number;
   stock_on_hand: number;
   variant_count: number;
+  image_url: string | null;
 }
 
 export interface LocalVariant {
@@ -23,6 +24,7 @@ export interface LocalVariant {
   barcode: string | null;
   sell_price: number | null;
   stock_on_hand: number;
+  image_url: string | null;
 }
 
 export interface CartLine {

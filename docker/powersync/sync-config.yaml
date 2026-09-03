@@ -29,6 +29,14 @@ streams:
     auto_subscribe: true
     query: SELECT * FROM products WHERE tenant_id = auth.parameter('tenant_id')
 
+  # Product/variant photos - just enough to render one (id + the S3
+  # storage plugin's already-public R2 url; see Media.ts's own note on
+  # disablePayloadAccessControl), not the full upload metadata (filename/
+  # mimeType/dimensions/etc a till has no use for).
+  media:
+    auto_subscribe: true
+    query: SELECT id, url, tenant_id FROM media WHERE tenant_id = auth.parameter('tenant_id')
+
   # Variant sub-rows of products (Payload normalizes the Products.variants
   # array field into this child table, same shape as orders_line_items
   # below) - tenant-only (not store) scoping, since a variant's price isn't

@@ -6,6 +6,7 @@ export interface StockLevel {
   sku: string;
   reorder_point: number;
   quantity: number;
+  image_url?: string | null;
 }
 
 export function isLowStock(level: Pick<StockLevel, 'quantity' | 'reorder_point'>): boolean {

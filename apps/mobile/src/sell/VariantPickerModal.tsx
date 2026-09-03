@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Modal, View, Text, Pressable, FlatList } from 'react-native';
+import { Modal, View, Text, Pressable, FlatList, Image } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { getDb } from '../db/database';
 import type { LocalProduct, LocalVariant } from './types';
 
@@ -31,10 +32,11 @@ export function VariantPickerModal({
     let active = true;
     getDb()
       .getAll<LocalVariant>(
-        `SELECT pv.id, pv.label, pv.sku, pv.barcode, pv.sell_price,
+        `SELECT pv.id, pv.label, pv.sku, pv.barcode, pv.sell_price, m.url AS image_url,
                 COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
                           WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS stock_on_hand
          FROM products_variants pv
+         LEFT JOIN media m ON m.id = pv.image_id
          WHERE pv._parent_id = ?
          ORDER BY pv._order`,
         [storeId, product.id],
@@ -53,11 +55,18 @@ export function VariantPickerModal({
         <Pressable android_ripple={{}} className="max-h-[70%] rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
           <Text className="mb-3 text-lg font-semibold text-foreground">{product?.name} — choose an option</Text>
           <FlatList
+            // Concrete pixel cap, not unconstrained: this list sits inside a
+            // max-height-capped, content-sized Pressable (not a flex:1
+            // screen), the same layout shape that left SalesScreen's
+            // receipt line items measuring to zero height and rendering
+            // nothing - see that fix's own note for the full explanation.
+            style={{ maxHeight: 420 }}
             data={variants}
             keyExtractor={(v) => v.id}
             renderItem={({ item }) => {
               const outOfStock = item.stock_on_hand <= 0;
               const price = item.sell_price ?? product?.sell_price ?? 0;
+              const imageUrl = item.image_url ?? product?.image_url ?? null;
               return (
                 <Animated.View entering={FadeInDown.duration(200)}>
                 <Pressable android_ripple={{}}
@@ -65,9 +74,18 @@ export function VariantPickerModal({
                   disabled={outOfStock}
                   onPress={() => onSelect(item)}
                 >
-                  <View className="shrink">
-                    <Text className="text-sm font-medium text-foreground">{item.label}</Text>
-                    <Text className="text-xs text-muted-foreground">{item.sku}</Text>
+                  <View className="flex-1 flex-row items-center gap-3">
+                    {imageUrl ? (
+                      <Image source={{ uri: imageUrl }} className="h-12 w-12 rounded-md bg-muted" resizeMode="cover" />
+                    ) : (
+                      <View className="h-12 w-12 items-center justify-center rounded-md bg-muted">
+                        <Ionicons name="image-outline" size={18} color="#71717a" />
+                      </View>
+                    )}
+                    <View className="shrink">
+                      <Text className="text-sm font-medium text-foreground">{item.label}</Text>
+                      <Text className="text-xs text-muted-foreground">{item.sku}</Text>
+                    </View>
                   </View>
                   <View className="items-end">
                     <Text className="text-sm font-semibold text-foreground">{price.toFixed(2)}</Text>

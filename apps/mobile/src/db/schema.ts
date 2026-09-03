@@ -37,6 +37,14 @@ const tenants = new Table({
   created_at: column.text,
 });
 
+const media = new Table(
+  {
+    tenant_id: column.integer,
+    url: column.text,
+  },
+  { indexes: { tenant: ['tenant_id'] } },
+);
+
 const products = new Table(
   {
     tenant_id: column.integer,
@@ -217,6 +225,7 @@ const orders_line_items = new Table(
 
 export const AppSchema = new Schema({
   tenants,
+  media,
   products,
   products_variants,
   stores,

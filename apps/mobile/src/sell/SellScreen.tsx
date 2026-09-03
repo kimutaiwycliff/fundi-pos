@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert, showToast } from '../components/AppNotice';
@@ -68,6 +68,7 @@ export function SellScreen({
 
   const [query, setQuery] = useState('');
   const [catalog, setCatalog] = useState<LocalProduct[]>([]);
+  const [recentProductIds, setRecentProductIds] = useState<number[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [tenderType, setTenderType] = useState<TenderType>('cash');
   const [selectedCustomer, setSelectedCustomer] = useState<LocalCustomer | null>(null);
@@ -120,11 +121,12 @@ export function SellScreen({
     let active = true;
     getDb()
       .getAll<LocalProduct>(
-        `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, p.tax_rate, p.max_discount_amount,
+        `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, p.tax_rate, p.max_discount_amount, m.url AS image_url,
                 COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
                           WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS stock_on_hand,
                 (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
          FROM products p
+         LEFT JOIN media m ON m.id = p.image_id
          WHERE p.tenant_id = ? AND p.is_active = 1
          ORDER BY p.name LIMIT 5000`,
         [storeId, tenantId],
@@ -136,6 +138,34 @@ export function SellScreen({
       active = false;
     };
   }, [tenantId, storeId]);
+
+  // Idle-state default is this store's recently sold products, not the
+  // whole catalog - matches the web Sell page's own "search-first" flow
+  // (idle center area isn't meant to be a full product browser), while
+  // still giving a cashier something tappable without having to type/scan
+  // first. Ordered by most recent sale; catalog above already holds the
+  // full product rows, so this only needs to fetch the id ordering.
+  useEffect(() => {
+    if (storeId == null) return;
+    let active = true;
+    getDb()
+      .getAll<{ product_id: number }>(
+        `SELECT oli.product_id, MAX(COALESCE(o.created_at, o.synced_at)) AS last_sold
+         FROM orders_line_items oli
+         JOIN orders o ON o.id = oli._parent_id
+         WHERE o.store_id = ?
+         GROUP BY oli.product_id
+         ORDER BY last_sold DESC
+         LIMIT 30`,
+        [storeId],
+      )
+      .then((rows) => {
+        if (active) setRecentProductIds(rows.map((r) => r.product_id));
+      });
+    return () => {
+      active = false;
+    };
+  }, [storeId]);
 
   // Barcode scanners are plain HID keyboard input, same as desktop/web -
   // typing into a focused search box already handles a scan with no
@@ -155,11 +185,17 @@ export function SellScreen({
     return fuse.search(trimmed).slice(0, 20).map((r) => r.item);
   }, [query, catalog]);
 
-  // Idle state browses the full catalog instead of showing a blank
-  // placeholder - a cashier without a barcode scanner (or one who doesn't
-  // know a SKU) previously had no way to see any products at all until they
-  // typed something. Search still narrows down to a fuzzy top-20 once typed.
-  const displayedProducts = query.trim() ? results : catalog;
+  const recentProducts = useMemo(() => {
+    const byId = new Map(catalog.map((p) => [Number(p.id), p]));
+    return recentProductIds.map((id) => byId.get(id)).filter((p): p is LocalProduct => p != null);
+  }, [catalog, recentProductIds]);
+
+  // Idle state shows recently sold products rather than the full catalog
+  // (search still covers everything) - falls back to the full catalog only
+  // for a brand-new store/till with no sales history yet, so the center
+  // area isn't permanently empty before the first sale.
+  const isRecentFallback = recentProducts.length === 0;
+  const displayedProducts = query.trim() ? results : isRecentFallback ? catalog : recentProducts;
 
   const lineInputs: LineInput[] = useMemo(
     () =>
@@ -380,7 +416,9 @@ export function SellScreen({
             columnWrapperClassName="gap-2"
             ListHeaderComponent={
               !trimmedQuery ? (
-                <Text className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">All products ({catalog.length})</Text>
+                <Text className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {isRecentFallback ? `All products (${catalog.length})` : 'Recently sold'}
+                </Text>
               ) : null
             }
             renderItem={({ item }) => {
@@ -388,10 +426,17 @@ export function SellScreen({
               return (
                 <Animated.View entering={FadeInDown.duration(200)} className="flex-1">
                 <Pressable android_ripple={{}}
-                  className={`rounded-lg border border-border bg-card p-3 ${outOfStock ? 'opacity-50' : 'active:opacity-70'}`}
+                  className={`overflow-hidden rounded-lg border border-border bg-card p-3 ${outOfStock ? 'opacity-50' : 'active:opacity-70'}`}
                   disabled={outOfStock}
                   onPress={() => requestAdd(item)}
                 >
+                  {item.image_url ? (
+                    <Image source={{ uri: item.image_url }} className="mb-2 h-20 w-full rounded-md bg-muted" resizeMode="cover" />
+                  ) : (
+                    <View className="mb-2 h-20 w-full items-center justify-center rounded-md bg-muted">
+                      <Ionicons name="image-outline" size={22} color="#71717a" />
+                    </View>
+                  )}
                   <Text className="font-medium text-foreground" numberOfLines={1}>
                     {item.name}
                   </Text>
