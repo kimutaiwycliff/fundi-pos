@@ -96,7 +96,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/dist-upload"
-          npx eas build --platform android --profile production --local --non-interactive \
+          # Bare `npx eas` fails on a cold npx cache in a non-interactive
+          # shell (confirmed live: "npm error could not determine executable
+          # to run", exit in ~3s - too fast to have even attempted a real
+          # install). It only ever worked locally because this machine's
+          # npx cache already had eas-cli resolved from earlier interactive
+          # use. `--yes` plus the real package name (not relying on npx to
+          # guess "eas" -> "eas-cli") makes the auto-install explicit.
+          npx --yes eas-cli build --platform android --profile production --local --non-interactive \
             --output "$GITHUB_WORKSPACE/dist-upload/FundiTill.apk"
 
       - name: Upload to R2
