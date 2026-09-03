@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
+import * as Print from 'expo-print';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
+import { showAlert } from '../components/AppNotice';
 import { PaymentModal, type LocalOrder } from '../customers/PaymentModal';
 import { VoidRefundModal, type VoidableOrder } from './VoidRefundModal';
+import { buildReceiptHtml, type ReceiptTenantInfo } from './receiptHtml';
 
 interface OrderRow {
   id: string;
@@ -83,6 +86,7 @@ function matchesStatus(order: OrderRow, filter: StatusFilter): boolean {
 // Option-A decision. Status/date filters and the widened search (phone,
 // cashier, terminal) mirror apps/web's dashboard/sales page's own filters.
 export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser; payloadToken: string; storeId: number | null }) {
+  const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
   const placeholderColor = useMutedPlaceholderColor();
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -92,6 +96,20 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
   const [receiptLines, setReceiptLines] = useState<OrderLine[]>([]);
   const [paymentOrder, setPaymentOrder] = useState<LocalOrder | null>(null);
   const [voidOrder, setVoidOrder] = useState<VoidableOrder | null>(null);
+  const [tenantInfo, setTenantInfo] = useState<ReceiptTenantInfo | null>(null);
+  const [printing, setPrinting] = useState(false);
+
+  // Fetched once, not per-receipt - the letterhead a receipt prints doesn't
+  // change sale to sale. Same tenants row the Overview screen and desktop's
+  // own receipt view read (name/receipt_header/receipt_footer), already
+  // synced tenant-wide regardless of which store this till is on (see
+  // sync-config.yaml's `tenants` stream).
+  useEffect(() => {
+    getDb()
+      .get<{ name: string; receipt_header: string | null; receipt_footer: string | null }>('SELECT name, receipt_header, receipt_footer FROM tenants WHERE id = ?', [tenantId])
+      .then((row) => setTenantInfo({ name: row.name, receiptHeader: row.receipt_header, receiptFooter: row.receipt_footer }))
+      .catch(() => setTenantInfo(null));
+  }, [tenantId]);
 
   // Recent order history for this store loaded once, not per keystroke, so
   // search can fuzzy-match client-side - same pattern as SellScreen's
@@ -185,6 +203,38 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
     Linking.openURL(`mailto:${order.customer_email}?subject=${encodeURIComponent(`Unpaid order #${order.id.slice(0, 8)}`)}&body=${encodeURIComponent(invoiceMessage(order))}`).catch(
       () => undefined,
     );
+  }
+
+  // Print.printAsync opens Android's native print dialog (any registered
+  // printer, or "Save as PDF") against the same receipt HTML the sheet
+  // itself is built from - see receiptHtml.ts's own note on why this (not
+  // raw ESC/POS) is the mobile equivalent of the web POS's browser-print.
+  async function handlePrintReceipt() {
+    if (!receiptOrder || !tenantInfo) return;
+    setPrinting(true);
+    try {
+      const html = buildReceiptHtml(
+        {
+          orderId: receiptOrder.id,
+          createdAtLabel: receiptOrder.created_at ? new Date(receiptOrder.created_at).toLocaleString() : '',
+          cashierLabel: receiptOrder.cashier_name ?? receiptOrder.cashier_email ?? 'Unknown',
+          customerLabel: receiptOrder.customer_name ?? receiptOrder.customer_phone ?? null,
+          terminalLabel: receiptOrder.terminal_name,
+          lines: receiptLines.map((l) => ({ label: l.product_name, quantity: l.quantity, lineTotal: l.quantity * l.unit_price - l.discount })),
+          taxTotal: receiptOrder.tax_total,
+          discountTotal: receiptOrder.discount_total,
+          total: receiptOrder.total,
+          tenderType: receiptOrder.tender_type,
+          isUnpaidCredit: receiptOrder.tender_type === 'credit' && receiptOrder.payment_status === 'pending',
+        },
+        tenantInfo,
+      );
+      await Print.printAsync({ html });
+    } catch (err) {
+      showAlert('Could not print receipt', err instanceof Error ? err.message : String(err));
+    } finally {
+      setPrinting(false);
+    }
   }
 
   if (storeId == null) {
@@ -298,11 +348,23 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
       <Modal visible={receiptOrder != null} animationType="slide" transparent onRequestClose={() => setReceiptOrder(null)}>
         <Pressable android_ripple={{}} className="flex-1 justify-end bg-black/40" onPress={() => setReceiptOrder(null)}>
           <Pressable android_ripple={{}} className="max-h-[85%] rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
-            <Text className="mb-1 text-lg font-semibold text-foreground">Order #{receiptOrder?.id.slice(0, 8)}</Text>
-            <Text className="mb-3 text-xs text-muted-foreground">
-              {receiptOrder?.created_at ? new Date(receiptOrder.created_at).toLocaleString() : ''} · {receiptOrder?.tender_type}
-              {receiptOrder?.cashier_name ? ` · ${receiptOrder.cashier_name}` : ''}
-            </Text>
+            {/* Same letterhead/detail shape as the web dashboard's reprint
+                dialog (apps/web/src/components/receipt/receipt-view.tsx) -
+                tenant name/header up top, footer at the bottom, everything
+                in between identical field-for-field. */}
+            <Text className="text-center text-base font-bold text-foreground">{tenantInfo?.name ?? ''}</Text>
+            {tenantInfo?.receiptHeader ? <Text className="text-center text-xs text-muted-foreground">{tenantInfo.receiptHeader}</Text> : null}
+            <View className="my-2 border-t border-dashed border-border" />
+
+            <Text className="text-sm text-foreground">Order #{receiptOrder?.id.slice(0, 8)}</Text>
+            <Text className="text-xs text-muted-foreground">{receiptOrder?.created_at ? new Date(receiptOrder.created_at).toLocaleString() : ''}</Text>
+            <Text className="mt-1 text-xs text-muted-foreground">Cashier: {receiptOrder?.cashier_name ?? receiptOrder?.cashier_email ?? 'Unknown'}</Text>
+            {receiptOrder?.customer_name || receiptOrder?.customer_phone ? (
+              <Text className="text-xs text-muted-foreground">Customer: {receiptOrder?.customer_name ?? receiptOrder?.customer_phone}</Text>
+            ) : null}
+            {receiptOrder?.terminal_name ? <Text className="text-xs text-muted-foreground">Terminal: {receiptOrder.terminal_name}</Text> : null}
+            <View className="my-2 border-t border-dashed border-border" />
+
             <FlatList
               data={receiptLines}
               keyExtractor={(_, i) => String(i)}
@@ -317,6 +379,9 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
                 </Animated.View>
               )}
             />
+            {receiptOrder?.tender_type === 'credit' && receiptOrder.payment_status === 'pending' ? (
+              <Text className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 py-1.5 text-center font-bold text-destructive">UNPAID — pay on settlement</Text>
+            ) : null}
             <View className="mt-3 gap-1 border-t border-border pt-3">
               <View className="flex-row justify-between">
                 <Text className="text-muted-foreground">Tax</Text>
@@ -332,13 +397,26 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
                 <Text className="font-semibold text-foreground">Total</Text>
                 <Text className="font-semibold text-foreground">{receiptOrder?.total.toFixed(2)}</Text>
               </View>
+              <View className="flex-row justify-between">
+                <Text className="text-muted-foreground">Tender</Text>
+                <Text className="text-foreground capitalize">{receiptOrder?.tender_type}</Text>
+              </View>
             </View>
-            {receiptOrder?.tender_type === 'credit' && receiptOrder.payment_status === 'pending' ? (
-              <Text className="mt-3 text-center font-medium text-destructive">UNPAID - PAY LATER</Text>
-            ) : null}
-            <Pressable android_ripple={{}} className="mt-4 items-center py-2" onPress={() => setReceiptOrder(null)}>
-              <Text className="text-muted-foreground">Close</Text>
-            </Pressable>
+            {tenantInfo?.receiptFooter ? <Text className="mt-3 border-t border-dashed border-border pt-2 text-center text-xs text-muted-foreground">{tenantInfo.receiptFooter}</Text> : null}
+
+            <View className="mt-4 flex-row gap-2">
+              <Pressable
+                android_ripple={{ color: '#ffffff40' }}
+                className={`flex-1 items-center rounded-lg bg-primary py-2.5 ${printing || !tenantInfo ? 'opacity-50' : 'active:opacity-80'}`}
+                disabled={printing || !tenantInfo}
+                onPress={handlePrintReceipt}
+              >
+                <Text className="font-medium text-primary-foreground">{printing ? 'Preparing...' : 'Print'}</Text>
+              </Pressable>
+              <Pressable android_ripple={{}} className="flex-1 items-center rounded-lg border border-border py-2.5 active:opacity-70" onPress={() => setReceiptOrder(null)}>
+                <Text className="text-foreground">Close</Text>
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>

@@ -70,7 +70,18 @@ jobs:
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "cd '${{ secrets.DEPLOY_PATH }}/docker' && \
              docker compose -f docker-compose.yml -f docker-compose.prod.yml build fundi-payload-api fundi-web && \
-             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d fundi-payload-api fundi-web"
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d fundi-payload-api fundi-web && \
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml restart fundi-powersync"
+          # fundi-powersync runs a prebuilt image (journeyapps/powersync-service)
+          # with docker/powersync/sync-config.yaml bind-mounted read-only - it
+          # only reads that file at startup (see sync-config.yaml's own header
+          # comment), and `docker compose up -d` does NOT recreate a container
+          # just because a bind-mounted file's contents changed on disk (compose
+          # only diffs the service definition, not mounted file content). An
+          # unconditional `restart` every deploy is the only way sync-rule edits
+          # ever reach the running service - previously deploy.yml never
+          # touched this container at all, so it could run indefinitely on
+          # whatever rules were live when it was first started.
 
       - name: Verify fundi health
         run: |

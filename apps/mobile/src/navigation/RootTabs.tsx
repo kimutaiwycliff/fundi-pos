@@ -18,7 +18,7 @@ import { SettingsScreen } from '../admin/SettingsScreen';
 import { AuditLogScreen } from '../admin/AuditLogScreen';
 import { OverviewScreen } from '../overview/OverviewScreen';
 
-type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers';
+type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers' | 'security';
 
 // Back-office admin (Phase 5) is intentionally tucked under More, not its
 // own tabs - this is deliberately last per the plan: none of it happens on
@@ -79,29 +79,10 @@ function MoreScreen({
         <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('customers')}>
           <Text className="text-foreground">Customers</Text>
         </Pressable>
+        <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('security')}>
+          <Text className="text-foreground">Security</Text>
+        </Pressable>
       </View>
-
-      {biometricAvailable ? (
-        <View className="mt-6 flex-row items-center justify-between rounded-lg border border-border bg-card p-3">
-          <View className="shrink pr-3">
-            <Text className="text-foreground">Fingerprint login</Text>
-            <Text className="text-xs text-muted-foreground">Skip typing your PIN to resume this till</Text>
-          </View>
-          <Switch value={biometricEnabled} onValueChange={handleToggleBiometric} trackColor={{ true: '#df5102' }} />
-        </View>
-      ) : biometricDiagnostics && !biometricAvailable ? (
-        // Not the normal "hide the row" case - the toggle is expected but the
-        // device is reporting it as unavailable, so show why instead of
-        // silently disappearing. Temporary until confirmed working on a real
-        // sideloaded install (see biometric.ts's own note on MIUI).
-        <View className="mt-6 rounded-lg border border-border bg-card p-3">
-          <Text className="text-foreground">Fingerprint login unavailable</Text>
-          <Text className="mt-1 text-xs text-muted-foreground">
-            hardware: {String(biometricDiagnostics.hasHardware)} · enrolled: {String(biometricDiagnostics.isEnrolled)}
-            {biometricDiagnostics.error ? ` · error: ${biometricDiagnostics.error}` : ''}
-          </Text>
-        </View>
-      ) : null}
 
       {canManage ? (
         <View className="mt-6 gap-2">
@@ -143,6 +124,34 @@ function MoreScreen({
           {section === 'settings' ? <SettingsScreen payloadToken={payloadToken} tenantId={tenantId} /> : null}
           {section === 'audit' ? <AuditLogScreen payloadToken={payloadToken} /> : null}
           {section === 'customers' ? <RealCustomersScreen user={user} payloadToken={payloadToken} storeId={storeId} /> : null}
+          {section === 'security' ? (
+            <View className="flex-1 px-6 pt-4">
+              {biometricAvailable ? (
+                <View className="flex-row items-center justify-between rounded-lg border border-border bg-card p-3">
+                  <View className="shrink pr-3">
+                    <Text className="text-foreground">Fingerprint login</Text>
+                    <Text className="text-xs text-muted-foreground">Skip typing your PIN to resume this till</Text>
+                  </View>
+                  <Switch value={biometricEnabled} onValueChange={handleToggleBiometric} trackColor={{ true: '#df5102' }} />
+                </View>
+              ) : biometricDiagnostics && !biometricAvailable ? (
+                // Not the normal "hide the row" case - the toggle is expected
+                // but the device is reporting it as unavailable, so show why
+                // instead of silently disappearing. Temporary until confirmed
+                // working on a real sideloaded install (see biometric.ts's
+                // own note on MIUI).
+                <View className="rounded-lg border border-border bg-card p-3">
+                  <Text className="text-foreground">Fingerprint login unavailable</Text>
+                  <Text className="mt-1 text-xs text-muted-foreground">
+                    hardware: {String(biometricDiagnostics.hasHardware)} · enrolled: {String(biometricDiagnostics.isEnrolled)}
+                    {biometricDiagnostics.error ? ` · error: ${biometricDiagnostics.error}` : ''}
+                  </Text>
+                </View>
+              ) : (
+                <Text className="text-muted-foreground">Checking device capabilities...</Text>
+              )}
+            </View>
+          ) : null}
         </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
