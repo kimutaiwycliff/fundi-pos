@@ -1,24 +1,43 @@
 name: Build and release Android app
 
-# Mirrors desktop-release.yml's own pattern exactly: not EAS's paid cloud
-# build service (self-host everything, same as PowerSync/R2 backups), and
-# the same public-R2-bucket distribution (this repo is private, downloads
-# need to be public) instead of GitHub Releases.
+# Mirrors desktop-release.yml's own pattern for distribution: not EAS's paid
+# cloud build service (self-host everything, same as PowerSync/R2 backups),
+# and the same public-R2-bucket distribution (this repo is private,
+# downloads need to be public) instead of GitHub Releases.
 #
-# NOTE before this workflow is first run for real: `expo prebuild
-# --platform android` has not yet been run and committed/inspected in this
-# repo (only `expo prebuild --platform ios` has, for local dev-client
-# testing), so the exact Gradle release-signing property names below
-# (MYAPP_UPLOAD_*) are the standard React Native/Expo convention, not yet
-# verified against this project's actual generated android/app/build.gradle
-# - confirm that file reads these same names (or adjust to match) before
-# relying on this workflow.
+# Builds via `eas build --local` rather than a raw `expo prebuild` +
+# `gradlew assembleRelease` - confirmed empirically (two real local builds)
+# that this project's generated android/app/build.gradle has NO env-var-
+# driven release signingConfig at all (`release` uses the debug keystore
+# directly unless something patches it). `eas build --local` is what
+# already correctly signs every local production build on this machine: it
+# reads apps/mobile/credentials.json and actively injects the real signing
+# config into build.gradle as one of its own build phases
+# ("Injecting signing config into build.gradle" in its own log output)
+# before Gradle ever runs. This workflow reconstructs that same
+# credentials.json from secrets rather than reimplementing Gradle signing
+# by hand, so CI produces a byte-for-byte-equivalent signing setup to what
+# already works locally.
 #
-# Signing keystore is a one-way door (see the plan doc: Android treats a
-# differently-signed APK as a conflicting app, not an update) - generate it
-# once, store as ANDROID_KEYSTORE_BASE64 (base64 of the .jks/.keystore
-# file) plus ANDROID_KEYSTORE_PASSWORD/ANDROID_KEY_ALIAS/ANDROID_KEY_PASSWORD,
-# and never rotate it. None of that is done by this workflow file itself.
+# Signing keystore is a one-way door (Android treats a differently-signed
+# APK as a conflicting app, not an update) - ANDROID_KEYSTORE_BASE64 is the
+# base64 of the SAME keystore already used for this project's local
+# production builds (apps/mobile/credentials/preview.keystore), not a new
+# one, with ANDROID_KEY_ALIAS/ANDROID_KEYSTORE_PASSWORD/ANDROID_KEY_PASSWORD
+# matching apps/mobile/credentials.json. Never rotate these independently of
+# that local file - they must always describe the exact same keystore.
+#
+# EXPO_TOKEN: `eas build`, even fully local, resolves this project's
+# "production" Environment Variables from EAS's own dashboard (that's where
+# EXPO_PUBLIC_API_BASE_URL/EXPO_PUBLIC_POWERSYNC_URL for a production build
+# actually come from - apps/mobile's local .env is dev-only/localhost, and
+# eas.json has no inline env block). That resolution needs an authenticated
+# EAS session even for a fully local build. Generate a personal access token
+# at https://expo.dev (account settings -> Access Tokens) for the account
+# these builds should run as, and set it as the EXPO_TOKEN secret - eas-cli
+# reads that env var automatically in non-interactive mode. There is no
+# CLI command to mint this token (confirmed: no `token:create` in this
+# eas-cli version), so it has to come from the dashboard.
 on:
   push:
     tags:
@@ -47,29 +66,38 @@ jobs:
       - name: Build workspace dependencies
         run: npx nx run mobile:build-deps
 
-      - name: Prebuild native Android project
+      - name: Reconstruct local signing credentials
+        # Same file eas-cli reads locally (apps/mobile/credentials.json,
+        # gitignored - never committed) - rebuilt here from secrets so this
+        # job signs with the exact same keystore as every local production
+        # build, not a separately-managed one.
         working-directory: apps/mobile
-        run: npx expo prebuild --platform android --no-install
-
-      - name: Decode signing keystore
-        working-directory: apps/mobile/android/app
-        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
-
-      - name: Build signed release APK
-        working-directory: apps/mobile/android
-        env:
-          MYAPP_UPLOAD_STORE_FILE: release.keystore
-          MYAPP_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          MYAPP_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          MYAPP_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
-
-      - name: Rename artifact to a stable filename
         run: |
           set -euo pipefail
-          src=$(find apps/mobile/android/app/build/outputs/apk/release -name '*.apk' | head -1)
-          mkdir -p dist-upload
-          cp "$src" dist-upload/FundiTill.apk
+          mkdir -p credentials
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > credentials/preview.keystore
+          cat > credentials.json <<EOF
+          {
+            "android": {
+              "keystore": {
+                "keystorePath": "credentials/preview.keystore",
+                "keystorePassword": "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}",
+                "keyAlias": "${{ secrets.ANDROID_KEY_ALIAS }}",
+                "keyPassword": "${{ secrets.ANDROID_KEY_PASSWORD }}"
+              }
+            }
+          }
+          EOF
+
+      - name: Build signed release APK
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/dist-upload"
+          npx eas build --platform android --profile production --local --non-interactive \
+            --output "$GITHUB_WORKSPACE/dist-upload/FundiTill.apk"
 
       - name: Upload to R2
         env:
@@ -78,7 +106,10 @@ jobs:
           AWS_DEFAULT_REGION: auto
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#android-v}"
+          # Read from app.json rather than the git ref, so a plain
+          # workflow_dispatch rebuild (no android-v* tag) still writes a
+          # real semver into android-version.json instead of a branch name.
+          VERSION=$(node -p "require('./apps/mobile/app.json').expo.version")
           aws s3 cp dist-upload/FundiTill.apk \
             "s3://${{ secrets.R2_RELEASES_BUCKET }}/latest/FundiTill.apk" \
             --endpoint-url "${{ secrets.R2_RELEASES_ENDPOINT }}"

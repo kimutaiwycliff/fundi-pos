@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { View, Text, Pressable, FlatList, Image } from 'react-native';
+import { View, Text, Pressable, FlatList, Image, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { isLowStock, type StockLevel } from './types';
+import { usePullToRefresh } from '../lib/usePullToRefresh';
 
 interface FlaggedMovement {
   id: string;
@@ -88,6 +89,9 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
     refreshFlagged();
   }, [refreshLevels, refreshFlagged]);
 
+  const levelsRefresh = usePullToRefresh(refreshLevels);
+  const flaggedRefresh = usePullToRefresh(refreshFlagged);
+
   if (storeId == null) {
     return (
       <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-background px-6">
@@ -121,6 +125,7 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
           contentContainerClassName="gap-2 p-3"
           data={levels}
           keyExtractor={(l) => `${l.product_id}::${l.variant_id ?? ''}`}
+          refreshControl={<RefreshControl refreshing={levelsRefresh.refreshing} onRefresh={levelsRefresh.onRefresh} tintColor="#df5102" />}
           ListEmptyComponent={<Text className="mt-8 text-center text-muted-foreground">No products yet.</Text>}
           renderItem={({ item }) => {
             const low = isLowStock(item);
@@ -153,6 +158,7 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
           contentContainerClassName="gap-2 p-3"
           data={flagged}
           keyExtractor={(m) => m.id}
+          refreshControl={<RefreshControl refreshing={flaggedRefresh.refreshing} onRefresh={flaggedRefresh.onRefresh} tintColor="#df5102" />}
           ListEmptyComponent={<Text className="mt-8 text-center text-muted-foreground">No exceptions - nothing has gone negative.</Text>}
           renderItem={({ item }) => (
             <Animated.View entering={FadeInDown.duration(200)} className="rounded-lg border border-border bg-card p-3">

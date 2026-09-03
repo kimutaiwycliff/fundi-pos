@@ -122,6 +122,14 @@ services:
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
+      # Both vars below are also declared under `environment:` for
+      # documentation/back-compat, but that alone is a no-op for
+      # NEXT_PUBLIC_* - Next.js inlines them at build time, so they only
+      # take effect if actually threaded through here as build args (see
+      # apps/web/Dockerfile's matching ARG/ENV lines).
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+        NEXT_PUBLIC_DOWNLOADS_BASE_URL: ${NEXT_PUBLIC_DOWNLOADS_BASE_URL:-}
     environment:
       # See fundi-payload-api's identical HOSTNAME override above for why.
       HOSTNAME: 0.0.0.0

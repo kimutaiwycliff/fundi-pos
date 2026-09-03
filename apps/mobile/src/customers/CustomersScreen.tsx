@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Modal, ScrollView } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Modal, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
 import { PaymentModal, type LocalOrder } from './PaymentModal';
+import { usePullToRefresh } from '../lib/usePullToRefresh';
 
 interface LocalCustomer {
   id: string;
@@ -83,6 +84,8 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
     refreshCustomers();
   }, [refreshCustomers]);
 
+  const { refreshing, onRefresh } = usePullToRefresh(refreshCustomers);
+
   const customers = useMemo(() => {
     const trimmed = query.trim();
     if (!trimmed) return candidates.slice(0, 50);
@@ -133,6 +136,7 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
       <FlatList
         className="flex-1"
         contentContainerClassName="p-3"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#df5102" />}
         data={customers}
         keyExtractor={(c) => c.id}
         ListEmptyComponent={<Text className="mt-8 text-center text-muted-foreground">No customers yet.</Text>}

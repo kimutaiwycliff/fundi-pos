@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDb } from '../db/database';
+import { usePullToRefresh } from '../lib/usePullToRefresh';
 import { isLowStock, type StockLevel } from '../inventory/types';
 import type { PayloadUser } from '../lib/auth';
 
@@ -123,6 +124,8 @@ export function OverviewScreen({ user, storeId }: { user: PayloadUser; storeId: 
     }, [refresh]),
   );
 
+  const { refreshing, onRefresh } = usePullToRefresh(refresh);
+
   if (storeId == null) {
     return (
       <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-background px-6">
@@ -134,7 +137,10 @@ export function OverviewScreen({ user, storeId }: { user: PayloadUser; storeId: 
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-background">
-      <ScrollView contentContainerClassName="gap-3 p-4">
+      <ScrollView
+        contentContainerClassName="gap-3 p-4"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#df5102" />}
+      >
         <Text className="text-2xl font-semibold text-foreground">Today so far</Text>
 
         <Animated.View entering={FadeInDown.duration(200)} className="flex-row gap-3">

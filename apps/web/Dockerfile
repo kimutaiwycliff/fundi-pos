@@ -18,6 +18,19 @@ COPY . .
 # dashboard/sell/sell-client.tsx, cart-panel.tsx), and Next.js's typecheck
 # expects its dist/*.d.ts to already exist rather than building them itself.
 RUN npm run build --workspace=@hardware-pos/business-logic
+
+# Next.js inlines NEXT_PUBLIC_* at build time, not read at runtime - passing
+# these only via docker-compose's `environment:` (as it was before) is a
+# no-op; they have to be build ARGs threaded through to ENV the build step
+# can actually see. Without this, download-buttons.tsx's BASE_URL silently
+# falls back to '', breaking every platform's download link, not just
+# Android's - and every client-side fetch against NEXT_PUBLIC_API_URL falls
+# back to this Dockerfile's own build-time default instead of the real
+# public API domain.
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_DOWNLOADS_BASE_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_DOWNLOADS_BASE_URL=$NEXT_PUBLIC_DOWNLOADS_BASE_URL
 RUN npm run build --workspace=@hardware-pos/web
 
 FROM node:22-slim AS runner

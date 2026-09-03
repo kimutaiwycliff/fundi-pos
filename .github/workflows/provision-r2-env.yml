@@ -1,10 +1,16 @@
 name: Provision R2 env on production
 
 # One-off, manually-triggered - not part of the regular deploy.yml pipeline.
-# Writes the R2_* secrets into the production server's own docker/.env
-# (excluded from deploy.yml's rsync on purpose, so it has to be seeded here
-# instead) and recreates fundi-payload-api so it picks up the new env.
-# Safe to re-run: strips any existing R2_ lines from docker/.env before
+# Writes the R2_* secrets (plus NEXT_PUBLIC_DOWNLOADS_BASE_URL, the public
+# URL of that same R2 releases bucket - not sensitive, so it's written
+# directly rather than needing its own secret) into the production server's
+# own docker/.env (excluded from deploy.yml's rsync on purpose, so it has to
+# be seeded here instead), then rebuilds+recreates fundi-payload-api and
+# fundi-web so both pick up the new env. fundi-web needs an actual rebuild,
+# not just a restart - NEXT_PUBLIC_* is inlined into its bundle at build
+# time (see apps/web/Dockerfile's ARG/ENV lines), so a plain restart alone
+# would leave it serving the stale (empty) value. Safe to re-run: strips any
+# existing R2_/NEXT_PUBLIC_DOWNLOADS_BASE_URL lines from docker/.env before
 # appending fresh ones, rather than accumulating duplicates.
 on:
   workflow_dispatch: {}
@@ -31,6 +37,7 @@ jobs:
             echo "R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}"
             echo "R2_ENDPOINT=${{ secrets.R2_ENDPOINT }}"
             echo "R2_PUBLIC_URL=${{ secrets.R2_PUBLIC_URL }}"
+            echo "NEXT_PUBLIC_DOWNLOADS_BASE_URL=https://pub-e6776728912f415583a924395bffb6d4.r2.dev"
           } > /tmp/r2-env-snippet
 
       - name: Upload snippet and update docker/.env on the server
@@ -42,20 +49,21 @@ jobs:
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
               set -euo pipefail
               ENV_FILE="${{ secrets.DEPLOY_PATH }}/docker/.env"
-              grep -v "^R2_" "$ENV_FILE" > "$ENV_FILE.tmp" 2>/dev/null || : > "$ENV_FILE.tmp"
+              grep -v -E "^(R2_|NEXT_PUBLIC_DOWNLOADS_BASE_URL=)" "$ENV_FILE" > "$ENV_FILE.tmp" 2>/dev/null || : > "$ENV_FILE.tmp"
               cat /tmp/r2-env-snippet >> "$ENV_FILE.tmp"
               mv "$ENV_FILE.tmp" "$ENV_FILE"
               rm -f /tmp/r2-env-snippet
             '
           rm -f /tmp/r2-env-snippet
 
-      - name: Restart API container to pick up new env
+      - name: Rebuild fundi-web and restart fundi-payload-api to pick up new env
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "cd '${{ secrets.DEPLOY_PATH }}/docker' && \
-             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d fundi-payload-api"
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml build fundi-web && \
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d fundi-payload-api fundi-web"
 
       - name: Verify fundi API health
         run: |
@@ -67,9 +75,10 @@ jobs:
 
       - name: Verify pharmatrack is unaffected
         # Same reasoning as deploy.yml's own equivalent step - this workflow
-        # only ever touches fundi-payload-api, but checked over SSH (not a
-        # public HTTPS curl) since Cloudflare's WAF has previously 403'd the
-        # Actions runner's own IP even when pharmatrack was genuinely healthy.
+        # only ever touches fundi's own containers (fundi-payload-api,
+        # fundi-web), but checked over SSH (not a public HTTPS curl) since
+        # Cloudflare's WAF has previously 403'd the Actions runner's own IP
+        # even when pharmatrack was genuinely healthy.
         run: |
           set -euo pipefail
           bad=$(ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \

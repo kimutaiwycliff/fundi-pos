@@ -4,11 +4,12 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Modal, Linking } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Modal, Linking, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
 import { showAlert } from '../components/AppNotice';
+import { usePullToRefresh } from '../lib/usePullToRefresh';
 import { PaymentModal, type LocalOrder } from '../customers/PaymentModal';
 import { VoidRefundModal, type VoidableOrder } from './VoidRefundModal';
 import { buildReceiptHtml, type ReceiptTenantInfo } from './receiptHtml';
@@ -145,6 +146,8 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, [refresh]);
+
+  const { refreshing, onRefresh } = usePullToRefresh(refresh);
 
   const scoped = useMemo(() => {
     const cutoff = datePresetCutoff(datePreset);
@@ -323,6 +326,7 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
         contentContainerClassName="gap-2 p-3"
         data={orders}
         keyExtractor={(o) => o.id}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#df5102" />}
         ListEmptyComponent={<Text className="mt-8 text-center text-muted-foreground">No matching sales found.</Text>}
         renderItem={({ item }) => {
           const isUnpaidCredit = item.tender_type === 'credit' && item.payment_status === 'pending';
