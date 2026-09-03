@@ -49,7 +49,7 @@ describe('Phase 6 - StockTransfers receiving + Shifts cash-up', () => {
   beforeEach(async () => {
     await truncateAll();
     const tenant = await payload.create({
-      collection: 'tenants', data: { name: 'T', subscriptionTier: 'trial', billingStatus: 'trialing' },
+      collection: 'tenants', data: { name: 'T', status: 'active', subscriptionTier: 'trial', billingStatus: 'trialing' },
       overrideAccess: true,
     });
     tenantId = tenant.id as number;

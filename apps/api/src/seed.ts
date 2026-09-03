@@ -13,7 +13,7 @@ async function seed() {
 
   const tenant = await payload.create({
     collection: 'tenants',
-    data: { name: 'Demo Hardware Co', subscriptionTier: 'growth', billingStatus: 'active' },
+    data: { name: 'Demo Hardware Co', status: 'active', subscriptionTier: 'growth', billingStatus: 'active' },
     overrideAccess: true,
   });
   console.log(`Created tenant: ${tenant.id}`);

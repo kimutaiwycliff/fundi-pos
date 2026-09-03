@@ -85,6 +85,7 @@ export interface Config {
     'sync-log': SyncLog;
     shifts: Shift;
     'audit-log': AuditLog;
+    'platform-audit-log': PlatformAuditLog;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -109,6 +110,7 @@ export interface Config {
     'sync-log': SyncLogSelect<false> | SyncLogSelect<true>;
     shifts: ShiftsSelect<false> | ShiftsSelect<true>;
     'audit-log': AuditLogSelect<false> | AuditLogSelect<true>;
+    'platform-audit-log': PlatformAuditLogSelect<false> | PlatformAuditLogSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -199,6 +201,15 @@ export interface PlatformAdmin {
 export interface Tenant {
   id: number;
   name: string;
+  /**
+   * Suspended/deleted tenants (and all their staff) are locked out of every login path - web, till PIN, and PowerSync.
+   */
+  status: 'active' | 'suspended' | 'deleted';
+  statusChangedAt?: string | null;
+  /**
+   * Optional note - shown in the platform audit log, not to the tenant.
+   */
+  statusReason?: string | null;
   subscriptionTier: 'trial' | 'starter' | 'growth' | 'enterprise';
   billingStatus: 'active' | 'trialing' | 'past_due' | 'canceled';
   /**
@@ -596,6 +607,29 @@ export interface AuditLog {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-audit-log".
+ */
+export interface PlatformAuditLog {
+  id: number;
+  tenant: number | Tenant;
+  actor: number | PlatformAdmin;
+  action:
+    'tenant_suspended' | 'tenant_reactivated' | 'tenant_soft_deleted' | 'tenant_restored' | 'subscription_changed';
+  summary: string;
+  metadata?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -685,6 +719,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'audit-log';
         value: number | AuditLog;
+      } | null)
+    | ({
+        relationTo: 'platform-audit-log';
+        value: number | PlatformAuditLog;
       } | null);
   globalSlug?: string | null;
   user:
@@ -767,6 +805,9 @@ export interface PlatformAdminsSelect<T extends boolean = true> {
  */
 export interface TenantsSelect<T extends boolean = true> {
   name?: T;
+  status?: T;
+  statusChangedAt?: T;
+  statusReason?: T;
   subscriptionTier?: T;
   billingStatus?: T;
   receiptHeader?: T;
@@ -1073,6 +1114,19 @@ export interface AuditLogSelect<T extends boolean = true> {
   action?: T;
   entityType?: T;
   entityId?: T;
+  summary?: T;
+  metadata?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-audit-log_select".
+ */
+export interface PlatformAuditLogSelect<T extends boolean = true> {
+  tenant?: T;
+  actor?: T;
+  action?: T;
   summary?: T;
   metadata?: T;
   updatedAt?: T;

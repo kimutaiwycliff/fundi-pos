@@ -3,7 +3,7 @@ import { APIError } from 'payload';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
 import { hashPin } from '../lib/pin.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
-import { checkBillingStatus } from '../lib/billing.ts';
+import { checkTenantAccess } from '../lib/billing.ts';
 import { toID } from '../lib/relations.ts';
 
 export const Users: CollectionConfig = {
@@ -101,7 +101,7 @@ export const Users: CollectionConfig = {
           id: toID(user.tenant),
           overrideAccess: true,
         });
-        const check = checkBillingStatus(tenant.billingStatus);
+        const check = checkTenantAccess(tenant);
         if (!check.allowed) {
           // A plain Error gets masked as a generic 500 "Something went
           // wrong" by Payload's error handler (only its own typed/

@@ -32,7 +32,7 @@ export async function POST(request: Request) {
 
   const tenant = await payload.create({
     collection: 'tenants',
-    data: { name: businessName.trim(), subscriptionTier: 'trial', billingStatus: 'trialing' },
+    data: { name: businessName.trim(), status: 'active', subscriptionTier: 'trial', billingStatus: 'trialing' },
     overrideAccess: true,
   });
 

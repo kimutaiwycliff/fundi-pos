@@ -51,7 +51,7 @@ describe('Payload collections - integration', () => {
       await truncateAll();
       const tenant = await payload.create({
         collection: 'tenants',
-        data: { name: 'Test Tenant', subscriptionTier: 'trial', billingStatus: 'trialing' },
+        data: { name: 'Test Tenant', status: 'active', subscriptionTier: 'trial', billingStatus: 'trialing' },
         overrideAccess: true,
       });
       tenantId = tenant.id as number;
@@ -340,11 +340,11 @@ describe('Payload collections - integration', () => {
     it('never returns another tenant\'s data, even to that tenant\'s owner', async () => {
       await truncateAll();
       const tenantA = await payload.create({
-        collection: 'tenants', data: { name: 'A', subscriptionTier: 'trial', billingStatus: 'trialing' },
+        collection: 'tenants', data: { name: 'A', status: 'active', subscriptionTier: 'trial', billingStatus: 'trialing' },
         overrideAccess: true,
       });
       const tenantB = await payload.create({
-        collection: 'tenants', data: { name: 'B', subscriptionTier: 'trial', billingStatus: 'trialing' },
+        collection: 'tenants', data: { name: 'B', status: 'active', subscriptionTier: 'trial', billingStatus: 'trialing' },
         overrideAccess: true,
       });
       const storeA = await payload.create({
@@ -374,11 +374,11 @@ describe('Payload collections - integration', () => {
 
     it('ignores a spoofed tenant field on create and forces the authenticated user\'s own tenant', async () => {
       const tenantA = await payload.create({
-        collection: 'tenants', data: { name: 'A2', subscriptionTier: 'trial', billingStatus: 'trialing' },
+        collection: 'tenants', data: { name: 'A2', status: 'active', subscriptionTier: 'trial', billingStatus: 'trialing' },
         overrideAccess: true,
       });
       const tenantB = await payload.create({
-        collection: 'tenants', data: { name: 'B2', subscriptionTier: 'trial', billingStatus: 'trialing' },
+        collection: 'tenants', data: { name: 'B2', status: 'active', subscriptionTier: 'trial', billingStatus: 'trialing' },
         overrideAccess: true,
       });
       const managerA = await payload.create({

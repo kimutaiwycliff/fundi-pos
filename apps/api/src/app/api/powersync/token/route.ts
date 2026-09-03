@@ -2,7 +2,7 @@ import config from '@payload-config';
 import { getPayload } from 'payload';
 import { headers as nextHeaders } from 'next/headers';
 import { signPowerSyncToken } from '@/lib/powersyncAuth';
-import { checkBillingStatus } from '@/lib/billing';
+import { checkTenantAccess } from '@/lib/billing';
 import { isTenantUser, toID } from '@/lib/relations';
 
 // The desktop till (and web dashboard, for the live-orders view) calls this
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   // every ~1 hour (TOKEN_TTL_SECONDS) on expiry/reconnect regardless of
   // whether the till's own Payload session is still valid.
   const tenant = await payload.findByID({ collection: 'tenants', id: toID(user.tenant), overrideAccess: true });
-  const billing = checkBillingStatus(tenant.billingStatus);
+  const billing = checkTenantAccess(tenant);
   if (!billing.allowed) {
     return Response.json({ error: billing.message }, { status: 403 });
   }

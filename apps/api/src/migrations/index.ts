@@ -9,6 +9,7 @@ import * as migration_20260901_084514_add_media_and_product_images from './20260
 import * as migration_20260903_064520_add_line_item_variant_tenant_store from './20260903_064520_add_line_item_variant_tenant_store';
 import * as migration_20260903_073000_backfill_line_item_variant_tenant_store from './20260903_073000_backfill_line_item_variant_tenant_store';
 import * as migration_20260903_090000_fix_tenant_store_column_types from './20260903_090000_fix_tenant_store_column_types';
+import * as migration_20260903_114432_add_tenant_status_and_platform_audit_log from './20260903_114432_add_tenant_status_and_platform_audit_log';
 
 export const migrations = [
   {
@@ -54,16 +55,21 @@ export const migrations = [
   {
     up: migration_20260903_064520_add_line_item_variant_tenant_store.up,
     down: migration_20260903_064520_add_line_item_variant_tenant_store.down,
-    name: '20260903_064520_add_line_item_variant_tenant_store'
+    name: '20260903_064520_add_line_item_variant_tenant_store',
   },
   {
     up: migration_20260903_073000_backfill_line_item_variant_tenant_store.up,
     down: migration_20260903_073000_backfill_line_item_variant_tenant_store.down,
-    name: '20260903_073000_backfill_line_item_variant_tenant_store'
+    name: '20260903_073000_backfill_line_item_variant_tenant_store',
   },
   {
     up: migration_20260903_090000_fix_tenant_store_column_types.up,
     down: migration_20260903_090000_fix_tenant_store_column_types.down,
-    name: '20260903_090000_fix_tenant_store_column_types'
+    name: '20260903_090000_fix_tenant_store_column_types',
+  },
+  {
+    up: migration_20260903_114432_add_tenant_status_and_platform_audit_log.up,
+    down: migration_20260903_114432_add_tenant_status_and_platform_audit_log.down,
+    name: '20260903_114432_add_tenant_status_and_platform_audit_log'
   },
 ];

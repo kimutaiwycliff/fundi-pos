@@ -9,21 +9,32 @@
 // far more invasive for the same practical effect: no login, no fresh
 // PowerSync token, and the till stops syncing once its current token
 // expires (see powersyncAuth.ts's 1-hour TTL) even if it was already open.
+//
+// tenant.status (platform-admin-controlled suspend/soft-delete, distinct
+// from the tenant's own billingStatus) is checked first and takes priority -
+// a suspended/deleted tenant is locked out regardless of billing state, and
+// gets its own distinct message rather than being folded into the billing
+// one, since the two mean genuinely different things to whoever reads it.
 export type BillingStatus = 'active' | 'trialing' | 'past_due' | 'canceled';
+export type TenantStatus = 'active' | 'suspended' | 'deleted';
 
-export interface BillingCheckResult {
+export interface TenantAccessCheckResult {
   allowed: boolean;
-  status: BillingStatus;
   message?: string;
 }
 
-export function checkBillingStatus(billingStatus: string): BillingCheckResult {
-  if (billingStatus === 'canceled') {
+export function checkTenantAccess(tenant: { status: string; billingStatus: string }): TenantAccessCheckResult {
+  if (tenant.status === 'suspended') {
+    return { allowed: false, message: 'This account has been suspended. Contact your platform administrator.' };
+  }
+  if (tenant.status === 'deleted') {
+    return { allowed: false, message: 'This account no longer exists.' };
+  }
+  if (tenant.billingStatus === 'canceled') {
     return {
       allowed: false,
-      status: billingStatus,
       message: 'This account\'s subscription has been canceled. Contact your platform administrator to reactivate it.',
     };
   }
-  return { allowed: true, status: billingStatus as BillingStatus };
+  return { allowed: true };
 }

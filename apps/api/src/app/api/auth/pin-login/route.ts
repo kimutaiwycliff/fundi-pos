@@ -3,7 +3,7 @@ import { getPayload } from 'payload';
 import { addSessionToUser } from 'payload/shared';
 import { SignJWT } from 'jose';
 import { verifyPin } from '@/lib/pin';
-import { checkBillingStatus } from '@/lib/billing';
+import { checkTenantAccess } from '@/lib/billing';
 import { toID } from '@/lib/relations';
 
 // Fast till login: phone + PIN instead of email + password (the web
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
   rateLimiter.delete(phone);
 
   const tenant = await payload.findByID({ collection: 'tenants', id: toID(user.tenant), overrideAccess: true });
-  const billing = checkBillingStatus(tenant.billingStatus);
+  const billing = checkTenantAccess(tenant);
   if (!billing.allowed) {
     return Response.json({ error: billing.message }, { status: 403 });
   }
