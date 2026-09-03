@@ -462,6 +462,12 @@ export function SellScreen({
               </View>
             ) : (
               <FlatList
+                // Concrete pixel cap for the same reason as SalesScreen's
+                // receipt FlatList: this sheet is only maxHeight-bound, not
+                // itself a definite size, so a flex-grow (or unsized) child
+                // here is the same ambiguous Yoga case that can measure to
+                // zero height and render nothing.
+                style={{ maxHeight: 240 }}
                 contentContainerClassName="gap-2 p-4"
                 data={cart}
                 keyExtractor={(l) => lineKey(l)}

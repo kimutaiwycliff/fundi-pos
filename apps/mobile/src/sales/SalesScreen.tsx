@@ -366,6 +366,17 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
             <View className="my-2 border-t border-dashed border-border" />
 
             <FlatList
+              // A concrete pixel cap, not flex-1: the outer Pressable is only
+              // max-height-bound (its own height is otherwise derived from
+              // its children's natural sizes), and a flex-grow child inside a
+              // container whose height is ITSELF derived from children is an
+              // ambiguous/circular case Yoga doesn't resolve the way you'd
+              // expect - in practice the FlatList can measure to near-zero
+              // height and render nothing even with non-empty data, which is
+              // exactly what happened once the tenant/order/cashier detail
+              // block above grew tall enough to matter. A fixed numeric
+              // maxHeight sidesteps the ambiguity entirely.
+              style={{ maxHeight: 260 }}
               data={receiptLines}
               keyExtractor={(_, i) => String(i)}
               renderItem={({ item }) => (
