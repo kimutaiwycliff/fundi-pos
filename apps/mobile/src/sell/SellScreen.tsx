@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Platform } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { View, Text, TextInput, Pressable, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert, showToast } from '../components/AppNotice';
@@ -340,7 +339,6 @@ export function SellScreen({
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-background">
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View className="gap-2 border-b border-border p-3">
           <View className="flex-row items-center justify-between">
             <ShiftWidget
@@ -559,7 +557,6 @@ export function SellScreen({
             </View>
           </Animated.View>
         ) : null}
-      </KeyboardAvoidingView>
 
       <VariantPickerModal
         product={variantPickerProduct}

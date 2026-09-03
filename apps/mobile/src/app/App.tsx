@@ -106,11 +106,20 @@ function AppInner() {
     const fixedStoreId = typeof user.store === 'object' ? (user.store?.id ?? null) : (user.store ?? null);
     if (fixedStoreId != null) return;
     getDb()
+      // PowerSync's local `stores.id` is TEXT (every PowerSync primary key
+      // is, regardless of the real Postgres column type - same rule
+      // connector.ts's toNumber() already works around for order line
+      // items) - coerced back to a real number right here so every
+      // downstream consumer (activeStoreId, ShiftWidget, openShift's POST
+      // body) sends Payload a JSON number, not a string. Left uncoerced,
+      // Payload's relationship-field validation on Shifts.store rejects it
+      // outright ("The following field is invalid: Store").
       .getAll<StoreOption>('SELECT id, name FROM stores ORDER BY name')
       .then((rows) => {
-        setStoreOptions(rows);
-        if (rows.length === 1 && activeStoreId == null) {
-          void handleSwitchStore(rows[0].id);
+        const coerced = rows.map((row) => ({ ...row, id: Number(row.id) }));
+        setStoreOptions(coerced);
+        if (coerced.length === 1 && activeStoreId == null) {
+          void handleSwitchStore(coerced[0].id);
         }
       })
       .catch(() => setStoreOptions([]));

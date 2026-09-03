@@ -21,7 +21,20 @@ export interface BiometricDiagnostics {
  */
 export async function getBiometricDiagnostics(): Promise<BiometricDiagnostics> {
   try {
-    const [hasHardware, isEnrolled] = await Promise.all([LocalAuthentication.hasHardwareAsync(), LocalAuthentication.isEnrolledAsync()]);
+    // Some OEM Android builds (MIUI in particular - see this file's own
+    // note above) have been seen to leave hasHardwareAsync()/
+    // isEnrolledAsync() neither resolving nor rejecting at all, which is
+    // NOT catchable by the try/catch below - without a hard cap the More
+    // screen's Security section would show "Checking device
+    // capabilities..." forever instead of ever settling on an answer.
+    const diagnostics = await Promise.race([
+      Promise.all([LocalAuthentication.hasHardwareAsync(), LocalAuthentication.isEnrolledAsync()]),
+      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 5000)),
+    ]);
+    if (diagnostics === 'timeout') {
+      return { hasHardware: false, isEnrolled: false, error: 'Detection timed out' };
+    }
+    const [hasHardware, isEnrolled] = diagnostics;
     return { hasHardware, isEnrolled, error: null };
   } catch (err) {
     return { hasHardware: false, isEnrolled: false, error: err instanceof Error ? err.message : String(err) };
