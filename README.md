@@ -1,206 +1,96 @@
-# Nx TypeScript Repository
+# Fundi POS
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+A multi-tenant, offline-first Point-of-Sale and inventory management SaaS for retail and hardware businesses — built for markets where connectivity can't be assumed and M-Pesa is a primary payment rail, but designed to generalize beyond that.
 
-✨ A repository showcasing key [Nx](https://nx.dev) features for TypeScript monorepos ✨
-🚀 If you haven't connected to Nx Cloud yet, [complete your setup here](https://cloud.nx.app/get-started). Get faster builds with remote caching, distributed task execution, and self-healing CI. [See how your workspace can benefit](#nx-cloud).
-## 📦 Project Overview
+One backend serves three clients:
 
-This repository demonstrates a production-ready TypeScript monorepo with:
+- **Android till app** ("Fundi Till", `com.fundipos.till`) — the primary point of sale, fully usable offline.
+- **Desktop till app** (Tauri) — a native Windows/macOS point of sale, also offline-first, for hardware setups with a receipt printer/barcode scanner/cash drawer.
+- **Web dashboard** — always-online, for owners/managers: inventory, multi-store reporting, staff, billing, and a hidden platform-operator admin panel.
 
-- **3 Publishable Packages** - Ready for NPM publishing
+## Architecture
 
-  - `@org/strings` - String manipulation utilities
-  - `@org/async` - Async utility functions with retry logic
-  - `@org/colors` - Color conversion and manipulation utilities
+```
+apps/
+  api/       Payload CMS (Node/TypeScript) + Postgres — the single source of truth every client reads/writes through
+  web/       Next.js (App Router) — tenant dashboard, marketing/landing page, platform admin panel
+  mobile/    Expo / React Native (Android) — the offline-first till app, synced via PowerSync
+  desktop/   Tauri v2 + React + Vite — the offline-first desktop till app, synced via PowerSync
+packages/
+  business-logic/   Pricing, tax, and discount calculation — shared by every client so totals compute identically online or offline
+  shared-types/     Cross-app TypeScript types (Product, Order, StockMovement, Tenant, ...)
+  shared-ui/        shadcn/ui components, copied into the repo (not an npm dep) and reused by web + desktop
+docker/
+  Postgres, PowerSync, and both server apps as Compose services — local dev, a full-container smoke test, and the production VPS deploy all use the same Compose files with different overlays
+```
 
-- **1 Internal Library**
-  - `@org/utils` - Shared utilities (private, not published)
+Offline sync is the architectural spine: `apps/mobile` and `apps/desktop` each keep a local SQLite database synced against Postgres through [PowerSync](https://www.powersync.com) (self-hosted, open edition), so a sale can be rung up with no connectivity and reconciles automatically once the till is back online. `apps/web` has no offline requirement and talks to the Payload API directly. Sync rules (`docker/powersync/sync-config.yaml`) scope what each till receives — tenant- or store-scoped, and prioritized so a till can start selling as soon as its catalog/staff data has synced, without waiting for its full historical order ledger.
 
-## 🚀 Quick Start
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Backend / API | [Payload CMS](https://payloadcms.com) 3.x on Node.js — collections + hooks for business logic, auto-generated REST, built-in admin UI |
+| Database | PostgreSQL 16 |
+| Offline sync | [PowerSync](https://www.powersync.com) Open Edition, self-hosted |
+| Web | Next.js 16 (App Router), Tailwind, shadcn/ui |
+| Mobile | Expo / React Native (SDK 56, RN 0.85), NativeWind, Reanimated |
+| Desktop | Tauri v2, React 19, Vite, `@powersync/tauri-plugin` |
+| Monorepo tooling | Nx (npm workspaces) |
+| Payments | M-Pesa Daraja (STK Push / C2B), Pesapal |
+| Local dev / self-hosted prod | Docker Compose, Caddy (automatic TLS), Cloudflare R2 (backups + release artifacts) |
+
+## Getting started
 
 ```bash
-# Clone the repository
-git clone <your-fork-url>
-cd typescript-template
-
-# Install dependencies
 npm install
 
-# Build all packages
-npx nx run-many -t build
+# Bring up Postgres + PowerSync (apps/api and apps/web run directly on the
+# host for faster iteration - see docker/README.md for the full-container
+# alternative)
+cd docker && docker compose up -d && cd ..
 
-# Run tests
-npx nx run-many -t test
+# In separate terminals:
+npx nx run @hardware-pos/api:dev     # http://localhost:3011
+npx nx run @hardware-pos/web:dev     # http://localhost:3000
 
-# Lint all projects
-npx nx run-many -t lint
+# Mobile (Expo)
+npx nx run mobile:start
 
-# Run everything in parallel
-npx nx run-many -t lint test build --parallel=3
-
-# Visualize the project graph
-npx nx graph
+# Desktop (Tauri)
+npx nx run @hardware-pos/desktop:tauri -- dev
 ```
 
-## ⭐ Featured Nx Capabilities
+Each app's own env file (`apps/*/.env`) holds its local configuration — see `docker/README.md` for the full local/full-container/production setup, including the env vars PowerSync and Caddy need.
 
-This repository showcases several powerful Nx features:
+## What each app does
 
-### 1. 🔒 Module Boundaries
+**apps/api** — Payload collections for Tenants, Users, Stores, Products (with variants and per-store price/stock overrides), Orders, Customers, StockMovements, Shifts, StockTransfers, PlatformAdmins, and audit logs, plus REST routes for phone+PIN login, PowerSync JWT auth, M-Pesa/Pesapal payment webhooks, KRA eTIMS, sales reports, and bulk product import/export (Excel).
 
-Enforces architectural constraints using tags. Each package has specific dependencies it can use:
+**apps/web** — the tenant dashboard (sell, products, inventory, customers, staff, stores, reports, audit log, stock transfers), the public marketing/landing page with OS-aware app downloads, and `/platform`: a separate, platform-admin-only surface (its own auth collection and session cookie) to suspend/restore tenants and manage subscriptions, with every action audit-logged.
 
-- `scope:shared` (utils) - Can be used by all packages
-- `scope:strings` - Can only depend on shared utilities
-- `scope:async` - Can only depend on shared utilities
-- `scope:colors` - Can only depend on shared utilities
+**apps/mobile** — phone-number + PIN login (with an offline resume path and optional fingerprint unlock), a Sell screen with barcode-scan and fuzzy product search, held sales, shift management, a Products catalog, Sales history with thermal-receipt printing and A4 PDF invoices shareable via WhatsApp, Reports, and back-office screens (staff, stores, inventory, settings, audit log) under a More tab. Ships as a signed release APK, self-distributed (not via Play Store) through a Cloudflare R2 bucket the landing page and an in-app update check both read from.
 
-**Try it out:**
+**apps/desktop** — the same core till workflow (sell, inventory, customers, sales history) as a native offline-first Windows/macOS app, talking to real POS hardware.
+
+## CI/CD
+
+GitHub Actions (`.github/workflows/`):
+
+- **ci.yml** — lint, test, build, typecheck, and e2e across every affected Nx project on each push.
+- **deploy.yml** — on CI success on `main`, syncs the workspace to the production VPS over SSH, rebuilds and restarts the API/web containers, restarts PowerSync (to pick up sync-rule changes), applies pending Payload migrations, and verifies both this app and the unrelated app sharing the same VPS stay healthy.
+- **android-release.yml** — on an `android-v*` tag, builds and signs the Android APK (`eas build --local`, using the same keystore as local builds) and uploads it to R2 as both `latest/` and a versioned copy, updating the manifest the landing page and in-app update check read.
+- **desktop-release.yml** — the equivalent release pipeline for Windows/macOS desktop installers.
+- **provision-r2-env.yml** — one-off, manually-triggered seeding of R2 credentials into the production server's env.
+
+Production runs on a self-hosted VPS via `docker compose -f docker/docker-compose.yml -f docker/docker-compose.prod.yml`, with Caddy terminating TLS and a daily Postgres backup cron. See `docker/README.md` for the full deployment story, including the free-tier Render path used for early demos.
+
+## Useful Nx commands
 
 ```bash
-# See the current project graph and boundaries
-npx nx graph
-
-# View a specific project's details
-npx nx show project @org/strings --web
+npx nx graph                              # interactive project dependency graph
+npx nx show project @hardware-pos/api     # a project's targets/config
+npx nx run-many -t lint test build typecheck  # run everything (what CI runs)
+npx nx affected -t test                   # only what changed
+npx nx run mobile:lint                    # a single project's target
 ```
-
-[Learn more about module boundaries →](https://nx.dev/docs/features/enforce-module-boundaries)
-
-### 2. 🛠️ Custom Run Commands
-
-Packages can define custom commands beyond standard build/test/lint:
-
-```bash
-# Run the custom build-base command for strings package
-npx nx run @org/strings:build-base
-
-# See all available targets for a project
-npx nx show project @org/strings
-```
-
-### 3. 🔧 Self-Healing CI
-
-The CI pipeline includes `nx fix-ci` which automatically identifies and suggests fixes for common issues. To test it, you can make a change to `async-retry.spec.ts` so that it fails, and create a PR.
-
-```bash
-# Run tests and see the failure
-npx nx run @org/async:test
-
-# In CI, this command provides automated fixes
-npx nx fix-ci
-```
-
-[Learn more about self-healing CI →](https://nx.dev/docs/features/ci-features/self-healing-ci)
-
-### 4. 📦 Package Publishing
-
-Manage releases and publishing with Nx Release:
-
-```bash
-# Dry run to see what would be published
-npx nx release --dry-run
-
-# Version and release packages
-npx nx release
-
-# Publish only specific packages
-npx nx release publish --projects=@org/strings,@org/colors
-```
-
-[Learn more about Nx Release →](https://nx.dev/docs/features/manage-releases)
-
-## 📁 Project Structure
-
-```
-├── packages/
-│   ├── strings/     [scope:strings] - String utilities (publishable)
-│   ├── async/       [scope:async]   - Async utilities (publishable)
-│   ├── colors/      [scope:colors]  - Color utilities (publishable)
-│   └── utils/       [scope:shared]  - Shared utilities (private)
-├── nx.json          - Nx configuration
-├── tsconfig.json    - TypeScript configuration
-└── eslint.config.mjs - ESLint with module boundary rules
-```
-
-## 🏷️ Understanding Tags
-
-This repository uses tags to enforce module boundaries:
-
-| Package        | Tag             | Can Import From        |
-| -------------- | --------------- | ---------------------- |
-| `@org/utils`   | `scope:shared`  | Nothing (base library) |
-| `@org/strings` | `scope:strings` | `scope:shared`         |
-| `@org/async`   | `scope:async`   | `scope:shared`         |
-| `@org/colors`  | `scope:colors`  | `scope:shared`         |
-
-The ESLint configuration enforces these boundaries, preventing circular dependencies and maintaining clean architecture.
-
-## 🧪 Testing Module Boundaries
-
-To see module boundary enforcement in action:
-
-1. Try importing `@org/colors` into `@org/strings`
-2. Run `npx nx run @org/strings:lint`
-3. You'll see an error about violating module boundaries
-
-## 📚 Useful Commands
-
-```bash
-# Project exploration
-npx nx graph                                    # Interactive dependency graph
-npx nx list                                     # List installed plugins
-npx nx show project @org/strings --web              # View project details
-
-# Development
-npx nx run @org/strings:build                           # Build a specific package
-npx nx run @org/async:test                              # Test a specific package
-npx nx run @org/colors:lint                             # Lint a specific package
-
-# Running multiple tasks
-npx nx run-many -t build                       # Build all projects
-npx nx run-many -t test --parallel=3          # Test in parallel
-npx nx run-many -t lint test build            # Run multiple targets
-
-# Affected commands (great for CI)
-npx nx affected -t build                       # Build only affected projects
-npx nx affected -t test                        # Test only affected projects
-
-# Release management
-npx nx release --dry-run                       # Preview release changes
-npx nx release                                 # Create a new release
-```
-
-## Nx Cloud
-
-Nx Cloud ensures a [fast and scalable CI](https://nx.dev/nx-cloud?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) pipeline. It includes features such as:
-
-- [Remote caching](https://nx.dev/docs/features/ci-features/remote-cache?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task distribution across multiple machines](https://nx.dev/docs/features/ci-features/distribute-task-execution?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Automated e2e test splitting](https://nx.dev/docs/features/ci-features/split-e2e-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Task flakiness detection and rerunning](https://nx.dev/docs/features/ci-features/flaky-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Install Nx Console
-
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
-
-[Install Nx Console &raquo;](https://nx.dev/docs/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## 🔗 Learn More
-
-- [Nx Documentation](https://nx.dev/docs)
-- [Crafting Your Workspace Tutorial](https://nx.dev/docs/getting-started/tutorials/crafting-your-workspace)
-- [Module Boundaries](https://nx.dev/docs/features/enforce-module-boundaries)
-- [Releasing Packages](https://nx.dev/docs/features/manage-releases)
-- [Nx Cloud](https://nx.dev/nx-cloud)
-
-## 💬 Community
-
-Join the Nx community:
-
-- [Discord](https://go.nx.dev/community)
-- [X (Twitter)](https://twitter.com/nxdevtools)
-- [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [YouTube](https://www.youtube.com/@nxdevtools)
-- [Blog](https://nx.dev/blog)
