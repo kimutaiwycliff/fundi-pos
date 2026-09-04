@@ -12,7 +12,14 @@ import { showAlert, showToast } from '../components/AppNotice';
 import { usePullToRefresh } from '../lib/usePullToRefresh';
 
 interface LocalProductRow {
-  id: number;
+  // Every PowerSync primary key is TEXT locally regardless of the real
+  // Postgres column type (same rule already documented elsewhere in this
+  // app, e.g. db/database.ts's own note on stores.id) - id is a string
+  // here, unlike the plain replicated INTEGER foreign-key columns
+  // (products_variants._parent_id, stock_movements.product_id) that
+  // reference it, which is why those get Number(...)'d before binding
+  // below.
+  id: string;
   name: string;
   sku: string | null;
   barcode: string | null;
@@ -27,7 +34,7 @@ interface LocalProductRow {
 }
 
 interface LocalVariantRow {
-  id: number;
+  id: string;
   label: string;
   sku: string | null;
   sell_price: number | null;
@@ -35,7 +42,7 @@ interface LocalVariantRow {
 }
 
 interface VariantStock {
-  variant_id: number | null;
+  variant_id: string | null;
   quantity: number;
 }
 
@@ -92,10 +99,14 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   function openProduct(product: LocalProductRow) {
     setSelected(product);
     setPriceDraft(String(product.sell_price));
+    // _parent_id/product_id are plain replicated INTEGER foreign-key
+    // columns (not primary keys), unlike product.id itself (always TEXT
+    // locally) - converted here so the comparison actually matches.
+    const numericProductId = Number(product.id);
     getDb()
       .getAll<LocalVariantRow>(
         'SELECT id, label, sku, sell_price, cost_price FROM products_variants WHERE _parent_id = ? ORDER BY _order',
-        [product.id],
+        [numericProductId],
       )
       .then(setVariants);
     if (storeId != null) {
@@ -105,7 +116,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
            UNION ALL
            SELECT pv.id AS variant_id, COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS quantity
            FROM products_variants pv WHERE pv._parent_id = ?`,
-          [product.id, storeId, storeId, product.id],
+          [numericProductId, storeId, storeId, numericProductId],
         )
         .then(setStock);
     } else {

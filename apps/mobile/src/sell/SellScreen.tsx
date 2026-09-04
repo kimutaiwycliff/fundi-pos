@@ -214,7 +214,12 @@ export function SellScreen({
   // quantity-only change doesn't need a requery, hence the joined-id-string
   // dependency instead of depending on `cart` itself). Empty cart just
   // falls back to the existing "recently sold" idle grid below.
-  const cartProductIds = useMemo(() => [...new Set(cart.map((l) => l.product.id))].sort((a, b) => a - b), [cart]);
+  // LocalProduct.id is a string (every PowerSync primary key is TEXT
+  // locally, regardless of the real Postgres column type), but
+  // orders_line_items.product_id is a plain replicated INTEGER column, not
+  // a primary key - converted to numbers here so both the arithmetic sort
+  // and the SQL binding below actually match that column's real type.
+  const cartProductIds = useMemo(() => [...new Set(cart.map((l) => Number(l.product.id)))].sort((a, b) => a - b), [cart]);
   const cartProductIdsKey = cartProductIds.join(',');
 
   useEffect(() => {
