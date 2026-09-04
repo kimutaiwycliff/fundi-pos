@@ -71,7 +71,7 @@ Each app's own env file (`apps/*/.env`) holds its local configuration — see `d
 
 **apps/mobile** — phone-number + PIN login (with an offline resume path and optional fingerprint unlock), a Sell screen with barcode-scan and fuzzy product search, held sales, shift management, a Products catalog, Sales history with thermal-receipt printing and A4 PDF invoices shareable via WhatsApp, Reports, and back-office screens (staff, stores, inventory, settings, audit log) under a More tab. Ships as a signed release APK, self-distributed (not via Play Store) through a Cloudflare R2 bucket the landing page and an in-app update check both read from.
 
-**apps/desktop** — the same core till workflow (sell, inventory, customers, sales history) as a native offline-first Windows/macOS app, talking to real POS hardware.
+**apps/desktop** — a focused, single-screen till: sell/checkout, shift open/close, branch and cashier switching, a customer picker for credit sales, held sales, void/refund, find-past-sale + reprint, and ESC/POS receipt printer + cash-drawer control over TCP. No inventory or staff management here by design — those stay on web/mobile.
 
 ## CI/CD
 
