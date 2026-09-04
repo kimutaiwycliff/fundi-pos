@@ -5,7 +5,15 @@ import * as Haptics from 'expo-haptics';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming, ZoomIn } from 'react-native-reanimated';
 import { MAX_PIN_LENGTH } from '../lib/pin';
 
-const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
+// Explicit 3-per-row grid (not width-dependent flex-wrap, which could show
+// 4+ across on a wider phone) - matches the phone-dialer keypad layout
+// users already know.
+const ROWS: string[][] = [
+  ['1', '2', '3'],
+  ['4', '5', '6'],
+  ['7', '8', '9'],
+  ['', '0', 'del'],
+];
 
 // Standard modern mobile PIN entry (dots that pop in one at a time as you
 // type - not a fixed pre-filled grid, since till PINs are 4-6 digits, not
@@ -77,19 +85,23 @@ export function PinPad({
         ))}
       </Animated.View>
 
-      <View className="flex-row flex-wrap justify-center gap-4">
-        {KEYS.map((key, i) =>
-          key === '' ? (
-            <View key={i} className="h-[72px] w-[72px]" />
-          ) : (
-            <PinKey
-              key={i}
-              disabled={disabled}
-              onPress={() => press(key)}
-              content={key === 'del' ? <Ionicons name="backspace-outline" size={26} color={iconColor} /> : <Text className="text-2xl font-semibold text-foreground">{key}</Text>}
-            />
-          ),
-        )}
+      <View className="gap-4">
+        {ROWS.map((row, rowIndex) => (
+          <View key={rowIndex} className="flex-row justify-center gap-4">
+            {row.map((key, i) =>
+              key === '' ? (
+                <View key={i} className="h-[72px] w-[72px]" />
+              ) : (
+                <PinKey
+                  key={i}
+                  disabled={disabled}
+                  onPress={() => press(key)}
+                  content={key === 'del' ? <Ionicons name="backspace-outline" size={26} color={iconColor} /> : <Text className="text-2xl font-semibold text-foreground">{key}</Text>}
+                />
+              ),
+            )}
+          </View>
+        ))}
       </View>
     </View>
   );

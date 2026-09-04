@@ -12,7 +12,8 @@ import { showAlert } from '../components/AppNotice';
 import { usePullToRefresh } from '../lib/usePullToRefresh';
 import { PaymentModal, type LocalOrder } from '../customers/PaymentModal';
 import { VoidRefundModal, type VoidableOrder } from './VoidRefundModal';
-import { buildReceiptHtml, type ReceiptTenantInfo } from './receiptHtml';
+import { buildReceiptHtml, type ReceiptOrderData, type ReceiptTenantInfo } from './receiptHtml';
+import { buildInvoiceHtml } from './invoiceHtml';
 
 interface OrderRow {
   id: string;
@@ -191,26 +192,24 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
   }
 
   // Shared by the on-screen receipt's Print button and the WhatsApp invoice
-  // send - same letterhead/line-items/totals shape either way, just two
-  // different destinations for the resulting PDF (a real printer/Save-as-
-  // PDF dialog vs the OS share sheet).
-  function buildInvoiceHtml(order: OrderRow, lines: OrderLine[], tenant: ReceiptTenantInfo): string {
-    return buildReceiptHtml(
-      {
-        orderId: order.id,
-        createdAtLabel: order.created_at ? new Date(order.created_at).toLocaleString() : '',
-        cashierLabel: order.cashier_name ?? order.cashier_email ?? 'Unknown',
-        customerLabel: order.customer_name ?? order.customer_phone ?? null,
-        terminalLabel: order.terminal_name,
-        lines: lines.map((l) => ({ label: l.product_name, quantity: l.quantity, lineTotal: l.quantity * l.unit_price - l.discount })),
-        taxTotal: order.tax_total,
-        discountTotal: order.discount_total,
-        total: order.total,
-        tenderType: order.tender_type,
-        isUnpaidCredit: order.tender_type === 'credit' && order.payment_status === 'pending',
-      },
-      tenant,
-    );
+  // send - same underlying order data either way, just two different HTML
+  // renderers (receiptHtml.ts's thermal-width template for an actual
+  // printer/Save-as-PDF, invoiceHtml.ts's A4 template for the WhatsApp PDF)
+  // and two different destinations (a print dialog vs the OS share sheet).
+  function buildReceiptData(order: OrderRow, lines: OrderLine[]): ReceiptOrderData {
+    return {
+      orderId: order.id,
+      createdAtLabel: order.created_at ? new Date(order.created_at).toLocaleString() : '',
+      cashierLabel: order.cashier_name ?? order.cashier_email ?? 'Unknown',
+      customerLabel: order.customer_name ?? order.customer_phone ?? null,
+      terminalLabel: order.terminal_name,
+      lines: lines.map((l) => ({ label: l.product_name, quantity: l.quantity, lineTotal: l.quantity * l.unit_price - l.discount })),
+      taxTotal: order.tax_total,
+      discountTotal: order.discount_total,
+      total: order.total,
+      tenderType: order.tender_type,
+      isUnpaidCredit: order.tender_type === 'credit' && order.payment_status === 'pending',
+    };
   }
 
   // A wa.me link can only ever pre-fill plain text, never attach a file -
@@ -226,7 +225,7 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
     setSendingInvoiceId(order.id);
     try {
       const lines = await fetchOrderLines(order.id);
-      const html = buildInvoiceHtml(order, lines, tenantInfo);
+      const html = buildInvoiceHtml(buildReceiptData(order, lines), tenantInfo);
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       const canShare = await Sharing.isAvailableAsync();
       if (!canShare) {
@@ -259,7 +258,7 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
     if (!receiptOrder || !tenantInfo) return;
     setPrinting(true);
     try {
-      const html = buildInvoiceHtml(receiptOrder, receiptLines, tenantInfo);
+      const html = buildReceiptHtml(buildReceiptData(receiptOrder, receiptLines), tenantInfo);
       await Print.printAsync({ html });
     } catch (err) {
       showAlert('Could not print receipt', err instanceof Error ? err.message : String(err));

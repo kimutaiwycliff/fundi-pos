@@ -37,10 +37,21 @@ export async function connectPowerSync(payloadToken: string, storeId: number | n
   // Without this, the caller's very next local query (the store picker's
   // own SELECT, or the first screen a user lands on) races the initial
   // sync and can see an empty database - fine and unnoticeable against a
-  // fast local dev PowerSync, but very visible over a real network. A hard
-  // cap avoids hanging forever if the connection drops mid-sync; the app
-  // proceeds either way, same as before this fix for a fully offline resume.
-  await Promise.race([db.waitForFirstSync(), new Promise((resolve) => setTimeout(resolve, 30000))]);
+  // fast local dev PowerSync, but very visible over a real network.
+  //
+  // priority: 1 (not an unqualified full-sync wait) - confirmed live this
+  // was the actual cause of a slow login: every stream synced at equal
+  // priority meant login blocked on orders/orders_line_items/
+  // stock_movements too, unbounded historical tables with nothing to do
+  // with whether Sell/Overview are usable yet. sync-config.yaml now marks
+  // those priority 2; this only waits for the priority-1 catalog/staff/
+  // store data, and priority-2 data keeps syncing in the background,
+  // surfacing via each screen's own refresh (pull-to-refresh, Overview's
+  // on-focus refresh) as it lands. A hard cap avoids hanging forever if the
+  // connection drops mid-sync - shortened from 30s to 15s since the
+  // required dataset is now much smaller; the app proceeds either way,
+  // same as before this fix for a fully offline resume.
+  await Promise.race([db.waitForFirstSync({ priority: 1 }), new Promise((resolve) => setTimeout(resolve, 15000))]);
 }
 
 /** Updates the Payload token the connector uses to mint PowerSync JWTs, without tearing down the sync connection. */

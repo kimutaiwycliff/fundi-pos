@@ -8,6 +8,16 @@
 #
 # Restart the powersync service after editing this file - changes are not
 # hot-reloaded.
+#
+# priority: 1 vs 2 - lower number syncs first. apps/mobile/src/db/database.ts's
+# connectPowerSync() only blocks login on priority-1 streams
+# (waitForFirstSync({ priority: 1 })); priority-2 streams keep syncing in the
+# background after the till is already usable. Priority 1 is everything Sell/
+# Overview need to function (catalog, staff, stores); priority 2 is the
+# unbounded, ever-growing historical/ledger data (orders, line items, stock
+# movements) that a till doesn't need synced before a cashier can start
+# selling - confirmed live this was the actual cause of a slow login, not a
+# guess (a till with real order history was blocking on all of it every time).
 config:
   edition: 3
 
@@ -19,6 +29,7 @@ streams:
   # operator's own billing internals, not something every till needs.
   tenants:
     auto_subscribe: true
+    priority: 1
     query: |
       SELECT id, name, receipt_header, receipt_footer, created_at, updated_at
       FROM tenants WHERE id = auth.parameter('tenant_id')
@@ -27,6 +38,7 @@ streams:
   # only (spec Section 6.3: "centralized product catalog").
   products:
     auto_subscribe: true
+    priority: 1
     query: SELECT * FROM products WHERE tenant_id = auth.parameter('tenant_id')
 
   # Product/variant photos - just enough to render one (id + the S3
@@ -35,6 +47,7 @@ streams:
   # mimeType/dimensions/etc a till has no use for).
   media:
     auto_subscribe: true
+    priority: 1
     query: SELECT id, url, tenant_id FROM media WHERE tenant_id = auth.parameter('tenant_id')
 
   # Variant sub-rows of products (Payload normalizes the Products.variants
@@ -53,28 +66,33 @@ streams:
   # so this stream can filter directly instead.
   products_variants:
     auto_subscribe: true
+    priority: 1
     query: SELECT * FROM products_variants WHERE tenant_id = auth.parameter('tenant_id')
 
   store_product_overrides:
     auto_subscribe: true
+    priority: 1
     query: |
       SELECT * FROM store_product_overrides
       WHERE tenant_id = auth.parameter('tenant_id') AND store_id = auth.parameter('store_id')
 
   customers:
     auto_subscribe: true
+    priority: 1
     query: SELECT * FROM customers WHERE tenant_id = auth.parameter('tenant_id')
 
   # Transactional / ledger data: a till only ever syncs its own store's rows
   # (spec Section 5: "Sync direction... a till only syncs its store's data").
   stock_movements:
     auto_subscribe: true
+    priority: 2
     query: |
       SELECT * FROM stock_movements
       WHERE tenant_id = auth.parameter('tenant_id') AND store_id = auth.parameter('store_id')
 
   orders:
     auto_subscribe: true
+    priority: 2
     query: |
       SELECT * FROM orders
       WHERE tenant_id = auth.parameter('tenant_id') AND store_id = auth.parameter('store_id')
@@ -92,6 +110,7 @@ streams:
   # specifically so this stream can filter directly instead.
   orders_line_items:
     auto_subscribe: true
+    priority: 2
     query: |
       SELECT * FROM orders_line_items
       WHERE tenant_id = auth.parameter('tenant_id') AND store_id = auth.parameter('store_id')
@@ -101,6 +120,7 @@ streams:
   # between stores.
   stores:
     auto_subscribe: true
+    priority: 1
     query: SELECT * FROM stores WHERE tenant_id = auth.parameter('tenant_id')
 
   # Explicit column list, not `SELECT *`: Payload's `users` table also holds
@@ -111,6 +131,7 @@ streams:
   # alone. A till only ever needs these columns for cashier lookup/PIN login.
   users:
     auto_subscribe: true
+    priority: 1
     query: |
       SELECT id, tenant_id, store_id, role, pin_hash, email, phone, name, status, created_at, updated_at
       FROM users WHERE tenant_id = auth.parameter('tenant_id')

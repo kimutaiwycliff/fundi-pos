@@ -11,6 +11,7 @@ import type { PayloadUser } from '../lib/auth';
 import { SellScreen as RealSellScreen } from '../sell/SellScreen';
 import { CustomersScreen as RealCustomersScreen } from '../customers/CustomersScreen';
 import { InventoryScreen as RealInventoryScreen } from '../inventory/InventoryScreen';
+import { ProductsScreen } from '../inventory/ProductsScreen';
 import { SalesScreen as RealSalesScreen } from '../sales/SalesScreen';
 import { StaffScreen } from '../admin/StaffScreen';
 import { StoresScreen } from '../admin/StoresScreen';
@@ -19,7 +20,7 @@ import { AuditLogScreen } from '../admin/AuditLogScreen';
 import { ReportsScreen } from '../admin/ReportsScreen';
 import { OverviewScreen } from '../overview/OverviewScreen';
 
-type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers' | 'security' | 'reports';
+type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers' | 'security' | 'reports' | 'inventory';
 
 // Back-office admin (Phase 5) is intentionally tucked under More, not its
 // own tabs - this is deliberately last per the plan: none of it happens on
@@ -30,12 +31,14 @@ type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers' | 's
 function MoreScreen({
   user,
   payloadToken,
+  terminalId,
   terminalName,
   storeId,
   onSignOut,
 }: {
   user: PayloadUser;
   payloadToken: string;
+  terminalId: string;
   terminalName: string;
   storeId: number | null;
   onSignOut: () => void;
@@ -83,6 +86,9 @@ function MoreScreen({
         <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('reports')}>
           <Text className="text-foreground">Reports</Text>
         </Pressable>
+        <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('inventory')}>
+          <Text className="text-foreground">Inventory</Text>
+        </Pressable>
         <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('security')}>
           <Text className="text-foreground">Security</Text>
         </Pressable>
@@ -129,6 +135,7 @@ function MoreScreen({
           {section === 'audit' ? <AuditLogScreen payloadToken={payloadToken} /> : null}
           {section === 'customers' ? <RealCustomersScreen user={user} payloadToken={payloadToken} storeId={storeId} /> : null}
           {section === 'reports' ? <ReportsScreen user={user} payloadToken={payloadToken} /> : null}
+          {section === 'inventory' ? <RealInventoryScreen user={user} terminalId={terminalId} storeId={storeId} /> : null}
           {section === 'security' ? (
             <View className="flex-1 px-6 pt-4">
               {biometricAvailable ? (
@@ -184,8 +191,8 @@ const Tab = createBottomTabNavigator();
 const TAB_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   Overview: 'stats-chart-outline',
   Sell: 'cart-outline',
-  Inventory: 'cube-outline',
   Sales: 'receipt-outline',
+  Products: 'pricetag-outline',
   More: 'ellipsis-horizontal-circle-outline',
 };
 
@@ -210,15 +217,18 @@ export function RootTabs({
         headerShown: false,
         tabBarActiveTintColor: '#df5102',
         tabBarIcon: ({ color, size }) => <Ionicons name={TAB_ICONS[route.name]} size={size} color={color} />,
+        tabBarStyle: { paddingTop: 8, paddingBottom: 8, height: 64 },
       })}
     >
       <Tab.Screen name="Overview">{() => <OverviewScreen user={user} storeId={storeId} />}</Tab.Screen>
       <Tab.Screen name="Sell">
         {() => <RealSellScreen user={user} payloadToken={payloadToken} terminalId={terminalId} terminalName={terminalName} storeId={storeId} />}
       </Tab.Screen>
-      <Tab.Screen name="Inventory">{() => <RealInventoryScreen user={user} terminalId={terminalId} storeId={storeId} />}</Tab.Screen>
       <Tab.Screen name="Sales">{() => <RealSalesScreen user={user} payloadToken={payloadToken} storeId={storeId} />}</Tab.Screen>
-      <Tab.Screen name="More">{() => <MoreScreen user={user} payloadToken={payloadToken} terminalName={terminalName} storeId={storeId} onSignOut={onSignOut} />}</Tab.Screen>
+      <Tab.Screen name="Products">{() => <ProductsScreen user={user} payloadToken={payloadToken} storeId={storeId} />}</Tab.Screen>
+      <Tab.Screen name="More">
+        {() => <MoreScreen user={user} payloadToken={payloadToken} terminalId={terminalId} terminalName={terminalName} storeId={storeId} onSignOut={onSignOut} />}
+      </Tab.Screen>
     </Tab.Navigator>
   );
 }

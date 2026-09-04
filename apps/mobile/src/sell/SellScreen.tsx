@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
+import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Image } from 'react-native';
@@ -50,6 +51,44 @@ function lineStock(line: Pick<CartLine, 'product' | 'variant'>): number {
   return line.variant ? line.variant.stock_on_hand : line.product.stock_on_hand;
 }
 
+// Tap the quantity number to type an exact amount, rather than tapping +/−
+// one unit at a time - a real gap for a hardware/electrical shop selling
+// 20-50 units of a small item. Needs its own local draft state (a plain
+// FlatList renderItem callback can't hold hooks), synced back to the real
+// quantity whenever it changes from elsewhere (the +/− steppers), and only
+// committed on blur/submit - never on every keystroke, since a briefly-
+// cleared field would otherwise call onChange(0), which updateQuantity
+// treats as "remove this line".
+function QuantityField({ quantity, onChange }: { quantity: number; onChange: (next: number) => void }) {
+  const [draft, setDraft] = useState(String(quantity));
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDraft(String(quantity));
+  }, [quantity]);
+
+  function commit() {
+    const next = Number(draft);
+    if (Number.isFinite(next) && next > 0 && next !== quantity) {
+      onChange(next);
+    } else {
+      setDraft(String(quantity));
+    }
+  }
+
+  return (
+    <TextInput
+      className="w-12 text-center text-foreground"
+      keyboardType="number-pad"
+      value={draft}
+      onChangeText={setDraft}
+      onEndEditing={commit}
+      onSubmitEditing={commit}
+      selectTextOnFocus
+    />
+  );
+}
+
 export function SellScreen({
   user,
   payloadToken,
@@ -69,6 +108,7 @@ export function SellScreen({
   const [query, setQuery] = useState('');
   const [catalog, setCatalog] = useState<LocalProduct[]>([]);
   const [recentProductIds, setRecentProductIds] = useState<number[]>([]);
+  const [frequentlyBoughtIds, setFrequentlyBoughtIds] = useState<number[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [tenderType, setTenderType] = useState<TenderType>('cash');
   const [selectedCustomer, setSelectedCustomer] = useState<LocalCustomer | null>(null);
@@ -167,6 +207,45 @@ export function SellScreen({
     };
   }, [storeId]);
 
+  // "Frequently bought with" - cross-sell suggestions computed from this
+  // store's own order history: which other products have shown up in the
+  // SAME order as anything currently in the cart, most-co-occurring first.
+  // Recomputed whenever the cart's set of distinct products changes (a
+  // quantity-only change doesn't need a requery, hence the joined-id-string
+  // dependency instead of depending on `cart` itself). Empty cart just
+  // falls back to the existing "recently sold" idle grid below.
+  const cartProductIds = useMemo(() => [...new Set(cart.map((l) => l.product.id))].sort((a, b) => a - b), [cart]);
+  const cartProductIdsKey = cartProductIds.join(',');
+
+  useEffect(() => {
+    if (storeId == null || cartProductIds.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFrequentlyBoughtIds([]);
+      return;
+    }
+    let active = true;
+    const placeholders = cartProductIds.map(() => '?').join(',');
+    getDb()
+      .getAll<{ product_id: number }>(
+        `SELECT oli2.product_id, COUNT(DISTINCT oli2._parent_id) AS co_count
+         FROM orders_line_items oli1
+         JOIN orders_line_items oli2 ON oli2._parent_id = oli1._parent_id AND oli2.product_id NOT IN (${placeholders})
+         JOIN orders o ON o.id = oli1._parent_id
+         WHERE oli1.product_id IN (${placeholders}) AND o.store_id = ?
+         GROUP BY oli2.product_id
+         ORDER BY co_count DESC
+         LIMIT 12`,
+        [...cartProductIds, ...cartProductIds, storeId],
+      )
+      .then((rows) => {
+        if (active) setFrequentlyBoughtIds(rows.map((r) => r.product_id));
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartProductIdsKey, storeId]);
+
   // Barcode scanners are plain HID keyboard input, same as desktop/web -
   // typing into a focused search box already handles a scan with no
   // special-case code. A scanned barcode is exact digits typed fast with no
@@ -190,10 +269,20 @@ export function SellScreen({
     return recentProductIds.map((id) => byId.get(id)).filter((p): p is LocalProduct => p != null);
   }, [catalog, recentProductIds]);
 
+  const frequentlyBoughtProducts = useMemo(() => {
+    const byId = new Map(catalog.map((p) => [Number(p.id), p]));
+    return frequentlyBoughtIds.map((id) => byId.get(id)).filter((p): p is LocalProduct => p != null);
+  }, [catalog, frequentlyBoughtIds]);
+
   // Idle state shows only recently sold products (search still covers the
   // full catalog) - deliberately empty rather than falling back to the
   // full catalog for a store with no sales history yet, per instruction.
-  const displayedProducts = query.trim() ? results : recentProducts;
+  // Once something's in the cart, cross-sell suggestions take priority
+  // over plain recency - "what goes with this" is more useful mid-sale
+  // than "what sold recently", and falls back to recents when there's no
+  // co-occurrence history yet for what's in the cart.
+  const displayedProducts = query.trim() ? results : frequentlyBoughtProducts.length > 0 ? frequentlyBoughtProducts : recentProducts;
+  const showingFrequentlyBought = !query.trim() && frequentlyBoughtProducts.length > 0;
 
   const lineInputs: LineInput[] = useMemo(
     () =>
@@ -230,6 +319,11 @@ export function SellScreen({
         ? prev.map((l) => (lineKey(l) === key ? { ...l, quantity: l.quantity + 1 } : l))
         : [...prev, { product, variant, quantity: 1, discountAmount: 0 }],
     );
+    // A quick confirmation pulse per successful add - lets a cashier scan a
+    // whole basket of items without having to visually check the screen
+    // after each one, same reasoning as every other tactile confirmation
+    // already in this app (PinPad, staff toggles).
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
     setQuery('');
     setVariantPickerProduct(null);
   }
@@ -412,7 +506,11 @@ export function SellScreen({
             numColumns={2}
             columnWrapperClassName="gap-2"
             ListHeaderComponent={
-              !trimmedQuery ? <Text className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Recently sold</Text> : null
+              !trimmedQuery ? (
+                <Text className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {showingFrequentlyBought ? 'Frequently bought together' : 'Recently sold'}
+                </Text>
+              ) : null
             }
             renderItem={({ item }) => {
               const outOfStock = item.variant_count === 0 && item.stock_on_hand <= 0;
@@ -523,7 +621,7 @@ export function SellScreen({
                           <Pressable android_ripple={{}} className="h-8 w-8 items-center justify-center rounded-md border border-border" onPress={() => updateQuantity(item, item.quantity - 1)}>
                             <Text className="text-foreground">−</Text>
                           </Pressable>
-                          <Text className="w-6 text-center text-foreground">{item.quantity}</Text>
+                          <QuantityField quantity={item.quantity} onChange={(next) => updateQuantity(item, next)} />
                           <Pressable android_ripple={{}} className="h-8 w-8 items-center justify-center rounded-md border border-border" onPress={() => updateQuantity(item, item.quantity + 1)}>
                             <Text className="text-foreground">+</Text>
                           </Pressable>
