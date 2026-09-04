@@ -167,16 +167,37 @@ function AppInner() {
   async function handleResume(pinOverride?: string) {
     if (!resumeCandidate) return;
     setResumeError(null);
+    const candidate = resumeCandidate;
     try {
       setState('logging-in');
-      const result = await checkPinLocallyById(resumeCandidate.user.id, pinOverride ?? resumePin);
+      // Start the PowerSync connect immediately, in parallel with the
+      // local PIN check, instead of waiting for it to finish first -
+      // candidate.payloadToken is already a valid, previously-issued
+      // credential sitting in SecureStore regardless of the PIN outcome
+      // (the PIN here is a local convenience gate on an already-
+      // authenticated device, not what produces the token), so there's no
+      // security reason to serialize two independent slow steps. checkPin-
+      // LocallyById's scrypt verification is a genuinely heavy pure-JS
+      // computation (see pin.ts's own note) - this was the dominant real
+      // cost of resuming a session, confirmed by testing sync speed alone
+      // wasn't enough. Torn back down below if the PIN turns out wrong.
+      const connectPromise = connectPowerSync(candidate.payloadToken, candidate.storeId);
+      setState('connecting');
+      const result = await checkPinLocallyById(candidate.user.id, pinOverride ?? resumePin);
       if (!result || !result.valid) {
+        await connectPromise.catch(() => undefined);
+        await disconnectPowerSync().catch(() => undefined);
         setResumeError('Incorrect PIN');
         setState('idle');
         return;
       }
-      await finishResume(resumeCandidate);
+      await connectPromise;
+      payloadTokenRef.current = candidate.payloadToken;
+      setUser(candidate.user);
+      setActiveStoreId(candidate.storeId);
+      setState('connected');
     } catch (err) {
+      await disconnectPowerSync().catch(() => undefined);
       setResumeError(err instanceof Error ? err.message : String(err));
       setState('idle');
     }

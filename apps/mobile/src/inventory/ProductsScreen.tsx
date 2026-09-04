@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
+import * as ImagePicker from 'expo-image-picker';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { View, Text, TextInput, Pressable, FlatList, Image, Modal, Switch, ScrollView, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,16 +30,38 @@ interface LocalProductRow {
   tax_rate: number;
   reorder_point: number;
   is_active: number;
+  image_id: number | null;
   image_url: string | null;
   variant_count: number;
+}
+
+// A working copy of a variant row, editable in place before an explicit
+// "Save variants" commit - mirrors web's product-dialog.tsx's own
+// WorkingVariant shape (a local draft carrying an ephemeral display-only
+// imageUrl alongside the real image id, stripped back out before send).
+// `isNew` rows have no `id` yet (Payload assigns one on save, same as an
+// empty label on the web form) and are dropped if left blank, matching
+// web's own "filter to rows with a label" rule.
+interface WorkingVariant {
+  id: string | null;
+  label: string;
+  sku: string;
+  barcode: string;
+  sellPrice: string;
+  costPrice: string;
+  imageId: number | null;
+  imageUrl: string | null;
 }
 
 interface LocalVariantRow {
   id: string;
   label: string;
   sku: string | null;
+  barcode: string | null;
   sell_price: number | null;
   cost_price: number | null;
+  image_id: number | null;
+  image_url: string | null;
 }
 
 interface VariantStock {
@@ -49,14 +72,13 @@ interface VariantStock {
 // The mobile catalog browser - takes over the bottom tab's "Inventory" slot
 // (stock-level auditing moves into More; see RootTabs.tsx) since checking
 // what you sell and at what price is a more frequent need than stock
-// auditing. Deliberately NOT a full port of the web dashboard's Products
-// page (product-dialog.tsx alone is ~700 lines: variants, related
-// products, per-store/per-variant stock adjustment) - this is a searchable
-// catalog + detail view, with inline editing only for the two fields a
-// manager changes often on the floor (sell price, active status). Variant
-// editing/related products/multi-store stock stay web-only, same boundary
-// this app already draws elsewhere (StockAdjustmentModal does simple
-// single-line adjustments; full stock transfers are web-only too).
+// auditing. Now at full editing parity with web's product-dialog.tsx for
+// an *existing* product - image, variants (add/edit/remove, each with
+// their own optional image/price override), and related-product linking -
+// the one thing still web-only is creating a brand-new product from
+// scratch (new products arrive via web or the bulk Excel import; nothing
+// in this screen builds one from blank). Per-store stock stays a simple
+// read + StockAdjustmentModal-style single adjustment, not a full editor.
 export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadUser; payloadToken: string; storeId: number | null }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
   const placeholderColor = useMutedPlaceholderColor();
@@ -64,15 +86,30 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   const [query, setQuery] = useState('');
   const [products, setProducts] = useState<LocalProductRow[]>([]);
   const [selected, setSelected] = useState<LocalProductRow | null>(null);
-  const [variants, setVariants] = useState<LocalVariantRow[]>([]);
   const [stock, setStock] = useState<VariantStock[]>([]);
   const [priceDraft, setPriceDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploadingProductImage, setUploadingProductImage] = useState(false);
+
+  // Editable variant drafts - loaded from local SQLite (offline-friendly,
+  // matches every other read in this app), edited freely, only written
+  // back on an explicit "Save variants" (Payload replaces the whole array
+  // field on every save, same as web's dialog - no partial-row PATCH).
+  const [workingVariants, setWorkingVariants] = useState<WorkingVariant[]>([]);
+  const [savingVariants, setSavingVariants] = useState(false);
+
+  // relatedProducts is a Payload relationship field with no local
+  // PowerSync stream (see sync-config.yaml - relationship join tables
+  // aren't synced), so unlike everything else in this screen it has to be
+  // read via REST when a product is opened, not from local SQLite.
+  const [relatedIds, setRelatedIds] = useState<number[]>([]);
+  const [relatedQuery, setRelatedQuery] = useState('');
+  const [savingRelatedId, setSavingRelatedId] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     getDb()
       .getAll<LocalProductRow>(
-        `SELECT p.id, p.name, p.sku, p.barcode, p.category, p.cost_price, p.sell_price, p.tax_rate, p.reorder_point, p.is_active, m.url AS image_url,
+        `SELECT p.id, p.name, p.sku, p.barcode, p.category, p.cost_price, p.sell_price, p.tax_rate, p.reorder_point, p.is_active, p.image_id, m.url AS image_url,
                 (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
          FROM products p
          LEFT JOIN media m ON m.id = p.image_id
@@ -99,16 +136,32 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   function openProduct(product: LocalProductRow) {
     setSelected(product);
     setPriceDraft(String(product.sell_price));
+    setRelatedQuery('');
     // _parent_id/product_id are plain replicated INTEGER foreign-key
     // columns (not primary keys), unlike product.id itself (always TEXT
     // locally) - converted here so the comparison actually matches.
     const numericProductId = Number(product.id);
     getDb()
       .getAll<LocalVariantRow>(
-        'SELECT id, label, sku, sell_price, cost_price FROM products_variants WHERE _parent_id = ? ORDER BY _order',
+        `SELECT pv.id, pv.label, pv.sku, pv.barcode, pv.sell_price, pv.cost_price, pv.image_id, vm.url AS image_url
+         FROM products_variants pv LEFT JOIN media vm ON vm.id = pv.image_id
+         WHERE pv._parent_id = ? ORDER BY pv._order`,
         [numericProductId],
       )
-      .then(setVariants);
+      .then((rows) =>
+        setWorkingVariants(
+          rows.map((v) => ({
+            id: v.id,
+            label: v.label,
+            sku: v.sku ?? '',
+            barcode: v.barcode ?? '',
+            sellPrice: v.sell_price != null ? String(v.sell_price) : '',
+            costPrice: v.cost_price != null ? String(v.cost_price) : '',
+            imageId: v.image_id,
+            imageUrl: v.image_url,
+          })),
+        ),
+      );
     if (storeId != null) {
       getDb()
         .getAll<VariantStock>(
@@ -122,12 +175,19 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
     } else {
       setStock([]);
     }
+    // relatedProducts isn't synced locally (see the field's own comment
+    // above) - fetched fresh from Payload every time the modal opens.
+    fetch(`${API_BASE_URL}/api/products/${product.id}?depth=0`, { headers: { Authorization: `JWT ${payloadToken}` } })
+      .then((r) => r.json())
+      .then((body) => setRelatedIds(Array.isArray(body?.relatedProducts) ? body.relatedProducts.map(Number) : []))
+      .catch(() => setRelatedIds([]));
   }
 
   function closeModal() {
     setSelected(null);
-    setVariants([]);
+    setWorkingVariants([]);
     setStock([]);
+    setRelatedIds([]);
   }
 
   // Writes go straight to Payload over REST, same online-only pattern
@@ -178,6 +238,157 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
     setProducts((prev) => prev.map((p) => (p.id === selected.id ? { ...p, is_active: next ? 1 : 0 } : p)));
     setSelected((prev) => (prev ? { ...prev, is_active: next ? 1 : 0 } : prev));
   }
+
+  // Shared by the product's own image and each variant's - picks from the
+  // gallery, uploads straight to Payload's built-in /api/media (same
+  // dedicated upload route web's own ImageField posts to), and returns
+  // the new media doc's id/url for the caller to store. RN's fetch/
+  // FormData accept a {uri, name, type} object as the file part - there is
+  // no File/Blob to construct from a picked asset the way a browser has.
+  async function pickImage(): Promise<{ id: number; url: string } | null> {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showAlert('Permission needed', 'Allow photo access to set a product image.');
+      return null;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+    if (result.canceled || !result.assets?.length) return null;
+    const asset = result.assets[0];
+    const formData = new FormData();
+    // React Native's FormData accepts this object shape in place of a
+    // web File/Blob - confirmed against expo-image-picker's own
+    // documented upload pattern.
+    formData.append('file', {
+      uri: asset.uri,
+      name: asset.fileName ?? 'photo.jpg',
+      type: asset.mimeType ?? 'image/jpeg',
+    } as unknown as Blob);
+    const res = await fetch(`${API_BASE_URL}/api/media`, {
+      method: 'POST',
+      headers: { Authorization: `JWT ${payloadToken}` },
+      body: formData,
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      showAlert('Upload failed', body?.errors?.[0]?.message ?? 'Could not upload image');
+      return null;
+    }
+    return { id: body.doc.id, url: body.doc.url };
+  }
+
+  // The product's own image is a single top-level field, so - like price/
+  // active-status above - it saves immediately rather than needing an
+  // explicit commit step.
+  async function handleProductImage() {
+    if (!selected) return;
+    setUploadingProductImage(true);
+    try {
+      const uploaded = await pickImage();
+      if (!uploaded) return;
+      const res = await fetch(`${API_BASE_URL}/api/products/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+        body: JSON.stringify({ image: uploaded.id }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        showAlert('Failed to save', body?.errors?.[0]?.message ?? 'Could not update image');
+        return;
+      }
+      setProducts((prev) => prev.map((p) => (p.id === selected.id ? { ...p, image_id: uploaded.id, image_url: uploaded.url } : p)));
+      setSelected((prev) => (prev ? { ...prev, image_id: uploaded.id, image_url: uploaded.url } : prev));
+    } finally {
+      setUploadingProductImage(false);
+    }
+  }
+
+  // Variants are edited as a local draft and only sent on an explicit
+  // save - Payload replaces the *whole* array field each time (no partial-
+  // row PATCH), so batching every field/row edit into one commit avoids a
+  // flood of intermediate network calls the way an instant-save-per-
+  // keystroke would.
+  function updateVariantField(index: number, field: 'label' | 'sku' | 'barcode' | 'sellPrice' | 'costPrice', value: string) {
+    setWorkingVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)));
+  }
+
+  async function pickVariantImage(index: number) {
+    const uploaded = await pickImage();
+    if (!uploaded) return;
+    setWorkingVariants((prev) => prev.map((v, i) => (i === index ? { ...v, imageId: uploaded.id, imageUrl: uploaded.url } : v)));
+  }
+
+  function addVariant() {
+    setWorkingVariants((prev) => [...prev, { id: null, label: '', sku: '', barcode: '', sellPrice: '', costPrice: '', imageId: null, imageUrl: null }]);
+  }
+
+  function removeVariant(index: number) {
+    setWorkingVariants((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function saveVariants() {
+    if (!selected) return;
+    setSavingVariants(true);
+    try {
+      const payloadVariants = workingVariants
+        .filter((v) => v.label.trim())
+        .map((v) => ({
+          ...(v.id ? { id: v.id } : {}),
+          label: v.label.trim(),
+          sku: v.sku || undefined,
+          barcode: v.barcode || undefined,
+          sellPrice: v.sellPrice === '' ? undefined : Number(v.sellPrice),
+          costPrice: v.costPrice === '' ? undefined : Number(v.costPrice),
+          image: v.imageId,
+        }));
+      const res = await fetch(`${API_BASE_URL}/api/products/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+        body: JSON.stringify({ variants: payloadVariants }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        showAlert('Failed to save', body?.errors?.[0]?.message ?? 'Could not update variants');
+        return;
+      }
+      setProducts((prev) => prev.map((p) => (p.id === selected.id ? { ...p, variant_count: payloadVariants.length } : p)));
+      showToast('Variants updated');
+    } finally {
+      setSavingVariants(false);
+    }
+  }
+
+  // Related products toggle immediately (no draft/commit step) - adding or
+  // removing one entry from a flat id list is a single, low-risk action,
+  // same "tap to toggle membership" pattern as a tag picker.
+  async function toggleRelated(productId: number) {
+    if (!selected) return;
+    const next = relatedIds.includes(productId) ? relatedIds.filter((id) => id !== productId) : [...relatedIds, productId];
+    setSavingRelatedId(String(productId));
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+        body: JSON.stringify({ relatedProducts: next }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        showAlert('Failed to save', body?.errors?.[0]?.message ?? 'Could not update related products');
+        return;
+      }
+      setRelatedIds(next);
+    } finally {
+      setSavingRelatedId(null);
+    }
+  }
+
+  const relatedResults = useMemo(() => {
+    if (!selected) return [];
+    const trimmed = relatedQuery.trim();
+    const pool = products.filter((p) => p.id !== selected.id);
+    if (!trimmed) return pool.filter((p) => relatedIds.includes(Number(p.id)));
+    const fuse = new Fuse(pool, { threshold: 0.4, ignoreLocation: true, keys: ['name', 'sku'] });
+    return fuse.search(trimmed).map((r) => r.item);
+  }, [relatedQuery, products, selected, relatedIds]);
 
   const priceDirty = selected != null && Number(priceDraft) !== selected.sell_price;
   const bareStock = stock.find((s) => s.variant_id == null)?.quantity ?? 0;
@@ -247,6 +458,27 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
           </View>
           {selected ? (
             <ScrollView contentContainerClassName="gap-4 p-4">
+              <View className="flex-row items-center gap-3 rounded-lg border border-border bg-card p-3">
+                {selected.image_url ? (
+                  <Image source={{ uri: selected.image_url }} className="h-14 w-14 rounded-md bg-muted" resizeMode="cover" />
+                ) : (
+                  <View className="h-14 w-14 items-center justify-center rounded-md border border-dashed border-border">
+                    <Ionicons name="image-outline" size={20} color="#71717a" />
+                  </View>
+                )}
+                <View className="flex-1 gap-1">
+                  <Text className="text-xs text-muted-foreground">Product image</Text>
+                  <Pressable
+                    android_ripple={{ color: '#ffffff40' }}
+                    disabled={uploadingProductImage}
+                    onPress={handleProductImage}
+                    className={`self-start rounded-md border border-border px-3 py-1.5 ${uploadingProductImage ? 'opacity-50' : 'active:opacity-70'}`}
+                  >
+                    <Text className="text-sm text-foreground">{uploadingProductImage ? 'Uploading...' : selected.image_url ? 'Replace' : 'Upload'}</Text>
+                  </Pressable>
+                </View>
+              </View>
+
               <View className="flex-row items-center justify-between rounded-lg border border-border bg-card p-3">
                 <View className="shrink pr-3">
                   <Text className="text-foreground">Active</Text>
@@ -284,7 +516,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                   <Text className="text-xs text-muted-foreground">Tax rate</Text>
                   <Text className="text-lg font-semibold text-foreground">{(selected.tax_rate * 100).toFixed(0)}%</Text>
                 </View>
-                {storeId != null && variants.length === 0 ? (
+                {storeId != null && workingVariants.length === 0 ? (
                   <View className="min-w-[45%] flex-1 gap-1 rounded-lg border border-border bg-card p-3">
                     <Text className="text-xs text-muted-foreground">Stock (this store)</Text>
                     <Text className="text-lg font-semibold text-foreground">{bareStock}</Text>
@@ -298,24 +530,124 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                 ) : null}
               </View>
 
-              {variants.length > 0 ? (
-                <View className="gap-1 rounded-lg border border-border bg-card p-3">
-                  <Text className="mb-1 text-sm font-medium text-foreground">Variants</Text>
-                  {variants.map((v) => {
-                    const vStock = stock.find((s) => s.variant_id === v.id)?.quantity;
+              <View className="gap-2 rounded-lg border border-border bg-card p-3">
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-sm font-medium text-foreground">Variants</Text>
+                  <Pressable android_ripple={{}} onPress={addVariant}>
+                    <Text className="text-sm font-medium text-primary">+ Add</Text>
+                  </Pressable>
+                </View>
+                {workingVariants.length === 0 ? (
+                  <Text className="text-xs text-muted-foreground">No variants - this product is sold as-is.</Text>
+                ) : (
+                  workingVariants.map((v, index) => {
+                    const vStock = v.id ? stock.find((s) => s.variant_id === v.id)?.quantity : undefined;
                     return (
-                      <View key={v.id} className="flex-row items-center justify-between border-b border-border/50 py-2">
-                        <Text className="text-sm text-foreground">{v.label}</Text>
-                        <View className="flex-row items-center gap-3">
-                          <Text className="text-sm text-muted-foreground">{(v.sell_price ?? selected.sell_price).toFixed(2)}</Text>
-                          {storeId != null ? <Text className="text-sm font-medium text-foreground">{vStock ?? 0} in stock</Text> : null}
+                      <View key={v.id ?? `new-${index}`} className="gap-2 border-b border-border/50 pb-3 pt-1">
+                        <View className="flex-row items-center gap-2">
+                          <Pressable onPress={() => pickVariantImage(index)}>
+                            {v.imageUrl ? (
+                              <Image source={{ uri: v.imageUrl }} className="h-10 w-10 rounded-md bg-muted" resizeMode="cover" />
+                            ) : (
+                              <View className="h-10 w-10 items-center justify-center rounded-md border border-dashed border-border">
+                                <Ionicons name="image-outline" size={14} color="#71717a" />
+                              </View>
+                            )}
+                          </Pressable>
+                          <TextInput
+                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                            placeholder="Label (e.g. Red / L)"
+                            placeholderTextColor={placeholderColor}
+                            value={v.label}
+                            onChangeText={(t) => updateVariantField(index, 'label', t)}
+                          />
+                          <Pressable android_ripple={{}} onPress={() => removeVariant(index)}>
+                            <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                          </Pressable>
                         </View>
+                        <View className="flex-row gap-2">
+                          <TextInput
+                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                            placeholder="SKU"
+                            placeholderTextColor={placeholderColor}
+                            value={v.sku}
+                            onChangeText={(t) => updateVariantField(index, 'sku', t)}
+                          />
+                          <TextInput
+                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                            placeholder="Barcode"
+                            placeholderTextColor={placeholderColor}
+                            value={v.barcode}
+                            onChangeText={(t) => updateVariantField(index, 'barcode', t)}
+                          />
+                        </View>
+                        <View className="flex-row gap-2">
+                          <TextInput
+                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                            placeholder="Sell price (blank = inherit)"
+                            placeholderTextColor={placeholderColor}
+                            keyboardType="decimal-pad"
+                            value={v.sellPrice}
+                            onChangeText={(t) => updateVariantField(index, 'sellPrice', t)}
+                          />
+                          <TextInput
+                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                            placeholder="Cost price (blank = inherit)"
+                            placeholderTextColor={placeholderColor}
+                            keyboardType="decimal-pad"
+                            value={v.costPrice}
+                            onChangeText={(t) => updateVariantField(index, 'costPrice', t)}
+                          />
+                        </View>
+                        {storeId != null && vStock != null ? <Text className="text-xs text-muted-foreground">{vStock} in stock</Text> : null}
                       </View>
                     );
-                  })}
-                  <Text className="mt-1 text-xs text-muted-foreground">Edit variant details on the web dashboard.</Text>
-                </View>
-              ) : null}
+                  })
+                )}
+                <Pressable
+                  android_ripple={{ color: '#ffffff40' }}
+                  disabled={savingVariants}
+                  onPress={saveVariants}
+                  className={`mt-1 items-center rounded-md bg-primary py-2 ${savingVariants ? 'opacity-50' : 'active:opacity-80'}`}
+                >
+                  <Text className="font-medium text-primary-foreground">{savingVariants ? 'Saving...' : 'Save variants'}</Text>
+                </Pressable>
+              </View>
+
+              <View className="gap-2 rounded-lg border border-border bg-card p-3">
+                <Text className="text-sm font-medium text-foreground">Related products</Text>
+                <Text className="text-xs text-muted-foreground">Suggested as add-ons on the Sell screen.</Text>
+                <TextInput
+                  className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                  placeholder="Search to add..."
+                  placeholderTextColor={placeholderColor}
+                  value={relatedQuery}
+                  onChangeText={setRelatedQuery}
+                />
+                {relatedResults.length === 0 ? (
+                  <Text className="py-2 text-center text-xs text-muted-foreground">
+                    {relatedQuery.trim() ? 'No matches' : 'No related products linked yet'}
+                  </Text>
+                ) : (
+                  relatedResults.map((p) => {
+                    const linked = relatedIds.includes(Number(p.id));
+                    return (
+                      <Pressable
+                        key={p.id}
+                        android_ripple={{}}
+                        disabled={savingRelatedId === p.id}
+                        onPress={() => toggleRelated(Number(p.id))}
+                        className="flex-row items-center justify-between border-b border-border/50 py-2"
+                      >
+                        <Text className="flex-1 pr-2 text-sm text-foreground" numberOfLines={1}>
+                          {p.name}
+                        </Text>
+                        <Ionicons name={linked ? 'checkmark-circle' : 'add-circle-outline'} size={20} color={linked ? '#df5102' : '#71717a'} />
+                      </Pressable>
+                    );
+                  })
+                )}
+              </View>
             </ScrollView>
           ) : null}
         </SafeAreaView>
