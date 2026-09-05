@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Toaster } from '@/components/ui/sonner';
 import { getCurrentPlatformAdmin } from '@/lib/current-platform-admin';
 import { PlatformLogoutButton } from '../logout-button';
 
@@ -26,6 +27,7 @@ export default async function PlatformLayout({ children }: { children: React.Rea
         </div>
       </header>
       <main className="flex-1 p-4">{children}</main>
+      <Toaster />
     </div>
   );
 }

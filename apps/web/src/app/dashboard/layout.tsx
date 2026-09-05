@@ -12,6 +12,8 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
+import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { LogoutButton } from '@/components/logout-button';
 import { LogoMark } from '@/components/marketing/logo-mark';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -55,49 +57,52 @@ export default async function DashboardLayout({ children }: { children: React.Re
   ];
 
   return (
-    <SidebarProvider>
-      <Sidebar collapsible="icon">
-        <SidebarHeader className="gap-2 px-4 py-4 group-data-[collapsible=icon]:px-2">
-          <div className="flex items-center gap-2">
-            <LogoMark className="size-8 rounded-md" />
-            <p className="text-sm font-semibold group-data-[collapsible=icon]:hidden">Fundi</p>
-          </div>
-          <p className="truncate text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
-            {tenantName}
-          </p>
-        </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>Manage</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <NavItems items={navItems} />
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-        <SidebarFooter className="gap-2 px-4 py-3 group-data-[collapsible=icon]:px-2">
-          <p className="text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-            {me.name || me.email} · {me.role}
-          </p>
-          <LogoutButton className="w-full justify-start group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2!" />
-        </SidebarFooter>
-      </Sidebar>
-      <SidebarInset>
-        <header className="flex h-14 items-center gap-2 border-b px-4">
-          <SidebarTrigger />
-          <div className="min-w-0 flex-1">
-            <PageTitle items={navItems} />
-          </div>
-          <ThemeToggle />
-          <UserMenu name={me.name} email={me.email} role={me.role} />
-        </header>
-        {billingStatus === 'past_due' ? (
-          <div className="flex items-center gap-2 border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
-            <AlertTriangle className="size-4 shrink-0" />
-            <span>Your subscription payment is past due. Please update billing to avoid service interruption.</span>
-          </div>
-        ) : null}
-        <main className="flex-1 p-4 sm:p-6">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
+    <TooltipProvider>
+      <SidebarProvider>
+        <Sidebar collapsible="icon">
+          <SidebarHeader className="gap-2 px-4 py-4 group-data-[collapsible=icon]:px-2">
+            <div className="flex items-center gap-2">
+              <LogoMark className="size-8 rounded-md" />
+              <p className="text-sm font-semibold group-data-[collapsible=icon]:hidden">Fundi</p>
+            </div>
+            <p className="truncate text-xs text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
+              {tenantName}
+            </p>
+          </SidebarHeader>
+          <SidebarContent>
+            <SidebarGroup>
+              <SidebarGroupLabel>Manage</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <NavItems items={navItems} />
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+          <SidebarFooter className="gap-2 px-4 py-3 group-data-[collapsible=icon]:px-2">
+            <p className="text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+              {me.name || me.email} · {me.role}
+            </p>
+            <LogoutButton className="w-full justify-start group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2!" />
+          </SidebarFooter>
+        </Sidebar>
+        <SidebarInset>
+          <header className="flex h-14 items-center gap-2 border-b px-4">
+            <SidebarTrigger />
+            <div className="min-w-0 flex-1">
+              <PageTitle items={navItems} />
+            </div>
+            <ThemeToggle />
+            <UserMenu name={me.name} email={me.email} role={me.role} />
+          </header>
+          {billingStatus === 'past_due' ? (
+            <div className="flex items-center gap-2 border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
+              <AlertTriangle className="size-4 shrink-0" />
+              <span>Your subscription payment is past due. Please update billing to avoid service interruption.</span>
+            </div>
+          ) : null}
+          <main className="flex-1 p-4 sm:p-6">{children}</main>
+        </SidebarInset>
+      </SidebarProvider>
+      <Toaster />
+    </TooltipProvider>
   );
 }

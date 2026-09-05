@@ -39,8 +39,9 @@ export function Reveal({
   return (
     <div
       ref={ref}
+      data-visible={visible}
       className={cn(
-        'translate-y-6 opacity-0 transition-all duration-700 ease-out motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none',
+        'group/reveal translate-y-6 opacity-0 transition-[opacity,transform] duration-700 ease-out motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none',
         visible && 'translate-y-0 opacity-100',
         className,
       )}

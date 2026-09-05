@@ -392,9 +392,13 @@ export default function LandingPage() {
               can&apos;t watch every minute.
             </p>
           </Reveal>
-          <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <Reveal className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map(({ icon: Icon, title, description }, index) => (
-              <Reveal key={title} delay={index * 80}>
+              <div
+                key={title}
+                className="translate-y-6 opacity-0 transition-[opacity,transform] duration-700 ease-out group-data-[visible=true]/reveal:translate-y-0 group-data-[visible=true]/reveal:opacity-100 motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none"
+                style={{ transitionDelay: `${index * 80}ms` }}
+              >
                 <Card className="h-full transition-all duration-300 hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg">
                   <CardHeader>
                     <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -406,9 +410,9 @@ export default function LandingPage() {
                     <p className="text-sm text-muted-foreground">{description}</p>
                   </CardContent>
                 </Card>
-              </Reveal>
+              </div>
             ))}
-          </div>
+          </Reveal>
         </section>
 
         {/* How it works */}
@@ -420,9 +424,13 @@ export default function LandingPage() {
               </h2>
               <p className="mt-4 text-muted-foreground text-pretty">No implementation project. No waiting on a rep.</p>
             </Reveal>
-            <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            <Reveal className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
               {STEPS.map((step, index) => (
-                <Reveal key={step.title} delay={index * 100} className="relative">
+                <div
+                  key={step.title}
+                  className="relative translate-y-6 opacity-0 transition-[opacity,transform] duration-700 ease-out group-data-[visible=true]/reveal:translate-y-0 group-data-[visible=true]/reveal:opacity-100 motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none"
+                  style={{ transitionDelay: `${index * 100}ms` }}
+                >
                   {index < STEPS.length - 1 ? (
                     <div aria-hidden className="absolute top-4.5 left-9 hidden h-px w-[calc(100%-1.5rem)] bg-border lg:block" />
                   ) : null}
@@ -431,9 +439,9 @@ export default function LandingPage() {
                   </div>
                   <h3 className="mt-4 font-heading text-base font-semibold">{step.title}</h3>
                   <p className="mt-1.5 text-sm text-muted-foreground">{step.description}</p>
-                </Reveal>
+                </div>
               ))}
-            </div>
+            </Reveal>
           </div>
         </section>
 
@@ -463,9 +471,13 @@ export default function LandingPage() {
               Every plan starts with a free trial — no card required. Upgrade whenever you open a new branch.
             </p>
           </Reveal>
-          <div className="mt-12 grid gap-6 lg:grid-cols-3">
+          <Reveal className="mt-12 grid gap-6 lg:grid-cols-3">
             {PLANS.map((plan, index) => (
-              <Reveal key={plan.name} delay={index * 100}>
+              <div
+                key={plan.name}
+                className="translate-y-6 opacity-0 transition-[opacity,transform] duration-700 ease-out group-data-[visible=true]/reveal:translate-y-0 group-data-[visible=true]/reveal:opacity-100 motion-reduce:translate-y-0 motion-reduce:opacity-100 motion-reduce:transition-none"
+                style={{ transitionDelay: `${index * 100}ms` }}
+              >
                 <Card
                   className={cn(
                     'h-full transition-all duration-300 hover:-translate-y-1',
@@ -497,9 +509,9 @@ export default function LandingPage() {
                     </Button>
                   </CardContent>
                 </Card>
-              </Reveal>
+              </div>
             ))}
-          </div>
+          </Reveal>
         </section>
 
         {/* FAQ */}
