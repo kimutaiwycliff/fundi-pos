@@ -1,6 +1,12 @@
+import type { Metadata } from 'next';
 import { AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LogoutButton } from '@/components/logout-button';
+
+export const metadata: Metadata = {
+  title: 'Subscription canceled',
+  robots: { index: false, follow: true },
+};
 
 export default function SubscriptionCanceledPage() {
   return (

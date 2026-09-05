@@ -1,12 +1,16 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import type { LucideIcon } from 'lucide-react';
 import {
   ArrowRight,
+  BarChart3,
+  Building2,
   Check,
   KeyRound,
   LineChart,
   ReceiptText,
   Smartphone,
+  TabletSmartphone,
   UploadCloud,
   Warehouse,
   WifiOff,
@@ -21,6 +25,8 @@ import { Reveal } from '@/components/marketing/reveal';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
 
+const SITE_URL = 'https://app.fundipos.co.ke';
+
 const NAV_LINKS = [
   { href: '#features', label: 'Features' },
   { href: '#how-it-works', label: 'How it works' },
@@ -29,14 +35,32 @@ const NAV_LINKS = [
   { href: '#faq', label: 'FAQ' },
 ];
 
-const CAPABILITIES = ['Works fully offline', 'M-Pesa built in', 'Multi-store ready', 'KRA eTIMS-ready'];
+const CAPABILITIES = ['Real sales & margin reports', 'Works fully offline', 'M-Pesa built in', 'Multi-store ready'];
 
 const FEATURES: Array<{ icon: LucideIcon; title: string; description: string }> = [
   {
-    icon: WifiOff,
-    title: 'Never lose a sale',
+    icon: BarChart3,
+    title: 'See your best (and worst) days coming',
     description:
-      "Ring up sales completely offline. Every order and stock movement is recorded on the till itself and syncs the moment you're back online — nothing lost, nothing double-counted.",
+      'Daily and weekly sales trends and peak hours, plus your top and bottom performers — so restocking and staffing decisions are based on numbers, not guesswork.',
+  },
+  {
+    icon: Building2,
+    title: 'Compare every store, every cashier',
+    description:
+      "See revenue, margin, and average order value side by side across branches and shifts, so you know exactly where performance is strong and where it isn't.",
+  },
+  {
+    icon: TabletSmartphone,
+    title: 'Your dashboard, in your pocket',
+    description:
+      "Check today's sales, margin, and stock levels from your phone, wherever you are — the same reports your till produces, no laptop required.",
+  },
+  {
+    icon: LineChart,
+    title: 'Know your real margins',
+    description:
+      'Cost prices stay visible to owners only. See true profit by product, store, and shift — not just top-line revenue.',
   },
   {
     icon: Smartphone,
@@ -57,10 +81,10 @@ const FEATURES: Array<{ icon: LucideIcon; title: string; description: string }> 
       'Fast PIN logins for cashier switching, manager approval on every void or refund, and a full audit trail of who changed what.',
   },
   {
-    icon: LineChart,
-    title: 'Know your real margins',
+    icon: WifiOff,
+    title: 'Works through blackouts and dead zones',
     description:
-      'Cost prices stay visible to owners only. See true profit by product, store, and shift — not just top-line revenue.',
+      "Ring up sales completely offline. Every order and stock movement is recorded on the till itself and syncs the moment you're back online — nothing lost, nothing double-counted.",
   },
   {
     icon: ReceiptText,
@@ -95,7 +119,12 @@ const PLANS = [
     tagline: 'For a single till getting started.',
     price: 'KES 1,000',
     priceNote: '/ month · 1 store',
-    features: ['1 store, unlimited PIN logins', 'Offline till + M-Pesa payments', 'Core inventory & sales reports', 'Standard receipt printing'],
+    features: [
+      '1 store, unlimited PIN logins',
+      'Offline till + M-Pesa payments',
+      'Sales reports & margin visibility (owner-only)',
+      'Standard receipt printing',
+    ],
     featured: false,
   },
   {
@@ -107,7 +136,7 @@ const PLANS = [
       'Everything in Starter',
       'Multiple stores & stock transfers',
       'Staff roles, PIN gating & audit log',
-      'Profit/margin reporting (owner-only)',
+      'Compare margin across every store',
       'Held sales & shift reconciliation',
     ],
     featured: true,
@@ -123,6 +152,10 @@ const PLANS = [
 ];
 
 const FAQS = [
+  {
+    q: 'Is Fundi only for hardware stores?',
+    a: "No — there's no hardware-specific setup. Add whatever products, variants, and categories you sell: clothing, pharmacy stock, electronics, food, salon services — anything with a price and a stock count.",
+  },
   {
     q: 'Does Fundi really work without internet?',
     a: 'Yes. The till runs on its own local database — you can ring up sales, adjust stock, and print receipts with no connection at all. Everything syncs automatically once the till is back online.',
@@ -140,6 +173,10 @@ const FAQS = [
     a: 'Yes. Fundi is built for multi-store from the ground up — stock, staff, and reporting all work across as many branches as you have, with one owner login over all of them.',
   },
   {
+    q: 'Is Fundi ready for KRA eTIMS?',
+    a: 'Fundi already captures itemized tax breakdowns on every receipt, with eTIMS invoice fields in place ready to switch on as certification completes — so you can stay ahead of KRA compliance requirements without changing how your till works.',
+  },
+  {
     q: 'What equipment do I need to get started?',
     a: 'A computer or POS terminal for your till, and any phone or laptop for the owner/manager dashboard. No special equipment is required, though Fundi supports standard ESC/POS receipt printers and cash drawers if you already have them.',
   },
@@ -149,9 +186,74 @@ const FAQS = [
   },
 ];
 
+const TITLE = 'Fundi POS — Point of sale with real sales & margin reporting';
+const DESCRIPTION =
+  'Fundi POS runs your till, tracks inventory, and takes M-Pesa payments for any small business — with real sales and margin reports by product, store, and shift. Works fully offline. KRA eTIMS-ready.';
+
+export const metadata: Metadata = {
+  title: { absolute: TITLE },
+  description: DESCRIPTION,
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    url: SITE_URL,
+    siteName: 'Fundi POS',
+    title: TITLE,
+    description: DESCRIPTION,
+    // Facebook's documented og:locale list doesn't include en_KE, so en_GB
+    // is the closest supported locale to avoid an unrecognized tag.
+    locale: 'en_GB',
+    // Image itself comes from opengraph-image.tsx (file-based metadata takes
+    // priority over this object and overrides any `images` set here anyway).
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: TITLE,
+    description: DESCRIPTION,
+    // Image comes from twitter-image.tsx (re-exports opengraph-image.tsx).
+  },
+};
+
+const JSON_LD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'FAQPage',
+      mainEntity: FAQS.map((item) => ({
+        '@type': 'Question',
+        name: item.q,
+        acceptedAnswer: { '@type': 'Answer', text: item.a },
+      })),
+    },
+    {
+      '@type': 'SoftwareApplication',
+      name: 'Fundi POS',
+      applicationCategory: 'BusinessApplication',
+      operatingSystem: 'Windows, macOS, Android',
+      offers: PLANS.filter((plan) => plan.price !== 'Custom').map((plan) => ({
+        '@type': 'Offer',
+        name: plan.name,
+        price: plan.price.replace(/[^0-9]/g, ''),
+        priceCurrency: 'KES',
+        url: `${SITE_URL}/#pricing`,
+      })),
+    },
+    {
+      '@type': 'Organization',
+      name: 'Fundi POS',
+      url: SITE_URL,
+      logo: `${SITE_URL}/icon.svg`,
+    },
+  ],
+};
+
 export default function LandingPage() {
   return (
     <div className="flex min-h-full flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }}
+      />
       <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-backdrop-filter:bg-background/60">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-2">
@@ -201,12 +303,12 @@ export default function LandingPage() {
                 Built for small businesses across Kenya
               </Badge>
               <h1 className="font-heading text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
-                The point of sale that keeps selling when the power doesn&apos;t.
+                Ring up sales. See your real margins. Every branch, every shift.
               </h1>
               <p className="mt-5 max-w-xl text-lg text-muted-foreground text-pretty">
-                Fundi runs your till, tracks stock across every branch, and takes M-Pesa payments — online or
-                completely offline. When the connection comes back, everything syncs automatically. No lost sales,
-                no manual re-entry.
+                Fundi runs your till, tracks stock, and takes M-Pesa payments — for any shop, from boutiques to
+                pharmacies to hardware stores. Every sale becomes real numbers: what&apos;s selling, what&apos;s
+                not, and what you&apos;re actually keeping after cost, by product, by store, by shift.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <Button size="lg" asChild>
@@ -231,16 +333,16 @@ export default function LandingPage() {
                 <div className="rounded-2xl border bg-card p-4 shadow-xl ring-1 ring-foreground/10 transition-transform duration-500 hover:-translate-y-1 sm:p-6">
                   <div className="flex items-center justify-between border-b pb-3">
                     <span className="text-xs font-medium text-muted-foreground">Fundi Till · Store 2, Nakuru</span>
-                    <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-                      <span className="size-1.5 animate-pulse rounded-full bg-amber-500" />
-                      Offline · 3 pending sync
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-primary">
+                      <LineChart className="size-3.5" />
+                      Today so far · KES 84,200
                     </span>
                   </div>
                   <div className="mt-4 space-y-2">
                     {[
-                      ['Assorted stock item', 'x2', 'KES 2,400'],
-                      ['Everyday essential', 'x1', 'KES 450'],
-                      ['Popular product', 'x1', 'KES 6,800'],
+                      ['Ankara dress, size M', 'x2', 'KES 2,400'],
+                      ['Paracetamol 500mg, 10-pack', 'x1', 'KES 450'],
+                      ['Phone screen protector', 'x1', 'KES 6,800'],
                     ].map(([name, qty, price]) => (
                       <div key={name} className="flex items-center justify-between rounded-lg bg-muted/60 px-3 py-2 text-sm">
                         <span className="truncate">{name}</span>
@@ -282,11 +384,12 @@ export default function LandingPage() {
         <section id="features" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
           <Reveal className="mx-auto max-w-2xl text-center">
             <h2 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
-              Built for how Kenyan small businesses actually run
+              Every sale, turned into numbers you can act on
             </h2>
             <p className="mt-4 text-muted-foreground text-pretty">
-              Blackouts, patchy internet, multiple branches, staff you can&apos;t watch every minute — Fundi is built
-              around those realities, not around a perfect cloud connection.
+              Whatever you sell, Fundi shows you what&apos;s working, what isn&apos;t, and what you&apos;re really
+              keeping after cost — while still holding up through blackouts, patchy internet, and staff you
+              can&apos;t watch every minute.
             </p>
           </Reveal>
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -297,7 +400,7 @@ export default function LandingPage() {
                     <div className="mb-2 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
                       <Icon className="size-5" />
                     </div>
-                    <CardTitle className="text-base">{title}</CardTitle>
+                    <CardTitle as="h3" className="text-base">{title}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground">{description}</p>
@@ -313,7 +416,7 @@ export default function LandingPage() {
           <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
             <Reveal className="mx-auto max-w-2xl text-center">
               <h2 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
-                From sign-up to your first offline sale
+                From sign-up to your first sale
               </h2>
               <p className="mt-4 text-muted-foreground text-pretty">No implementation project. No waiting on a rep.</p>
             </Reveal>
@@ -373,7 +476,7 @@ export default function LandingPage() {
                     <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Most popular</Badge>
                   ) : null}
                   <CardHeader>
-                    <CardTitle className="text-lg">{plan.name}</CardTitle>
+                    <CardTitle as="h3" className="text-lg">{plan.name}</CardTitle>
                     <p className="text-sm text-muted-foreground">{plan.tagline}</p>
                     <p className="mt-3 flex items-baseline gap-1.5">
                       <span className="font-heading text-3xl font-semibold">{plan.price}</span>
@@ -435,10 +538,10 @@ export default function LandingPage() {
               Set up your store in minutes
             </div>
             <h2 className="max-w-2xl font-heading text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
-              Ready to stop losing sales to blackouts?
+              Ready to know exactly what your shop is making?
             </h2>
             <p className="max-w-xl text-background/70 text-pretty">
-              Start your free trial today and see why small businesses are moving off cloud-only POS systems.
+              Start your free trial today and see your real numbers — revenue, margin, and everything in between.
             </p>
             <Button size="lg" variant="secondary" asChild>
               <Link href="/signup">

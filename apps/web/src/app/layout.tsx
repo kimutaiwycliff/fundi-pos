@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,12 +16,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://app.fundipos.co.ke"),
   title: {
-    default: "Fundi — POS for small businesses",
-    template: "%s · Fundi",
+    default: "Fundi POS — point of sale for small businesses",
+    template: "%s · Fundi POS",
   },
   description:
-    "Offline-first point of sale and inventory management for Kenyan retail and service businesses. Sell through blackouts, take M-Pesa at the till, and sync automatically when you're back online.",
+    "Point of sale, inventory, and real sales & margin reporting for small businesses. Works fully offline, takes M-Pesa at the till, and syncs automatically when you're back online.",
+  manifest: "/manifest.webmanifest",
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large" },
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#16100e",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
