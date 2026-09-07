@@ -22,6 +22,11 @@ export const PurchaseOrders: CollectionConfig = {
       minRows: 1,
       fields: [
         { name: 'product', type: 'relationship', relationTo: 'products', required: true },
+        // Sub-document id within product.variants, same convention as
+        // StockMovements.ts's own `variant` field - stock is always tracked
+        // per (product, variant), never blended, so a line item restocking
+        // a specific variant has to be able to say which one.
+        { name: 'variant', type: 'text' },
         { name: 'quantity', type: 'number', required: true, min: 0.001 },
         { name: 'unitCost', type: 'number', required: true, admin: { step: 0.01 } },
       ],

@@ -19,8 +19,9 @@ import { SettingsScreen } from '../admin/SettingsScreen';
 import { AuditLogScreen } from '../admin/AuditLogScreen';
 import { ReportsScreen } from '../admin/ReportsScreen';
 import { OverviewScreen } from '../overview/OverviewScreen';
+import { RestockScreen } from '../restock/RestockScreen';
 
-type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers' | 'security' | 'reports' | 'inventory';
+type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers' | 'security' | 'reports' | 'inventory' | 'restock';
 
 // Back-office admin (Phase 5) is intentionally tucked under More, not its
 // own tabs - this is deliberately last per the plan: none of it happens on
@@ -89,6 +90,9 @@ function MoreScreen({
         <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('inventory')}>
           <Text className="text-foreground">Inventory</Text>
         </Pressable>
+        <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('restock')}>
+          <Text className="text-foreground">Restock</Text>
+        </Pressable>
         <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('security')}>
           <Text className="text-foreground">Security</Text>
         </Pressable>
@@ -136,6 +140,7 @@ function MoreScreen({
           {section === 'customers' ? <RealCustomersScreen user={user} payloadToken={payloadToken} storeId={storeId} /> : null}
           {section === 'reports' ? <ReportsScreen user={user} payloadToken={payloadToken} /> : null}
           {section === 'inventory' ? <RealInventoryScreen user={user} terminalId={terminalId} storeId={storeId} /> : null}
+          {section === 'restock' ? <RestockScreen user={user} storeId={storeId} payloadToken={payloadToken} /> : null}
           {section === 'security' ? (
             <View className="flex-1 px-6 pt-4">
               {biometricAvailable ? (

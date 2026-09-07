@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { href: '/dashboard/sell', label: 'Sell' },
   { href: '/dashboard/products', label: 'Products' },
   { href: '/dashboard/inventory', label: 'Inventory' },
+  { href: '/dashboard/purchase-orders', label: 'Restocking' },
   { href: '/dashboard/transfers', label: 'Transfers' },
   { href: '/dashboard/exceptions', label: 'Exceptions' },
   { href: '/dashboard/sales', label: 'Sales' },

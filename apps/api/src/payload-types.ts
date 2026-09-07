@@ -494,6 +494,7 @@ export interface PurchaseOrder {
   supplier: number | Supplier;
   lineItems: {
     product: number | Product;
+    variant?: string | null;
     quantity: number;
     unitCost: number;
     id?: string | null;
@@ -1102,6 +1103,7 @@ export interface PurchaseOrdersSelect<T extends boolean = true> {
     | T
     | {
         product?: T;
+        variant?: T;
         quantity?: T;
         unitCost?: T;
         id?: T;
