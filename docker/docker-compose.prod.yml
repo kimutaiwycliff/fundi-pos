@@ -3,11 +3,13 @@
 # a Caddy reverse proxy with automatic TLS, and a backup cron:
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
-# UNVERIFIED end-to-end (no real VPS/domain in this environment) - the
-# pg_dump/gzip/rotation half of the backup service was verified live against
-# this project's own dockerized Postgres (see backup.sh's header comment);
-# Caddy's TLS issuance and the S3 upload step were not, since both need real
-# public DNS / object-storage credentials.
+# The backup/restore.sh round trip (pg_dump --clean --if-exists, gzip,
+# rotation, and a full restore back into both an empty AND an
+# already-populated database) has been verified end-to-end against a real
+# copy of this project's schema and data - see docker/RESTORE.md. Still
+# unverified in this environment: Caddy's TLS issuance and the actual R2
+# network upload/download, since both need real public DNS / object-storage
+# credentials this environment doesn't have.
 services:
   postgres:
     restart: unless-stopped
@@ -95,13 +97,17 @@ services:
       DATABASE_URI: postgres://${POSTGRES_USER:-pos_admin}:${POSTGRES_PASSWORD:-dev_only_change_me}@postgres:5432/${POSTGRES_DB:-pos_saas}
       BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
       BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      # aws-cli itself only understands the plain AWS_* names - mapped in
+      # from the BACKUP_S3_-prefixed vars above so docker/.env never has to
+      # hold a bare, easily-confused-with-something-else AWS_ACCESS_KEY_ID.
+      AWS_ACCESS_KEY_ID: ${BACKUP_S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_S3_SECRET_ACCESS_KEY:-}
       # aws-cli requires some region even for S3-compatible providers that
       # don't have real AWS regions - Cloudflare R2's own docs specify "auto".
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-auto}
     volumes:
       - ./backup.sh:/backup.sh:ro
+      - ./restore.sh:/restore.sh:ro
       - pgbackups:/backups
     depends_on:
       postgres:

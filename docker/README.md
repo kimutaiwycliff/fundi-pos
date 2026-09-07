@@ -59,12 +59,17 @@ automatically via Let's Encrypt (`Caddyfile` - requires real public DNS
 pointed at the VPS; set `API_DOMAIN`/`WEB_DOMAIN`/`POWERSYNC_DOMAIN` in
 `.env`), and a daily `pg_dump` backup cron (`backup.sh`) that gzips the dump
 and, if `BACKUP_S3_BUCKET`/AWS credentials are set, uploads it to
-S3-compatible object storage.
+S3-compatible object storage. See **[RESTORE.md](./RESTORE.md)** for the
+full disaster-recovery runbook (restoring the DB, rebuilding on a fresh
+VPS, and one-time backup-credential provisioning).
 
-**What was actually verified**: the backup script's `pg_dump | gzip` and
-14-day local rotation ran successfully against this project's own
-dockerized Postgres. **What was not**: Caddy's TLS issuance (needs a real
-domain), the S3 upload step (needs real credentials), and the compose file
-running end-to-end on an actual VPS. Docker Swarm was considered per the
-build plan and deferred - a single VPS with resource limits is simpler
-operationally and was judged sufficient unless real usage proves otherwise.
+**What was actually verified**: the backup script's `pg_dump --clean
+--if-exists | gzip` and 14-day local rotation, and a full restore (via the
+new `restore.sh`) back into both an empty database and one that already had
+the schema, ran successfully against a real copy of this project's schema
+and data. **What was not**: Caddy's TLS issuance (needs a real domain), the
+actual R2 upload/download round-trip (needs real object-storage
+credentials), and the compose file running end-to-end on an actual VPS.
+Docker Swarm was considered per the build plan and deferred - a single VPS
+with resource limits is simpler operationally and was judged sufficient
+unless real usage proves otherwise.

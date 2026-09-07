@@ -1,0 +1,86 @@
+name: Provision backup env on production
+
+# One-off, manually-triggered - not part of the regular deploy.yml pipeline.
+# Mirrors provision-r2-env.yml exactly, but for the BACKUP_S3_* secrets
+# docker/backup.sh's `backup` service needs (see docker/RESTORE.md). Writes
+# them into the production server's own docker/.env (excluded from
+# deploy.yml's rsync on purpose, so it has to be seeded here instead), then
+# restarts the `backup` service so it picks up the new env. No rebuild
+# needed (unlike fundi-web) - these vars aren't NEXT_PUBLIC_*, nothing is
+# baked into an image at build time. Safe to re-run: strips any existing
+# BACKUP_S3_ lines from docker/.env before appending fresh ones.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Set up SSH
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Build local env snippet
+        run: |
+          set -euo pipefail
+          {
+            echo "BACKUP_S3_BUCKET=${{ secrets.BACKUP_S3_BUCKET }}"
+            echo "BACKUP_S3_ENDPOINT=${{ secrets.BACKUP_S3_ENDPOINT }}"
+            echo "BACKUP_S3_ACCESS_KEY_ID=${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}"
+            echo "BACKUP_S3_SECRET_ACCESS_KEY=${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}"
+          } > /tmp/backup-env-snippet
+
+      - name: Upload snippet and update docker/.env on the server
+        run: |
+          set -euo pipefail
+          scp -i ~/.ssh/deploy_key -o ConnectTimeout=15 /tmp/backup-env-snippet \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/backup-env-snippet"
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
+              set -euo pipefail
+              ENV_FILE="${{ secrets.DEPLOY_PATH }}/docker/.env"
+              grep -v -E "^BACKUP_S3_" "$ENV_FILE" > "$ENV_FILE.tmp" 2>/dev/null || : > "$ENV_FILE.tmp"
+              cat /tmp/backup-env-snippet >> "$ENV_FILE.tmp"
+              mv "$ENV_FILE.tmp" "$ENV_FILE"
+              rm -f /tmp/backup-env-snippet
+            '
+          rm -f /tmp/backup-env-snippet
+
+      - name: Restart the backup service to pick up new env
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd '${{ secrets.DEPLOY_PATH }}/docker' && \
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backup"
+
+      - name: Run a backup now and verify it uploads
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd '${{ secrets.DEPLOY_PATH }}/docker' && \
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T backup sh /backup.sh" \
+            | tee /tmp/backup-output
+          grep -q "Uploaded to s3://" /tmp/backup-output
+
+      - name: Verify pharmatrack is unaffected
+        # Same reasoning as deploy.yml's own equivalent step - this workflow
+        # only ever touches fundi's own `backup` service, but checked over
+        # SSH (not a public HTTPS curl) since Cloudflare's WAF has previously
+        # 403'd the Actions runner's own IP even when pharmatrack was
+        # genuinely healthy.
+        run: |
+          set -euo pipefail
+          bad=$(ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "docker ps --filter 'name=pharmatrack' --format '{{.Names}}\t{{.Status}}'" | tee /dev/stderr | grep -v -E 'Up ' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::pharmatrack container(s) not in an Up state after this - see above."
+            exit 1
+          fi
