@@ -497,9 +497,10 @@ export interface PurchaseOrder {
     variant?: string | null;
     quantity: number;
     unitCost: number;
+    receivedQuantity: number;
     id?: string | null;
   }[];
-  status: 'draft' | 'sent' | 'received';
+  status: 'draft' | 'sent' | 'partially_received' | 'received';
   receivedAt?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -1106,6 +1107,7 @@ export interface PurchaseOrdersSelect<T extends boolean = true> {
         variant?: T;
         quantity?: T;
         unitCost?: T;
+        receivedQuantity?: T;
         id?: T;
       };
   status?: T;

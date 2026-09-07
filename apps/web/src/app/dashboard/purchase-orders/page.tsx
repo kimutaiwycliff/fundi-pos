@@ -2,12 +2,13 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { payloadFetch } from '@/lib/payload-client';
+import { DeletePurchaseOrderButton } from './delete-purchase-order-button';
 
 type PurchaseOrderListItem = {
   id: number;
   store: { id: number; name: string } | number;
   supplier: { id: number; name: string } | number;
-  status: 'draft' | 'sent' | 'received';
+  status: 'draft' | 'sent' | 'partially_received' | 'received';
   lineItems: Array<{ quantity: number }>;
   createdAt: string;
 };
@@ -15,7 +16,15 @@ type PurchaseOrderListItem = {
 const STATUS_VARIANT: Record<PurchaseOrderListItem['status'], 'secondary' | 'default' | 'outline'> = {
   draft: 'secondary',
   sent: 'default',
+  partially_received: 'default',
   received: 'outline',
+};
+
+const STATUS_LABEL: Record<PurchaseOrderListItem['status'], string> = {
+  draft: 'draft',
+  sent: 'sent',
+  partially_received: 'partially received',
+  received: 'received',
 };
 
 export default async function PurchaseOrdersPage() {
@@ -44,6 +53,7 @@ export default async function PurchaseOrdersPage() {
                 <th className="p-3 font-medium">Items</th>
                 <th className="p-3 font-medium">Status</th>
                 <th className="p-3 font-medium">Created</th>
+                <th className="p-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
@@ -57,9 +67,10 @@ export default async function PurchaseOrdersPage() {
                   <td className="p-3">{typeof po.supplier === 'object' ? po.supplier.name : `#${po.supplier}`}</td>
                   <td className="p-3">{po.lineItems.length}</td>
                   <td className="p-3">
-                    <Badge variant={STATUS_VARIANT[po.status]}>{po.status}</Badge>
+                    <Badge variant={STATUS_VARIANT[po.status]}>{STATUS_LABEL[po.status]}</Badge>
                   </td>
                   <td className="p-3 text-muted-foreground">{new Date(po.createdAt).toLocaleDateString()}</td>
+                  <td className="p-3 text-right">{po.status === 'draft' ? <DeletePurchaseOrderButton id={po.id} /> : null}</td>
                 </tr>
               ))}
             </tbody>

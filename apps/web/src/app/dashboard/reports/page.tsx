@@ -63,11 +63,14 @@ export default async function ReportsPage({
   // what's selected above it.
   const trendRange = range === '7d' ? '7d' : '30d';
 
-  const [summary, { docs: stores }, me, { days: dailyData }] = await Promise.all([
+  const [summary, { docs: stores }, me, { days: dailyData }, stockValue] = await Promise.all([
     payloadFetch<SalesSummary>(`/api/reports/sales-summary?range=${range}${storeQS}`),
     payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
     getCurrentUser(),
     payloadFetch<{ days: DailyPoint[] }>(`/api/reports/sales-daily?range=${trendRange}${storeQS}`),
+    payloadFetch<{ potentialRevenue: number; stockValue: number | null; potentialProfit: number | null }>(
+      `/api/reports/stock-value${storeQS ? `?${storeQS.slice(1)}` : ''}`,
+    ),
   ]);
   const storeName = new Map(stores.map((s) => [s.id, s.name]));
   const canSeeProfit = me.role === 'owner';
@@ -163,6 +166,33 @@ export default async function ReportsPage({
           ) : null}
         </div>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardDescription>Stock on hand right now</CardDescription>
+          <CardTitle className="text-base font-medium">Not the same as the sales figures above - this is what&apos;s currently on the shelf</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className={`grid grid-cols-1 gap-4 sm:grid-cols-3`}>
+            {canSeeProfit ? (
+              <div>
+                <p className="text-sm text-muted-foreground">Stock value (at cost)</p>
+                <p className="text-2xl font-semibold">{(stockValue.stockValue ?? 0).toFixed(2)}</p>
+              </div>
+            ) : null}
+            <div>
+              <p className="text-sm text-muted-foreground">Potential revenue</p>
+              <p className="text-2xl font-semibold">{stockValue.potentialRevenue.toFixed(2)}</p>
+            </div>
+            {canSeeProfit ? (
+              <div>
+                <p className="text-sm text-muted-foreground">Potential profit</p>
+                <p className="text-2xl font-semibold">{(stockValue.potentialProfit ?? 0).toFixed(2)}</p>
+              </div>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

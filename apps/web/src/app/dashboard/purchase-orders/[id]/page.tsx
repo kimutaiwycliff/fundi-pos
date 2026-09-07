@@ -1,12 +1,13 @@
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
 import { PurchaseOrderActions } from './purchase-order-actions';
+import { ReceiveChecklist } from './receive-checklist';
 
 type PurchaseOrderDetail = {
   id: number;
   store: { id: number; name: string };
   supplier: { id: number; name: string };
-  status: 'draft' | 'sent' | 'received';
+  status: 'draft' | 'sent' | 'partially_received' | 'received';
   createdAt: string;
   receivedAt: string | null;
   lineItems: Array<{
@@ -14,6 +15,7 @@ type PurchaseOrderDetail = {
     variant: string | null;
     quantity: number;
     unitCost: number;
+    receivedQuantity: number;
   }>;
 };
 
@@ -38,7 +40,7 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
       <div>
         <h1 className="text-2xl font-semibold">Restock list #{po.id}</h1>
         <p className="text-sm text-muted-foreground">
-          {po.store.name} · {po.supplier.name} · {po.status}
+          {po.store.name} · {po.supplier.name} · {po.status.replace('_', ' ')}
         </p>
       </div>
 
@@ -71,9 +73,6 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
       {estimatedTotal !== null ? <p className="text-right text-lg font-semibold">Estimated total: {estimatedTotal.toFixed(2)}</p> : null}
 
       <PurchaseOrderActions
-        poId={po.id}
-        status={po.status}
-        canReceive={me.role === 'owner' || me.role === 'manager'}
         document={{
           poNumber: `PO-${po.id}`,
           storeName: po.store.name,
@@ -83,6 +82,28 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
           estimatedTotal,
         }}
       />
+
+      {(me.role === 'owner' || me.role === 'manager') && po.status !== 'received' ? (() => {
+        const checklistLines = po.lineItems
+          .map((l, index) => ({
+            index,
+            label: l.product?.name ?? `#${l.product}` + (l.variant ? ` (${l.product?.variants?.find((v) => v.id === l.variant)?.label})` : ''),
+            outstanding: l.quantity - (l.receivedQuantity ?? 0),
+          }))
+          .filter((l) => l.outstanding > 0);
+        return (
+          <ReceiveChecklist
+            // Forces a remount (fresh initial checkbox/quantity state) any
+            // time the outstanding amounts actually change, e.g. right
+            // after a partial receive - otherwise the input's useState
+            // initializer only runs once and keeps showing the pre-receive
+            // quantity even though the server-side outstanding total moved.
+            key={checklistLines.map((l) => `${l.index}:${l.outstanding}`).join(',')}
+            poId={po.id}
+            lines={checklistLines}
+          />
+        );
+      })() : null}
     </div>
   );
 }

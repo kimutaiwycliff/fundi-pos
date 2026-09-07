@@ -1,6 +1,19 @@
-import type { CollectionConfig } from 'payload';
+import type { Access, CollectionConfig } from 'payload';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
+import { isTenantUser, toID } from '../lib/relations.ts';
+
+// Only a still-draft list is safe to delete outright - once it's been sent
+// or (partially) received, deleting it would silently orphan whatever
+// stock-movements the receive route already wrote against it. Same
+// tenant/role check as managerOrOwner, with status: draft ANDed in via the
+// same returned Where object.
+const deleteDraftOnly: Access = ({ req }) => {
+  if (!req.user) return false;
+  if (!isTenantUser(req.user)) return true;
+  if (req.user.role !== 'owner' && req.user.role !== 'manager') return false;
+  return { tenant: { equals: toID(req.user.tenant) }, status: { equals: 'draft' } };
+};
 
 export const PurchaseOrders: CollectionConfig = {
   slug: 'purchase-orders',
@@ -9,7 +22,7 @@ export const PurchaseOrders: CollectionConfig = {
     read: ownTenantOnly,
     create: managerOrOwner,
     update: managerOrOwner,
-    delete: managerOrOwner,
+    delete: deleteDraftOnly,
   },
   fields: [
     { name: 'tenant', type: 'relationship', relationTo: 'tenants', required: true, index: true },
@@ -29,6 +42,10 @@ export const PurchaseOrders: CollectionConfig = {
         { name: 'variant', type: 'text' },
         { name: 'quantity', type: 'number', required: true, min: 0.001 },
         { name: 'unitCost', type: 'number', required: true, admin: { step: 0.01 } },
+        // How much of this line has actually been received so far - lets a
+        // short delivery be receive()'d again later for the remainder,
+        // rather than the whole PO being all-or-nothing.
+        { name: 'receivedQuantity', type: 'number', required: true, defaultValue: 0, min: 0 },
       ],
     },
     {
@@ -36,7 +53,7 @@ export const PurchaseOrders: CollectionConfig = {
       type: 'select',
       required: true,
       defaultValue: 'draft',
-      options: ['draft', 'sent', 'received'],
+      options: ['draft', 'sent', 'partially_received', 'received'],
     },
     { name: 'receivedAt', type: 'date' },
   ],
