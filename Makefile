@@ -123,7 +123,7 @@ endif
 .PHONY: snapshot-env
 snapshot-env: ## Capture DEPLOY_HOST's CURRENT docker/.env into the DEPLOY_ENV_FILE_BASE64 GitHub secret — re-run after ANY change to the server's .env
 	@echo "==> Snapshotting docker/.env from $(DEPLOY_HOST) into the DEPLOY_ENV_FILE_BASE64 secret (value never printed)..."
-	$(SSH) "base64 -w0 $(DEPLOY_PATH)/docker/.env" | gh secret set DEPLOY_ENV_FILE_BASE64 --repo $(REPO) --body -
+	$(SSH) "base64 -w0 $(DEPLOY_PATH)/docker/.env" | gh secret set DEPLOY_ENV_FILE_BASE64 --repo $(REPO)
 	@echo "Snapshot updated."
 
 .PHONY: vps-domains
