@@ -1,0 +1,39 @@
+name: Seed blog posts on production
+
+# One-off, manually-triggered. Runs docker/seed-blog.sh on the production
+# server over SSH - the schema migration for Posts/PostImages already
+# applies automatically via deploy.yml's "Apply pending Payload migrations"
+# step, but the actual seed CONTENT (apps/api/src/seed-posts.ts) is a
+# Local API script, not a migration, so it never runs on the server on its
+# own. Safe to re-run: seed-posts.ts skips any post whose slug already
+# exists.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Set up SSH
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run seed-blog.sh on the server
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd '${{ secrets.DEPLOY_PATH }}' && bash docker/seed-blog.sh"
+
+      - name: Verify a seeded post is reachable
+        run: |
+          set -euo pipefail
+          sleep 5
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://app.fundipos.co.ke/blog/revenue-vs-profit-small-shop")
+          echo "blog post -> $code"
+          [ "$code" = "200" ]
