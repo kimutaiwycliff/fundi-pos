@@ -59,6 +59,31 @@ jobs:
             "cd '${{ secrets.DEPLOY_PATH }}/docker' && \
              docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d backup"
 
+      - name: Wait for aws-cli to finish installing in the freshly-restarted container
+        # The backup service's own command installs awscli via apt-get on
+        # every container start (see docker-compose.prod.yml's own comment -
+        # the base postgres:16 image doesn't include it), which takes longer
+        # than the restart step above takes to return. Caught live: the very
+        # first run of this workflow restarted the service then immediately
+        # tried to run a backup and got "aws: not found", even though the
+        # credentials themselves were fine - a pure timing race, not a real
+        # failure. Polling for the binary to exist avoids re-hitting this.
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
+              "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              "cd '${{ secrets.DEPLOY_PATH }}/docker' && \
+               docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T backup which aws" \
+              >/dev/null 2>&1; then
+              echo "aws-cli is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::aws-cli never became available in the backup container after 60s."
+          exit 1
+
       - name: Run a backup now and verify it uploads
         run: |
           set -euo pipefail
