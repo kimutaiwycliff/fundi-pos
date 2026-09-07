@@ -22,6 +22,7 @@ import { LogoMark } from '@/components/marketing/logo-mark';
 import { MobileNav } from '@/components/marketing/mobile-nav';
 import { DownloadButtons } from '@/components/marketing/download-buttons';
 import { Reveal } from '@/components/marketing/reveal';
+import { WhatsAppButton } from '@/components/marketing/whatsapp-button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
 
@@ -572,9 +573,14 @@ export default function LandingPage() {
             <span className="font-heading font-semibold">Fundi</span>
           </Link>
           <p>Point of sale built for small businesses across Kenya.</p>
-          <p>© 2026 Fundi. Built in Kenya.</p>
+          <div className="flex items-center gap-4">
+            <Link href="/terms" className="hover:text-foreground">Terms</Link>
+            <Link href="/privacy" className="hover:text-foreground">Privacy</Link>
+            <span>© 2026 Fundi. Built in Kenya.</span>
+          </div>
         </div>
       </footer>
+      <WhatsAppButton />
     </div>
   );
 }
