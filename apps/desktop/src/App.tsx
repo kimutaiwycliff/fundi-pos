@@ -7,7 +7,7 @@ import { checkPinLocallyById } from "./pin";
 import { loadSession, saveSession, clearSession, updateSessionStore, type PersistedSession } from "./session";
 import { checkForUpdate, type AvailableUpdate } from "./updateCheck";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Till } from "./Till";
+import { AppShell } from "./AppShell";
 import { WrenchIcon } from "./icons";
 import "./App.css";
 
@@ -227,7 +227,7 @@ function App() {
   if (state === "connected" && user && payloadTokenRef.current) {
     const fixedStoreId = typeof user.store === "object" ? user.store?.id : user.store;
     return (
-      <Till
+      <AppShell
         user={user}
         terminalId={terminalId}
         terminalName={terminalName}

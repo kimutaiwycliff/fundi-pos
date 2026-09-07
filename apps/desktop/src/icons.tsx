@@ -108,3 +108,28 @@ export const ReceiptIcon = base(
 export const WrenchIcon = base(
   <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" />,
 );
+
+export const CartIcon = base(
+  <>
+    <circle cx="9" cy="20" r="1.4" />
+    <circle cx="17" cy="20" r="1.4" />
+    <path d="M3 4h2l2.2 11.2a2 2 0 0 0 2 1.6h7.6a2 2 0 0 0 2-1.6L20.5 8H6" />
+  </>,
+);
+
+export const ChartIcon = base(<path d="M4 20V10M10 20V4M16 20v-7M4 20h16" />);
+
+export const BoxIcon = base(
+  <>
+    <path d="M3.5 8.2 12 3.5l8.5 4.7v8.6L12 21.5l-8.5-4.7z" />
+    <path d="M3.5 8.2 12 12.9l8.5-4.7M12 12.9v8.6" />
+  </>,
+);
+
+export const TruckIcon = base(
+  <>
+    <path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z" />
+    <circle cx="7" cy="18" r="1.6" />
+    <circle cx="17" cy="18" r="1.6" />
+  </>,
+);
