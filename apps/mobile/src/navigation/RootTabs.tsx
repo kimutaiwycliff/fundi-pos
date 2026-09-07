@@ -19,7 +19,7 @@ import { SettingsScreen } from '../admin/SettingsScreen';
 import { AuditLogScreen } from '../admin/AuditLogScreen';
 import { ReportsScreen } from '../admin/ReportsScreen';
 import { OverviewScreen } from '../overview/OverviewScreen';
-import { RestockScreen } from '../restock/RestockScreen';
+import { RestockHomeScreen } from '../restock/RestockHomeScreen';
 
 type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers' | 'security' | 'reports' | 'inventory' | 'restock';
 
@@ -140,7 +140,7 @@ function MoreScreen({
           {section === 'customers' ? <RealCustomersScreen user={user} payloadToken={payloadToken} storeId={storeId} /> : null}
           {section === 'reports' ? <ReportsScreen user={user} payloadToken={payloadToken} /> : null}
           {section === 'inventory' ? <RealInventoryScreen user={user} terminalId={terminalId} storeId={storeId} /> : null}
-          {section === 'restock' ? <RestockScreen user={user} storeId={storeId} payloadToken={payloadToken} /> : null}
+          {section === 'restock' ? <RestockHomeScreen user={user} storeId={storeId} payloadToken={payloadToken} /> : null}
           {section === 'security' ? (
             <View className="flex-1 px-6 pt-4">
               {biometricAvailable ? (

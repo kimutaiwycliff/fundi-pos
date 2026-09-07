@@ -67,3 +67,64 @@ export async function createPurchaseOrder(
   const body = await res.json().catch(() => null);
   return body?.doc ?? null;
 }
+
+export interface PurchaseOrderListItem {
+  id: number;
+  store: { id: number; name: string } | number;
+  supplier: { id: number; name: string } | number;
+  status: 'draft' | 'sent' | 'partially_received' | 'received';
+  lineItems: Array<{ quantity: number }>;
+  createdAt: string;
+}
+
+export interface PurchaseOrderDetail extends Omit<PurchaseOrderListItem, 'lineItems'> {
+  lineItems: Array<{
+    product: { id: number; name: string; variants?: Array<{ id: string; label: string }> };
+    variant: string | null;
+    quantity: number;
+    unitCost: number;
+    receivedQuantity: number;
+  }>;
+}
+
+export async function fetchPurchaseOrders(payloadToken: string): Promise<PurchaseOrderListItem[]> {
+  const res = await fetch(`${API_BASE_URL}/api/purchase-orders?sort=-createdAt&limit=50&depth=1`, {
+    headers: { Authorization: `JWT ${payloadToken}` },
+  });
+  if (!res.ok) return [];
+  const body = await res.json().catch(() => null);
+  return body?.docs ?? [];
+}
+
+export async function fetchPurchaseOrder(payloadToken: string, id: number): Promise<PurchaseOrderDetail | null> {
+  const res = await fetch(`${API_BASE_URL}/api/purchase-orders/${id}?depth=1`, {
+    headers: { Authorization: `JWT ${payloadToken}` },
+  });
+  if (!res.ok) return null;
+  return res.json().catch(() => null);
+}
+
+// Draft-only, enforced server-side by PurchaseOrders.ts's access.delete -
+// this is just the client call, the actual guard lives in the collection.
+export async function deletePurchaseOrder(payloadToken: string, id: number): Promise<boolean> {
+  const res = await fetch(`${API_BASE_URL}/api/purchase-orders/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `JWT ${payloadToken}` },
+  });
+  return res.ok;
+}
+
+export async function receivePurchaseOrder(
+  payloadToken: string,
+  id: number,
+  items: Array<{ index: number; quantity: number }>,
+): Promise<PurchaseOrderDetail | null> {
+  const res = await fetch(`${API_BASE_URL}/api/purchase-orders/${id}/receive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+    body: JSON.stringify({ items }),
+  });
+  if (!res.ok) return null;
+  const body = await res.json().catch(() => null);
+  return body?.doc ?? null;
+}

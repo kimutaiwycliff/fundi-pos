@@ -64,6 +64,11 @@ interface DailyPoint {
   voidedCount: number;
   refundedCount: number;
 }
+interface StockValue {
+  potentialRevenue: number;
+  stockValue: number | null;
+  potentialProfit: number | null;
+}
 
 const RANGES: { value: Range; label: string }[] = [
   { value: 'today', label: 'Today' },
@@ -174,6 +179,7 @@ export function ReportsScreen({ user, payloadToken }: { user: PayloadUser; paylo
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [dayDetail, setDayDetail] = useState<SalesSummary | null>(null);
   const [dayLoading, setDayLoading] = useState(false);
+  const [stockValue, setStockValue] = useState<StockValue | null>(null);
 
   const trendRange = range === '7d' ? '7d' : '30d';
   const canSeeProfit = user.role === 'owner';
@@ -183,10 +189,12 @@ export function ReportsScreen({ user, payloadToken }: { user: PayloadUser; paylo
     Promise.all([
       fetch(`${API_BASE_URL}/api/reports/sales-summary?range=${range}`, { headers: { Authorization: `JWT ${payloadToken}` } }).then((r) => r.json()),
       fetch(`${API_BASE_URL}/api/reports/sales-daily?range=${trendRange}`, { headers: { Authorization: `JWT ${payloadToken}` } }).then((r) => r.json()),
+      fetch(`${API_BASE_URL}/api/reports/stock-value`, { headers: { Authorization: `JWT ${payloadToken}` } }).then((r) => r.json()),
     ])
-      .then(([summaryBody, dailyBody]) => {
+      .then(([summaryBody, dailyBody, stockValueBody]) => {
         setSummary(summaryBody);
         setDaily(dailyBody?.days ?? []);
+        setStockValue(stockValueBody);
       })
       .finally(() => setLoading(false));
   }, [range, trendRange, payloadToken]);
@@ -250,6 +258,18 @@ export function ReportsScreen({ user, payloadToken }: { user: PayloadUser; paylo
                 />
               ) : null}
             </Animated.View>
+
+            {stockValue ? (
+              <View className="gap-2 rounded-lg border border-border bg-card p-3">
+                <Text className="text-sm font-medium text-foreground">Stock on hand right now</Text>
+                <Text className="text-xs text-muted-foreground">Not the same as the sales figures above - this is what&apos;s currently on the shelf</Text>
+                <View className="flex-row flex-wrap gap-3 pt-1">
+                  {canSeeProfit ? <SummaryCard label="Stock value (at cost)" value={(stockValue.stockValue ?? 0).toFixed(2)} /> : null}
+                  <SummaryCard label="Potential revenue" value={stockValue.potentialRevenue.toFixed(2)} />
+                  {canSeeProfit ? <SummaryCard label="Potential profit" value={(stockValue.potentialProfit ?? 0).toFixed(2)} /> : null}
+                </View>
+              </View>
+            ) : null}
 
             {summary.discountGivenTotal > 0 || hasLosses ? (
               <View className="flex-row flex-wrap gap-3">
