@@ -1,0 +1,52 @@
+name: Provision full env on production
+
+# One-off, manually-triggered, LAST-RESORT bootstrap for a genuinely fresh
+# VPS (or one where docker/.env was lost entirely). Unlike
+# provision-r2-env.yml/provision-backup-env.yml (which each patch in just
+# their own handful of vars, safe to re-run against an already-configured
+# box), this REPLACES docker/.env wholesale from a single base64 snapshot
+# secret (DEPLOY_ENV_FILE_BASE64 - see docker/RESTORE.md and `make
+# snapshot-env`).
+#
+# Point DEPLOY_HOST/DEPLOY_USER/DEPLOY_PATH at the new box FIRST (`make
+# point-vps`), then run this before bringing the stack up there.
+#
+# Keep DEPLOY_ENV_FILE_BASE64 fresh: whenever docker/.env changes on the
+# live server (a rotated password, a new key), re-run `make snapshot-env` -
+# otherwise this snapshot silently goes stale and a future run of this
+# workflow would restore the OLD values.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Set up SSH
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Write docker/.env on the server from the snapshot secret
+        run: |
+          set -euo pipefail
+          printf '%s' "${{ secrets.DEPLOY_ENV_FILE_BASE64 }}" | base64 -d > /tmp/full-env
+          scp -i ~/.ssh/deploy_key -o ConnectTimeout=15 /tmp/full-env \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/full-env"
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "mkdir -p '${{ secrets.DEPLOY_PATH }}/docker' && \
+             mv /tmp/full-env '${{ secrets.DEPLOY_PATH }}/docker/.env' && \
+             chmod 600 '${{ secrets.DEPLOY_PATH }}/docker/.env'"
+          rm -f /tmp/full-env
+
+      - name: Confirm the file landed
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "wc -l '${{ secrets.DEPLOY_PATH }}/docker/.env'"
