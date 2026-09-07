@@ -32,9 +32,22 @@ jobs:
           ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Write docker/.env on the server from the snapshot secret
+        # Passed via env:, not inlined as ${{ secrets.X }} directly in the
+        # script (like this workflow's other steps still do for the shorter
+        # DEPLOY_* secrets) - this one is long (a full docker/.env, base64'd)
+        # and inline interpolation into the composed script was observed to
+        # come through as something base64 -d rejected ("invalid input"),
+        # even though the exact same bytes round-tripped fine locally
+        # (ssh ... | base64 -d | wc -c). env: is GitHub's own documented-
+        # safer path for exactly this - the shell reads it as a normal
+        # variable instead of it being substituted into the script text.
+        env:
+          ENV_FILE_BASE64: ${{ secrets.DEPLOY_ENV_FILE_BASE64 }}
         run: |
           set -euo pipefail
-          printf '%s' "${{ secrets.DEPLOY_ENV_FILE_BASE64 }}" | base64 -d > /tmp/full-env
+          echo "Secret length: ${#ENV_FILE_BASE64} chars"
+          printf '%s' "$ENV_FILE_BASE64" | base64 -d > /tmp/full-env
+          echo "Decoded to $(wc -c < /tmp/full-env) bytes"
           scp -i ~/.ssh/deploy_key -o ConnectTimeout=15 /tmp/full-env \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/full-env"
           ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
