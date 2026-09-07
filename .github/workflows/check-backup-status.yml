@@ -1,0 +1,36 @@
+name: Check backup status on production
+
+# One-off, read-only diagnostic. Reports whether BACKUP_S3_* is already
+# configured in the server's docker/.env and what the backup container's
+# most recent runs actually did - never prints secret values, only whether
+# keys are present and what backup.sh itself already logged.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Set up SSH
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Check docker/.env and backup container logs
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" '
+              echo "--- BACKUP_S3_* keys present in docker/.env (values masked) ---"
+              grep -E "^BACKUP_S3_" "${{ secrets.DEPLOY_PATH }}/docker/.env" | sed -E "s/=.*/=<set>/" || echo "(none found)"
+              echo "--- backup container status ---"
+              docker ps --filter "name=docker-backup-1" --format "{{.Names}}\t{{.Status}}" || echo "(not running)"
+              echo "--- last 40 lines of backup container logs ---"
+              docker logs docker-backup-1 --tail 40 2>&1 || echo "(no logs / container not found)"
+              echo "--- pgbackups volume contents (local dumps) ---"
+              docker run --rm -v docker_pgbackups:/backups alpine ls -la /backups 2>&1 || echo "(volume not found)"
+            '
