@@ -10,6 +10,7 @@ import * as migration_20260903_064520_add_line_item_variant_tenant_store from '.
 import * as migration_20260903_073000_backfill_line_item_variant_tenant_store from './20260903_073000_backfill_line_item_variant_tenant_store';
 import * as migration_20260903_090000_fix_tenant_store_column_types from './20260903_090000_fix_tenant_store_column_types';
 import * as migration_20260903_114432_add_tenant_status_and_platform_audit_log from './20260903_114432_add_tenant_status_and_platform_audit_log';
+import * as migration_20260907_055634_add_posts_blog from './20260907_055634_add_posts_blog';
 
 export const migrations = [
   {
@@ -70,6 +71,11 @@ export const migrations = [
   {
     up: migration_20260903_114432_add_tenant_status_and_platform_audit_log.up,
     down: migration_20260903_114432_add_tenant_status_and_platform_audit_log.down,
-    name: '20260903_114432_add_tenant_status_and_platform_audit_log'
+    name: '20260903_114432_add_tenant_status_and_platform_audit_log',
+  },
+  {
+    up: migration_20260907_055634_add_posts_blog.up,
+    down: migration_20260907_055634_add_posts_blog.down,
+    name: '20260907_055634_add_posts_blog'
   },
 ];

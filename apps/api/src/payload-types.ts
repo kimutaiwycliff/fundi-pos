@@ -86,6 +86,8 @@ export interface Config {
     shifts: Shift;
     'audit-log': AuditLog;
     'platform-audit-log': PlatformAuditLog;
+    posts: Post;
+    'post-images': PostImage;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -111,6 +113,8 @@ export interface Config {
     shifts: ShiftsSelect<false> | ShiftsSelect<true>;
     'audit-log': AuditLogSelect<false> | AuditLogSelect<true>;
     'platform-audit-log': PlatformAuditLogSelect<false> | PlatformAuditLogSelect<true>;
+    posts: PostsSelect<false> | PostsSelect<true>;
+    'post-images': PostImagesSelect<false> | PostImagesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -630,6 +634,75 @@ export interface PlatformAuditLog {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "posts".
+ */
+export interface Post {
+  id: number;
+  title: string;
+  /**
+   * URL path segment, e.g. "etims-compliance-2026" for /blog/etims-compliance-2026.
+   */
+  slug: string;
+  /**
+   * Shown on the blog list page and used as the default meta description.
+   */
+  excerpt: string;
+  content?: {
+    root: {
+      type: string;
+      children: {
+        type: any;
+        version: number;
+        [k: string]: unknown;
+      }[];
+      direction: ('ltr' | 'rtl') | null;
+      format: 'left' | 'start' | 'center' | 'right' | 'end' | 'justify' | '';
+      indent: number;
+      version: number;
+    };
+    [k: string]: unknown;
+  } | null;
+  coverImage?: (number | null) | PostImage;
+  /**
+   * Controls sort order and the date shown on the post.
+   */
+  publishedAt?: string | null;
+  /**
+   * Overrides the <title> tag if set; otherwise falls back to the post title.
+   */
+  seoTitle?: string | null;
+  /**
+   * Overrides the meta description if set; otherwise falls back to the excerpt.
+   */
+  seoDescription?: string | null;
+  status: 'draft' | 'published';
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "post-images".
+ */
+export interface PostImage {
+  id: number;
+  /**
+   * Describes the image for accessibility.
+   */
+  alt: string;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -723,6 +796,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'platform-audit-log';
         value: number | PlatformAuditLog;
+      } | null)
+    | ({
+        relationTo: 'posts';
+        value: number | Post;
+      } | null)
+    | ({
+        relationTo: 'post-images';
+        value: number | PostImage;
       } | null);
   globalSlug?: string | null;
   user:
@@ -1131,6 +1212,41 @@ export interface PlatformAuditLogSelect<T extends boolean = true> {
   metadata?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "posts_select".
+ */
+export interface PostsSelect<T extends boolean = true> {
+  title?: T;
+  slug?: T;
+  excerpt?: T;
+  content?: T;
+  coverImage?: T;
+  publishedAt?: T;
+  seoTitle?: T;
+  seoDescription?: T;
+  status?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "post-images_select".
+ */
+export interface PostImagesSelect<T extends boolean = true> {
+  alt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  url?: T;
+  thumbnailURL?: T;
+  filename?: T;
+  mimeType?: T;
+  filesize?: T;
+  width?: T;
+  height?: T;
+  focalX?: T;
+  focalY?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

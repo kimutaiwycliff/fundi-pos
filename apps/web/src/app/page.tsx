@@ -34,6 +34,7 @@ const NAV_LINKS = [
   { href: '#download', label: 'Download' },
   { href: '#pricing', label: 'Pricing' },
   { href: '#faq', label: 'FAQ' },
+  { href: '/blog', label: 'Blog' },
 ];
 
 const CAPABILITIES = ['Real sales & margin reports', 'Works fully offline', 'M-Pesa built in', 'Multi-store ready'];

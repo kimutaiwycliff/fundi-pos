@@ -22,6 +22,8 @@ import { Shifts } from './collections/Shifts.ts';
 import { PlatformAdmins } from './collections/PlatformAdmins.ts';
 import { AuditLog } from './collections/AuditLog.ts';
 import { PlatformAuditLog } from './collections/PlatformAuditLog.ts';
+import { Posts } from './collections/Posts.ts';
+import { PostImages } from './collections/PostImages.ts';
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
@@ -56,6 +58,8 @@ export default buildConfig({
     Shifts,
     AuditLog,
     PlatformAuditLog,
+    Posts,
+    PostImages,
   ],
   // apps/web talks to Payload through its own server-side route handlers
   // (same-origin from the browser's perspective, proxied server-to-server -
@@ -87,6 +91,13 @@ export default buildConfig({
       enabled: Boolean(process.env.R2_BUCKET),
       collections: {
         media: {
+          disablePayloadAccessControl: true,
+          generateFileURL: ({ filename, prefix }) => {
+            const key = prefix ? `${prefix}/${filename}` : filename;
+            return `${process.env.R2_PUBLIC_URL}/${key}`;
+          },
+        },
+        'post-images': {
           disablePayloadAccessControl: true,
           generateFileURL: ({ filename, prefix }) => {
             const key = prefix ? `${prefix}/${filename}` : filename;

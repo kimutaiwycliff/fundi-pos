@@ -136,3 +136,37 @@
     @apply font-sans;
   }
 }
+
+/* Blog post body (Lexical -> JSX via @payloadcms/richtext-lexical/react) -
+   no Tailwind Typography plugin in this project, so styled directly rather
+   than adding a dependency for two pages' worth of prose. */
+.prose-content {
+  @apply text-muted-foreground leading-7;
+}
+.prose-content > * + * {
+  @apply mt-4;
+}
+.prose-content h1,
+.prose-content h2,
+.prose-content h3 {
+  @apply font-heading font-semibold text-foreground mt-8 mb-2;
+}
+.prose-content h1 {
+  @apply text-2xl;
+}
+.prose-content h2 {
+  @apply text-xl;
+}
+.prose-content h3 {
+  @apply text-lg;
+}
+.prose-content ul,
+.prose-content ol {
+  @apply list-disc space-y-1.5 pl-6;
+}
+.prose-content a {
+  @apply text-primary underline underline-offset-2;
+}
+.prose-content strong {
+  @apply text-foreground font-semibold;
+}

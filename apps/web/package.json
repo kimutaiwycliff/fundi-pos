@@ -16,6 +16,7 @@
   "dependencies": {
     "@eslint/eslintrc": "^3.3.7",
     "@hardware-pos/business-logic": "^0.0.0",
+    "@payloadcms/richtext-lexical": "^3.88.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

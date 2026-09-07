@@ -20,6 +20,7 @@ const LINKS = [
   { href: '#how-it-works', label: 'How it works' },
   { href: '#pricing', label: 'Pricing' },
   { href: '#faq', label: 'FAQ' },
+  { href: '/blog', label: 'Blog' },
 ];
 
 // SheetClose and Button both use Radix Slot when `asChild` is set - nesting
