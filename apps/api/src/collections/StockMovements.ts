@@ -1,5 +1,5 @@
 import type { CollectionConfig } from 'payload';
-import { isAuthenticated, neverDelete, ownTenantOnly } from '../access/index.ts';
+import { managerOrOwner, neverDelete, ownTenantOnly } from '../access/index.ts';
 import { computeRunningBalance } from '../hooks/stockBalance.ts';
 import { toID } from '../lib/relations.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
@@ -9,10 +9,15 @@ export const StockMovements: CollectionConfig = {
   admin: { useAsTitle: 'id', defaultColumns: ['product', 'store', 'quantityDelta', 'reason', 'flaggedForReview'] },
   access: {
     read: ownTenantOnly,
-    // Cashiers write these constantly (every sale); managers/owners for
-    // restocks/adjustments/transfers. Nothing may ever be deleted -
-    // corrections are new rows, never edits to history.
-    create: isAuthenticated,
+    // A cashier's own sale/refund/void never actually calls this - Orders.ts's
+    // afterChange hook posts those movements server-side with
+    // overrideAccess: true (same for StockTransfers.ts's transfer_in/
+    // transfer_out), so this access.create is only ever consulted for a
+    // DIRECT client-initiated write - i.e. the manual "adjust stock" forms
+    // (restock/adjustment/write_off) on every client. Per the user's own
+    // instruction, only manager/owner may do that. Nothing may ever be
+    // deleted - corrections are new rows, never edits to history.
+    create: managerOrOwner,
     update: () => false,
     delete: neverDelete,
   },

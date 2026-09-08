@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchProductCatalog, fetchStockLevels, recordStockMovement, type PickableProduct, type StockLevel } from './inventory';
+import type { PayloadUser } from './auth';
 
 const NO_VARIANT = '__base__';
 
@@ -14,7 +15,9 @@ const TYPES = [
 // ever reads stock to gate the cart, never writes it). Mirrors web's
 // inventory page + stock-adjustment-dialog.tsx: every change is a new
 // StockMovements row, never a direct edit to a stored count (there is none).
-export function Inventory({ storeId, payloadToken }: { storeId: number | null; payloadToken: string }) {
+export function Inventory({ user, storeId, payloadToken }: { user: PayloadUser; storeId: number | null; payloadToken: string }) {
+  // Matches StockMovements.ts's own access.create - owner and manager only.
+  const canManage = user.role === 'owner' || user.role === 'manager';
   const [levels, setLevels] = useState<StockLevel[]>([]);
   const [catalog, setCatalog] = useState<PickableProduct[]>([]);
   const [filter, setFilter] = useState('');
@@ -106,6 +109,7 @@ export function Inventory({ storeId, payloadToken }: { storeId: number | null; p
   return (
     <div className="section-shell">
       <div className="section-body inventory-layout">
+        {canManage ? (
         <div className="section-card">
           <h3>Adjust stock</h3>
           <form onSubmit={handleSubmit} className="login-form">
@@ -183,6 +187,7 @@ export function Inventory({ storeId, payloadToken }: { storeId: number | null; p
             </button>
           </form>
         </div>
+        ) : null}
 
         <div className="section-card">
           <div className="section-card-toolbar">

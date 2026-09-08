@@ -84,7 +84,7 @@ export function AppShell(props: AppShellProps) {
 
         {visited.has('inventory') ? (
           <div className="app-shell-pane app-shell-pane-padded" hidden={section !== 'inventory'}>
-            <Inventory storeId={props.activeStoreId} payloadToken={props.payloadToken} />
+            <Inventory user={props.user} storeId={props.activeStoreId} payloadToken={props.payloadToken} />
           </div>
         ) : null}
 

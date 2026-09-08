@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { payloadFetch } from '@/lib/payload-client';
+import { getCurrentUser } from '@/lib/current-user';
 import { BranchFilter } from '@/components/branch-filter';
 import { StockAdjustmentDialog } from './stock-adjustment-dialog';
 import { InventoryTable } from './inventory-table';
@@ -24,11 +25,13 @@ export default async function InventoryPage({
   searchParams: Promise<{ store?: string }>;
 }) {
   const { store } = await searchParams;
-  const [{ levels }, { docs: products }, { docs: stores }] = await Promise.all([
+  const [me, { levels }, { docs: products }, { docs: stores }] = await Promise.all([
+    getCurrentUser(),
     payloadFetch<{ levels: StockLevel[] }>(`/api/reports/stock-levels${store ? `?store=${store}` : ''}`),
     payloadFetch<{ docs: Product[] }>('/api/products?sort=name&limit=200'),
     payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
   ]);
+  const canManage = me.role === 'owner' || me.role === 'manager';
   const sorted = [...levels].sort((a, b) => Number(b.lowStock) - Number(a.lowStock));
 
   return (
@@ -45,7 +48,7 @@ export default async function InventoryPage({
           <Suspense fallback={null}>
             <BranchFilter stores={stores} />
           </Suspense>
-          <StockAdjustmentDialog products={products} stores={stores} />
+          {canManage ? <StockAdjustmentDialog products={products} stores={stores} /> : null}
         </div>
       </div>
       <InventoryTable levels={sorted} stores={stores} />

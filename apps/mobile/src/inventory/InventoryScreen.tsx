@@ -28,6 +28,8 @@ type Tab = 'levels' | 'exceptions';
 // aren't built yet - deferred the same way Phase 1's printing/scanning was.
 export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUser; terminalId: string; storeId: number | null }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
+  // Matches StockMovements.ts's own access.create - owner and manager only.
+  const canManage = user.role === 'owner' || user.role === 'manager';
 
   const [tab, setTab] = useState<Tab>('levels');
   const [levels, setLevels] = useState<StockLevel[]>([]);
@@ -114,9 +116,11 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
             </Text>
           </Pressable>
         </View>
-        <Pressable android_ripple={{ color: '#ffffff40' }} className="rounded-md bg-primary px-3 py-2 active:opacity-80" onPress={() => setAdjustOpen(true)}>
-          <Text className="text-sm font-medium text-primary-foreground">Adjust</Text>
-        </Pressable>
+        {canManage ? (
+          <Pressable android_ripple={{ color: '#ffffff40' }} className="rounded-md bg-primary px-3 py-2 active:opacity-80" onPress={() => setAdjustOpen(true)}>
+            <Text className="text-sm font-medium text-primary-foreground">Adjust</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {tab === 'levels' ? (
