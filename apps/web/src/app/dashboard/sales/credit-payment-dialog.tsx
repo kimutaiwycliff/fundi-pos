@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatDateTime } from '@/lib/format-date';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 import type { CreditPayment, ManagerRef, Order } from './page';
 
 const METHOD_LABEL: Record<CreditPayment['method'], string> = {
@@ -88,25 +89,31 @@ export function CreditPaymentDialog({
 
     setBusy(true);
     setError(null);
-    const response = await fetch(`/api/payload/orders/${order.id}/record-payment`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: parsed, method, note: note.trim() || undefined }),
-    });
+    try {
+      const response = await clientFetch(`/api/payload/orders/${order.id}/record-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: parsed, method, note: note.trim() || undefined }),
+      });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      const message = body?.error ?? 'Failed to record payment';
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const message = errorMessageFrom(body, 'Failed to record payment');
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
+      toast.success(parsed >= balance ? 'Sale fully settled' : 'Payment recorded');
+      onOpenChange(false);
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       setError(message);
       toast.error(message);
+    } finally {
       setBusy(false);
-      return;
     }
-
-    toast.success(parsed >= balance ? 'Sale fully settled' : 'Payment recorded');
-    setBusy(false);
-    onOpenChange(false);
-    router.refresh();
   }
 
   return (

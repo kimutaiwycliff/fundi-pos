@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { getDb } from './database';
-import { API_BASE_URL } from './auth';
+import { API_BASE_URL, OFFLINE_MESSAGE } from './auth';
 
 interface LocalUserCandidate {
   id: number;
@@ -117,16 +117,20 @@ export async function authorizeOrderStatusChange(
   managerId: number,
   pin: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/orders/${orderId}/authorize-status`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-    body: JSON.stringify({ status, managerId, pin }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/orders/${orderId}/authorize-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+      body: JSON.stringify({ status, managerId, pin }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: OFFLINE_MESSAGE };
   }
-  return { ok: true };
 }
 
 /**
@@ -141,14 +145,18 @@ export async function authorizeSettlement(
   managerId: number,
   pin: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/orders/${orderId}/settle`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-    body: JSON.stringify({ managerId, pin }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/orders/${orderId}/settle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+      body: JSON.stringify({ managerId, pin }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: OFFLINE_MESSAGE };
   }
-  return { ok: true };
 }

@@ -4,7 +4,7 @@ import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, Platform, ScrollView } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { API_BASE_URL } from '../lib/auth';
+import { API_BASE_URL, OFFLINE_MESSAGE } from '../lib/auth';
 import { showAlert } from '../components/AppNotice';
 
 interface StoreRow {
@@ -33,7 +33,8 @@ export function StoresScreen({ payloadToken, tenantId }: { payloadToken: string;
       headers: { Authorization: `JWT ${payloadToken}` },
     })
       .then((r) => r.json())
-      .then((body) => setStores(body?.docs ?? []));
+      .then((body) => setStores(body?.docs ?? []))
+      .catch(() => showAlert('Could not load stores', OFFLINE_MESSAGE));
   }
 
   useEffect(() => {
@@ -55,35 +56,43 @@ export function StoresScreen({ payloadToken, tenantId }: { payloadToken: string;
     const isEdit = editing !== 'new' && editing != null;
     setBusy(true);
     setError(null);
-    const res = await fetch(isEdit ? `${API_BASE_URL}/api/stores/${(editing as StoreRow).id}` : `${API_BASE_URL}/api/stores`, {
-      method: isEdit ? 'PATCH' : 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-      body: JSON.stringify({ tenant: tenantId, name, address: address || null, timezone }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      setError(body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} store`);
+    try {
+      const res = await fetch(isEdit ? `${API_BASE_URL}/api/stores/${(editing as StoreRow).id}` : `${API_BASE_URL}/api/stores`, {
+        method: isEdit ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+        body: JSON.stringify({ tenant: tenantId, name, address: address || null, timezone }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setError(body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} store`);
+        return;
+      }
+      setEditing(null);
+      refresh();
+    } catch {
+      setError(OFFLINE_MESSAGE);
+    } finally {
       setBusy(false);
-      return;
     }
-    setBusy(false);
-    setEditing(null);
-    refresh();
   }
 
   async function handleDelete() {
     if (editing === 'new' || editing == null) return;
-    const res = await fetch(`${API_BASE_URL}/api/stores/${editing.id}`, {
-      method: 'DELETE',
-      headers: { Authorization: `JWT ${payloadToken}` },
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      showAlert('Failed to delete store', body?.errors?.[0]?.message ?? 'This branch likely has order/shift history.');
-      return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/stores/${editing.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `JWT ${payloadToken}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        showAlert('Failed to delete store', body?.errors?.[0]?.message ?? 'This branch likely has order/shift history.');
+        return;
+      }
+      setEditing(null);
+      refresh();
+    } catch {
+      showAlert('Failed to delete store', OFFLINE_MESSAGE);
     }
-    setEditing(null);
-    refresh();
   }
 
   return (

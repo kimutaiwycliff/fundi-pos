@@ -22,23 +22,31 @@ export interface RestockSuggestion {
 }
 
 export async function fetchSuppliers(payloadToken: string): Promise<Supplier[]> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/suppliers?limit=100&sort=name`, {
-    headers: { Authorization: `JWT ${payloadToken}` },
-  });
-  if (!res.ok) return [];
-  const body = await res.json().catch(() => null);
-  return body?.docs ?? [];
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/suppliers?limit=100&sort=name`, {
+      headers: { Authorization: `JWT ${payloadToken}` },
+    });
+    if (!res.ok) return [];
+    const body = await res.json().catch(() => null);
+    return body?.docs ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function createSupplier(payloadToken: string, name: string): Promise<Supplier | null> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/suppliers`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-    body: JSON.stringify({ name }),
-  });
-  if (!res.ok) return null;
-  const body = await res.json().catch(() => null);
-  return body?.doc ?? null;
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/suppliers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    return body?.doc ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // Server-computed (low-stock + fast-moving, owner-gated cost) rather than a
@@ -46,12 +54,16 @@ export async function createSupplier(payloadToken: string, name: string): Promis
 // products_variants (see inventory.ts's own note), and this endpoint already
 // does exactly this computation for the same picker use case on other clients.
 export async function fetchRestockSuggestions(payloadToken: string, storeId: number): Promise<RestockSuggestion[]> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/reports/restock-suggestions?store=${storeId}`, {
-    headers: { Authorization: `JWT ${payloadToken}` },
-  });
-  if (!res.ok) return [];
-  const body = await res.json().catch(() => null);
-  return body?.suggestions ?? [];
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/reports/restock-suggestions?store=${storeId}`, {
+      headers: { Authorization: `JWT ${payloadToken}` },
+    });
+    if (!res.ok) return [];
+    const body = await res.json().catch(() => null);
+    return body?.suggestions ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function createPurchaseOrder(
@@ -62,14 +74,18 @@ export async function createPurchaseOrder(
     lineItems: Array<{ product: number; variant?: string; quantity: number; unitCost: number }>;
   },
 ): Promise<{ id: number } | null> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/purchase-orders`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-    body: JSON.stringify({ store: args.store, supplier: args.supplier, status: 'draft', lineItems: args.lineItems }),
-  });
-  if (!res.ok) return null;
-  const body = await res.json().catch(() => null);
-  return body?.doc ?? null;
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/purchase-orders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+      body: JSON.stringify({ store: args.store, supplier: args.supplier, status: 'draft', lineItems: args.lineItems }),
+    });
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    return body?.doc ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export interface PurchaseOrderListItem {
@@ -92,30 +108,42 @@ export interface PurchaseOrderDetail extends Omit<PurchaseOrderListItem, 'lineIt
 }
 
 export async function fetchPurchaseOrders(payloadToken: string): Promise<PurchaseOrderListItem[]> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/purchase-orders?sort=-createdAt&limit=50&depth=1`, {
-    headers: { Authorization: `JWT ${payloadToken}` },
-  });
-  if (!res.ok) return [];
-  const body = await res.json().catch(() => null);
-  return body?.docs ?? [];
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/purchase-orders?sort=-createdAt&limit=50&depth=1`, {
+      headers: { Authorization: `JWT ${payloadToken}` },
+    });
+    if (!res.ok) return [];
+    const body = await res.json().catch(() => null);
+    return body?.docs ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function fetchPurchaseOrder(payloadToken: string, id: number): Promise<PurchaseOrderDetail | null> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/purchase-orders/${id}?depth=1`, {
-    headers: { Authorization: `JWT ${payloadToken}` },
-  });
-  if (!res.ok) return null;
-  return res.json().catch(() => null);
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/purchase-orders/${id}?depth=1`, {
+      headers: { Authorization: `JWT ${payloadToken}` },
+    });
+    if (!res.ok) return null;
+    return await res.json().catch(() => null);
+  } catch {
+    return null;
+  }
 }
 
 // Draft-only, enforced server-side by PurchaseOrders.ts's access.delete -
 // this is just the client call, the actual guard lives in the collection.
 export async function deletePurchaseOrder(payloadToken: string, id: number): Promise<boolean> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/purchase-orders/${id}`, {
-    method: 'DELETE',
-    headers: { Authorization: `JWT ${payloadToken}` },
-  });
-  return res.ok;
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/purchase-orders/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `JWT ${payloadToken}` },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function receivePurchaseOrder(
@@ -123,12 +151,16 @@ export async function receivePurchaseOrder(
   id: number,
   items: Array<{ index: number; quantity: number }>,
 ): Promise<PurchaseOrderDetail | null> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/purchase-orders/${id}/receive`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-    body: JSON.stringify({ items }),
-  });
-  if (!res.ok) return null;
-  const body = await res.json().catch(() => null);
-  return body?.doc ?? null;
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/purchase-orders/${id}/receive`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+      body: JSON.stringify({ items }),
+    });
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    return body?.doc ?? null;
+  } catch {
+    return null;
+  }
 }

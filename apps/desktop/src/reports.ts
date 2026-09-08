@@ -1,5 +1,4 @@
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
-import { API_BASE_URL } from './auth';
+import { API_BASE_URL, apiFetch } from './auth';
 
 // Same three Payload REST endpoints apps/mobile/src/admin/ReportsScreen.tsx
 // already calls, via tauriFetch instead of plain fetch (see auth.ts's own
@@ -72,14 +71,14 @@ export interface StockValue {
 }
 
 export async function fetchSalesSummary(payloadToken: string, range: Range): Promise<SalesSummary> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/reports/sales-summary?range=${range}`, {
+  const res = await apiFetch(`${API_BASE_URL}/api/reports/sales-summary?range=${range}`, {
     headers: { Authorization: `JWT ${payloadToken}` },
   });
   return res.json();
 }
 
 export async function fetchSalesDaily(payloadToken: string, range: '7d' | '30d'): Promise<DailyPoint[]> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/reports/sales-daily?range=${range}`, {
+  const res = await apiFetch(`${API_BASE_URL}/api/reports/sales-daily?range=${range}`, {
     headers: { Authorization: `JWT ${payloadToken}` },
   });
   const body = await res.json().catch(() => null);
@@ -87,7 +86,7 @@ export async function fetchSalesDaily(payloadToken: string, range: '7d' | '30d')
 }
 
 export async function fetchStockValue(payloadToken: string): Promise<StockValue> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/reports/stock-value`, {
+  const res = await apiFetch(`${API_BASE_URL}/api/reports/stock-value`, {
     headers: { Authorization: `JWT ${payloadToken}` },
   });
   return res.json();

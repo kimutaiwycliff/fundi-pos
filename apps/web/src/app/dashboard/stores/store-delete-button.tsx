@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 // There's no "ban" equivalent for a branch - it either has no history yet
 // (safe to delete) or it does (Stores.ts's own beforeDelete hook blocks the
@@ -26,16 +27,20 @@ export function StoreDeleteButton({ storeId, name }: { storeId: number; name: st
 
   async function handleDelete() {
     setLoading(true);
-    const response = await fetch(`/api/payload/stores/${storeId}`, { method: 'DELETE' });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      toast.error(body?.errors?.[0]?.message ?? 'Failed to delete branch');
+    try {
+      const response = await clientFetch(`/api/payload/stores/${storeId}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        toast.error(errorMessageFrom(body, 'Failed to delete branch'));
+        return;
+      }
+      toast.success('Branch deleted');
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
       setLoading(false);
-      return;
     }
-    toast.success('Branch deleted');
-    setLoading(false);
-    router.refresh();
   }
 
   return (

@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 type Customer = { id: number; name: string; phone: string | null; email: string | null };
 
@@ -33,25 +34,31 @@ export function CustomerDialog({ customer }: { customer?: Customer }) {
     setLoading(true);
     setError(null);
 
-    const response = await fetch(isEdit ? `/api/payload/customers/${customer!.id}` : '/api/payload/customers', {
-      method: isEdit ? 'PATCH' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, phone: phone || null, email: email || null, loyaltyPoints: 0 }),
-    });
+    try {
+      const response = await clientFetch(isEdit ? `/api/payload/customers/${customer!.id}` : '/api/payload/customers', {
+        method: isEdit ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, phone: phone || null, email: email || null, loyaltyPoints: 0 }),
+      });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      const message = body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} customer`;
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const message = errorMessageFrom(body, `Failed to ${isEdit ? 'update' : 'create'} customer`);
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
+      setOpen(false);
+      toast.success(isEdit ? 'Customer updated' : 'Customer created');
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       setError(message);
       toast.error(message);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setOpen(false);
-    setLoading(false);
-    toast.success(isEdit ? 'Customer updated' : 'Customer created');
-    router.refresh();
   }
 
   return (

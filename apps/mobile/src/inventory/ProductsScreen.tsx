@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { getDb } from '../db/database';
-import { API_BASE_URL } from '../lib/auth';
+import { API_BASE_URL, OFFLINE_MESSAGE } from '../lib/auth';
 import type { PayloadUser } from '../lib/auth';
 import { showAlert, showToast } from '../components/AppNotice';
 import { usePullToRefresh } from '../lib/usePullToRefresh';
@@ -229,6 +229,8 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
       setProducts((prev) => prev.map((p) => (p.id === selected.id ? { ...p, sell_price: nextPrice } : p)));
       setSelected((prev) => (prev ? { ...prev, sell_price: nextPrice } : prev));
       showToast('Sell price updated');
+    } catch {
+      showAlert('Failed to save', OFFLINE_MESSAGE);
     } finally {
       setSaving(false);
     }
@@ -236,18 +238,22 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
 
   async function toggleActive(next: boolean) {
     if (!selected) return;
-    const res = await fetch(`${API_BASE_URL}/api/products/${selected.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-      body: JSON.stringify({ isActive: next }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      showAlert('Failed to save', body?.errors?.[0]?.message ?? 'Could not update status');
-      return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+        body: JSON.stringify({ isActive: next }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        showAlert('Failed to save', body?.errors?.[0]?.message ?? 'Could not update status');
+        return;
+      }
+      setProducts((prev) => prev.map((p) => (p.id === selected.id ? { ...p, is_active: next ? 1 : 0 } : p)));
+      setSelected((prev) => (prev ? { ...prev, is_active: next ? 1 : 0 } : prev));
+    } catch {
+      showAlert('Failed to save', OFFLINE_MESSAGE);
     }
-    setProducts((prev) => prev.map((p) => (p.id === selected.id ? { ...p, is_active: next ? 1 : 0 } : p)));
-    setSelected((prev) => (prev ? { ...prev, is_active: next ? 1 : 0 } : prev));
   }
 
   // Shared by the product's own image and each variant's - picks from the
@@ -274,17 +280,22 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
       name: asset.fileName ?? 'photo.jpg',
       type: asset.mimeType ?? 'image/jpeg',
     } as unknown as Blob);
-    const res = await fetch(`${API_BASE_URL}/api/media`, {
-      method: 'POST',
-      headers: { Authorization: `JWT ${payloadToken}` },
-      body: formData,
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) {
-      showAlert('Upload failed', body?.errors?.[0]?.message ?? 'Could not upload image');
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/media`, {
+        method: 'POST',
+        headers: { Authorization: `JWT ${payloadToken}` },
+        body: formData,
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        showAlert('Upload failed', body?.errors?.[0]?.message ?? 'Could not upload image');
+        return null;
+      }
+      return { id: body.doc.id, url: body.doc.url };
+    } catch {
+      showAlert('Upload failed', OFFLINE_MESSAGE);
       return null;
     }
-    return { id: body.doc.id, url: body.doc.url };
   }
 
   // The product's own image is a single top-level field, so - like price/
@@ -308,6 +319,8 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
       }
       setProducts((prev) => prev.map((p) => (p.id === selected.id ? { ...p, image_id: uploaded.id, image_url: uploaded.url } : p)));
       setSelected((prev) => (prev ? { ...prev, image_id: uploaded.id, image_url: uploaded.url } : prev));
+    } catch {
+      showAlert('Failed to save', OFFLINE_MESSAGE);
     } finally {
       setUploadingProductImage(false);
     }
@@ -363,6 +376,8 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
       }
       setProducts((prev) => prev.map((p) => (p.id === selected.id ? { ...p, variant_count: payloadVariants.length } : p)));
       showToast('Variants updated');
+    } catch {
+      showAlert('Failed to save', OFFLINE_MESSAGE);
     } finally {
       setSavingVariants(false);
     }
@@ -387,6 +402,8 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
         return;
       }
       setRelatedIds(next);
+    } catch {
+      showAlert('Failed to save', OFFLINE_MESSAGE);
     } finally {
       setSavingRelatedId(null);
     }

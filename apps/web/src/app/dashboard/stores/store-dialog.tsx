@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 type Store = { id: number; name: string; address: string | null; timezone: string };
 
@@ -38,25 +39,31 @@ export function StoreDialog({ store }: { store?: Store }) {
     setLoading(true);
     setError(null);
 
-    const response = await fetch(isEdit ? `/api/payload/stores/${store!.id}` : '/api/payload/stores', {
-      method: isEdit ? 'PATCH' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: form.name, address: form.address || null, timezone: form.timezone }),
-    });
+    try {
+      const response = await clientFetch(isEdit ? `/api/payload/stores/${store!.id}` : '/api/payload/stores', {
+        method: isEdit ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: form.name, address: form.address || null, timezone: form.timezone }),
+      });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      const message = body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} store`;
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const message = errorMessageFrom(body, `Failed to ${isEdit ? 'update' : 'create'} store`);
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
+      setOpen(false);
+      toast.success(isEdit ? 'Store updated' : 'Store created');
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       setError(message);
       toast.error(message);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setOpen(false);
-    setLoading(false);
-    toast.success(isEdit ? 'Store updated' : 'Store created');
-    router.refresh();
   }
 
   return (

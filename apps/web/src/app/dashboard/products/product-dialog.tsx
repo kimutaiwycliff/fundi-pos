@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 import {
   Dialog,
   DialogContent,
@@ -151,17 +152,22 @@ function ImageField({
     const file = e.target.files?.[0];
     if (!file) return;
     setLoading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    const response = await fetch('/api/media', { method: 'POST', body: formData });
-    const body = await response.json().catch(() => null);
-    setLoading(false);
-    if (inputRef.current) inputRef.current.value = '';
-    if (!response.ok) {
-      toast.error(body?.errors?.[0]?.message ?? 'Failed to upload image');
-      return;
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await clientFetch('/api/media', { method: 'POST', body: formData });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        toast.error(errorMessageFrom(body, 'Failed to upload image'));
+        return;
+      }
+      onChange(body.doc.id, body.doc.url);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+      if (inputRef.current) inputRef.current.value = '';
     }
-    onChange(body.doc.id, body.doc.url);
   }
 
   return (
@@ -312,69 +318,79 @@ export function ProductDialog({
     setLoading(true);
     setError(null);
 
-    const response = await fetch(isEdit ? `/api/payload/products/${product!.id}` : '/api/payload/products', {
-      method: isEdit ? 'PATCH' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sku: form.sku,
-        barcode: form.barcode || null,
-        name: form.name,
-        category: form.category,
-        image: imageId,
-        costPrice: Number(form.costPrice) || 0,
-        sellPrice: Number(form.sellPrice) || 0,
-        taxRate: Number(form.taxRate) || 0,
-        reorderPoint: Number(form.reorderPoint) || 0,
-        maxDiscountAmount: Number(form.maxDiscountAmount) || 0,
-        variants: variants
-          .filter((v) => v.label.trim())
-          .map((v) => ({
-            id: v.id,
-            label: v.label,
-            sku: v.sku,
-            barcode: v.barcode,
-            sellPrice: v.sellPrice,
-            costPrice: v.costPrice,
-            image: v.image,
-          })),
-        relatedProducts,
-      }),
-    });
+    try {
+      const response = await clientFetch(isEdit ? `/api/payload/products/${product!.id}` : '/api/payload/products', {
+        method: isEdit ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sku: form.sku,
+          barcode: form.barcode || null,
+          name: form.name,
+          category: form.category,
+          image: imageId,
+          costPrice: Number(form.costPrice) || 0,
+          sellPrice: Number(form.sellPrice) || 0,
+          taxRate: Number(form.taxRate) || 0,
+          reorderPoint: Number(form.reorderPoint) || 0,
+          maxDiscountAmount: Number(form.maxDiscountAmount) || 0,
+          variants: variants
+            .filter((v) => v.label.trim())
+            .map((v) => ({
+              id: v.id,
+              label: v.label,
+              sku: v.sku,
+              barcode: v.barcode,
+              sellPrice: v.sellPrice,
+              costPrice: v.costPrice,
+              image: v.image,
+            })),
+          relatedProducts,
+        }),
+      });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      const message = body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} product`;
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const message = errorMessageFrom(body, `Failed to ${isEdit ? 'update' : 'create'} product`);
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
+      setOpen(false);
+      toast.success(isEdit ? 'Product updated' : 'Product created');
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       setError(message);
       toast.error(message);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setOpen(false);
-    setLoading(false);
-    toast.success(isEdit ? 'Product updated' : 'Product created');
-    router.refresh();
   }
 
   async function handleArchiveToggle() {
     if (!product) return;
     setArchiveLoading(true);
     const nextActive = !product.isActive;
-    const response = await fetch(`/api/payload/products/${product.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isActive: nextActive }),
-    });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      toast.error(body?.errors?.[0]?.message ?? 'Failed to update product');
+    try {
+      const response = await clientFetch(`/api/payload/products/${product.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: nextActive }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        toast.error(errorMessageFrom(body, 'Failed to update product'));
+        return;
+      }
+      toast.success(nextActive ? 'Product restored' : 'Product archived');
+      setOpen(false);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
       setArchiveLoading(false);
-      return;
     }
-    toast.success(nextActive ? 'Product restored' : 'Product archived');
-    setArchiveLoading(false);
-    setOpen(false);
-    router.refresh();
   }
 
   async function handleStockAdjust() {
@@ -391,34 +407,40 @@ export function ProductDialog({
 
     setStockLoading(true);
     setStockError(null);
-    const response = await fetch('/api/payload/stock-movements', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: crypto.randomUUID(),
-        product: product.id,
-        variant: stockForm.variantId === NO_VARIANT ? null : stockForm.variantId,
-        store: Number(stockForm.storeId),
-        quantityDelta,
-        reason: stockForm.type,
-        clientTimestamp: new Date().toISOString(),
-        sourceTerminal: 'dashboard',
-      }),
-    });
+    try {
+      const response = await clientFetch('/api/payload/stock-movements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: crypto.randomUUID(),
+          product: product.id,
+          variant: stockForm.variantId === NO_VARIANT ? null : stockForm.variantId,
+          store: Number(stockForm.storeId),
+          quantityDelta,
+          reason: stockForm.type,
+          clientTimestamp: new Date().toISOString(),
+          sourceTerminal: 'dashboard',
+        }),
+      });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      const message = body?.errors?.[0]?.message ?? 'Failed to record the stock movement';
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const message = errorMessageFrom(body, 'Failed to record the stock movement');
+        setStockError(message);
+        toast.error(message);
+        return;
+      }
+
+      setStockForm((f) => ({ ...f, quantity: '' }));
+      toast.success('Stock movement recorded');
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       setStockError(message);
       toast.error(message);
+    } finally {
       setStockLoading(false);
-      return;
     }
-
-    setStockLoading(false);
-    setStockForm((f) => ({ ...f, quantity: '' }));
-    toast.success('Stock movement recorded');
-    router.refresh();
   }
 
   const productStock = product ? stockLevels.filter((l) => l.product === product.id) : [];

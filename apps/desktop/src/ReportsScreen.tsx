@@ -30,17 +30,20 @@ export function Reports({ user, payloadToken }: { user: PayloadUser; payloadToke
   const [daily, setDaily] = useState<DailyPoint[]>([]);
   const [stockValue, setStockValue] = useState<StockValue | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const trendRange: '7d' | '30d' = range === '7d' ? '7d' : '30d';
 
   const refresh = useCallback(() => {
     setLoading(true);
+    setLoadError(null);
     Promise.all([fetchSalesSummary(payloadToken, range), fetchSalesDaily(payloadToken, trendRange), fetchStockValue(payloadToken)])
       .then(([s, d, sv]) => {
         setSummary(s);
         setDaily(d);
         setStockValue(sv);
       })
+      .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
   }, [payloadToken, range, trendRange]);
 
@@ -64,7 +67,7 @@ export function Reports({ user, payloadToken }: { user: PayloadUser; payloadToke
       </div>
 
       {!summary || loading ? (
-        <p className="pane-empty-state-hint">Loading...</p>
+        <p className="pane-empty-state-hint">{!summary && loadError ? loadError : 'Loading...'}</p>
       ) : (
         <div className="section-body">
           <div className="stat-grid">

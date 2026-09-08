@@ -1,5 +1,5 @@
 import { scrypt } from 'scrypt-js';
-import { API_BASE_URL } from './auth';
+import { API_BASE_URL, OFFLINE_MESSAGE } from './auth';
 import { getDb } from '../db/database';
 
 // Offline cashier/manager PIN verification, matching
@@ -148,16 +148,20 @@ export async function authorizeOrderStatusChange(
   managerId: number,
   pin: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const res = await fetch(`${API_BASE_URL}/api/orders/${orderId}/authorize-status`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-    body: JSON.stringify({ status, managerId, pin }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/orders/${orderId}/authorize-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+      body: JSON.stringify({ status, managerId, pin }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: OFFLINE_MESSAGE };
   }
-  return { ok: true };
 }
 
 /**
@@ -172,16 +176,20 @@ export async function authorizeSettlement(
   managerId: number,
   pin: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const res = await fetch(`${API_BASE_URL}/api/orders/${orderId}/settle`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-    body: JSON.stringify({ managerId, pin }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/orders/${orderId}/settle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+      body: JSON.stringify({ managerId, pin }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: OFFLINE_MESSAGE };
   }
-  return { ok: true };
 }
 
 /**
@@ -200,14 +208,18 @@ export async function recordCreditPayment(
   managerId: number,
   pin: string,
 ): Promise<{ ok: true; amountPaid: number; balance: number } | { ok: false; error: string }> {
-  const res = await fetch(`${API_BASE_URL}/api/orders/${orderId}/record-payment`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-    body: JSON.stringify({ amount, method, note, managerId, pin }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/orders/${orderId}/record-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+      body: JSON.stringify({ amount, method, note, managerId, pin }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
+    }
+    return { ok: true, amountPaid: body.amountPaid, balance: body.balance };
+  } catch {
+    return { ok: false, error: OFFLINE_MESSAGE };
   }
-  return { ok: true, amountPaid: body.amountPaid, balance: body.balance };
 }

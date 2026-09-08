@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, ScrollView } from 'react-native';
-import { API_BASE_URL } from '../lib/auth';
+import { API_BASE_URL, OFFLINE_MESSAGE } from '../lib/auth';
 
 interface Tenant {
   id: number;
@@ -23,6 +23,7 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/tenants/${tenantId}`, { headers: { Authorization: `JWT ${payloadToken}` } })
@@ -32,32 +33,37 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
         setName(doc.name);
         setReceiptHeader(doc.receiptHeader ?? '');
         setReceiptFooter(doc.receiptFooter ?? '');
-      });
+      })
+      .catch(() => setLoadError(OFFLINE_MESSAGE));
   }, [payloadToken, tenantId]);
 
   async function handleSubmit() {
     setBusy(true);
     setError(null);
     setSaved(false);
-    const res = await fetch(`${API_BASE_URL}/api/tenants/${tenantId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-      body: JSON.stringify({ name, receiptHeader: receiptHeader || null, receiptFooter: receiptFooter || null }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      setError(body?.errors?.[0]?.message ?? 'Failed to save settings');
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/tenants/${tenantId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+        body: JSON.stringify({ name, receiptHeader: receiptHeader || null, receiptFooter: receiptFooter || null }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setError(body?.errors?.[0]?.message ?? 'Failed to save settings');
+        return;
+      }
+      setSaved(true);
+    } catch {
+      setError(OFFLINE_MESSAGE);
+    } finally {
       setBusy(false);
-      return;
     }
-    setBusy(false);
-    setSaved(true);
   }
 
   if (!tenant) {
     return (
       <View className="flex-1 items-center justify-center bg-background">
-        <Text className="text-muted-foreground">Loading...</Text>
+        <Text className="text-muted-foreground">{loadError ?? 'Loading...'}</Text>
       </View>
     );
   }

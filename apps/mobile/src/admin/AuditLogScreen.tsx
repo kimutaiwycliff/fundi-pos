@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { View, Text, FlatList } from 'react-native';
-import { API_BASE_URL } from '../lib/auth';
+import { API_BASE_URL, OFFLINE_MESSAGE } from '../lib/auth';
 
 interface AuditEntry {
   id: number;
@@ -18,11 +18,13 @@ const DESTRUCTIVE_ACTIONS = new Set(['order_voided', 'order_refunded', 'login_bl
 // opens, same as credit-payments (Phase 2's PaymentModal).
 export function AuditLogScreen({ payloadToken }: { payloadToken: string }) {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/audit-log?sort=-createdAt&limit=200&depth=1`, { headers: { Authorization: `JWT ${payloadToken}` } })
       .then((r) => r.json())
-      .then((body) => setEntries(body?.docs ?? []));
+      .then((body) => setEntries(body?.docs ?? []))
+      .catch(() => setLoadError(OFFLINE_MESSAGE));
   }, [payloadToken]);
 
   return (
@@ -31,7 +33,7 @@ export function AuditLogScreen({ payloadToken }: { payloadToken: string }) {
         contentContainerClassName="gap-2 p-3"
         data={entries}
         keyExtractor={(e) => String(e.id)}
-        ListEmptyComponent={<Text className="mt-8 text-center text-muted-foreground">Nothing logged yet.</Text>}
+        ListEmptyComponent={<Text className="mt-8 text-center text-muted-foreground">{loadError ?? 'Nothing logged yet.'}</Text>}
         renderItem={({ item }) => (
           <Animated.View entering={FadeInDown.duration(200)} className="rounded-lg border border-border bg-card p-3">
             <View className="flex-row items-center justify-between">

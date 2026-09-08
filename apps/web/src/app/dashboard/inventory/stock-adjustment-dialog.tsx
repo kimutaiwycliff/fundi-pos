@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ProductCombobox } from '@/components/product-combobox';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 type Variant = { id?: string; label: string; sku: string; barcode?: string | null };
 type Product = { id: number; name: string; sku: string; variants: Variant[] };
@@ -79,35 +80,41 @@ export function StockAdjustmentDialog({ products, stores }: { products: Product[
     const quantityDelta = form.type === 'write_off' ? -Math.abs(qty) : form.type === 'restock' ? Math.abs(qty) : qty;
 
     setLoading(true);
-    const response = await fetch('/api/payload/stock-movements', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: crypto.randomUUID(),
-        product: Number(form.productId),
-        variant: form.variantId === NO_VARIANT ? null : form.variantId,
-        store: Number(form.storeId),
-        quantityDelta,
-        reason: form.type,
-        clientTimestamp: new Date().toISOString(),
-        sourceTerminal: 'dashboard',
-      }),
-    });
+    try {
+      const response = await clientFetch('/api/payload/stock-movements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: crypto.randomUUID(),
+          product: Number(form.productId),
+          variant: form.variantId === NO_VARIANT ? null : form.variantId,
+          store: Number(form.storeId),
+          quantityDelta,
+          reason: form.type,
+          clientTimestamp: new Date().toISOString(),
+          sourceTerminal: 'dashboard',
+        }),
+      });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      const message = body?.errors?.[0]?.message ?? 'Failed to record the stock movement';
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const message = errorMessageFrom(body, 'Failed to record the stock movement');
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
+      setOpen(false);
+      setForm((f) => ({ ...f, productId: '', variantId: NO_VARIANT, quantity: '' }));
+      toast.success('Stock movement recorded');
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       setError(message);
       toast.error(message);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setOpen(false);
-    setForm((f) => ({ ...f, productId: '', variantId: NO_VARIANT, quantity: '' }));
-    setLoading(false);
-    toast.success('Stock movement recorded');
-    router.refresh();
   }
 
   return (

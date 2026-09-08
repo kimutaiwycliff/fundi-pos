@@ -1,4 +1,4 @@
-import { API_BASE_URL } from './auth';
+import { API_BASE_URL, apiFetch } from './auth';
 
 // Shift open/close requires connectivity - expectedCash/variance are
 // computed server-side from the real Orders ledger (apps/api/src/
@@ -25,19 +25,23 @@ export async function findOpenShift(payloadToken: string, terminal: string, cash
     'where[status][equals]': 'open',
     limit: '1',
   });
-  const res = await fetch(`${API_BASE_URL}/api/shifts?${params.toString()}`, {
-    headers: { Authorization: `JWT ${payloadToken}` },
-  });
-  if (!res.ok) return null;
-  const body = await res.json().catch(() => null);
-  return body?.docs?.[0] ?? null;
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/shifts?${params.toString()}`, {
+      headers: { Authorization: `JWT ${payloadToken}` },
+    });
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    return body?.docs?.[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function openShift(
   payloadToken: string,
   args: { tenantId: number; storeId: number; terminal: string; cashierId: number; openingFloat: number },
 ): Promise<Shift> {
-  const res = await fetch(`${API_BASE_URL}/api/shifts`, {
+  const res = await apiFetch(`${API_BASE_URL}/api/shifts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
     body: JSON.stringify({
@@ -54,7 +58,7 @@ export async function openShift(
 }
 
 export async function closeShift(payloadToken: string, shiftId: number, closingCashCounted: number): Promise<Shift> {
-  const res = await fetch(`${API_BASE_URL}/api/shifts/${shiftId}`, {
+  const res = await apiFetch(`${API_BASE_URL}/api/shifts/${shiftId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
     body: JSON.stringify({ status: 'closed', closingCashCounted }),

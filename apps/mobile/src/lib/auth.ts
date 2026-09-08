@@ -13,6 +13,29 @@
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3011';
 export const POWERSYNC_URL = process.env.EXPO_PUBLIC_POWERSYNC_URL ?? 'http://localhost:8080';
 
+// Shown wherever a caught error's message reaches the screen directly (this
+// file's own throws, and any other lib file that reuses it) - consistent
+// wording so "you're offline" always reads the same across the app, instead
+// of RN's raw fetch rejection ("[TypeError: Network request failed]") ever
+// reaching a user.
+export const OFFLINE_MESSAGE = "You're offline. Check your connection and try again.";
+
+/**
+ * Drop-in for `fetch` that turns a connectivity-layer failure (no network,
+ * DNS, TLS, timeout - the only realistic reasons `fetch()` itself throws
+ * rather than resolving) into a friendly, consistent Error instead of
+ * whatever raw message RN's fetch polyfill produces. An HTTP error response
+ * (4xx/5xx) still resolves normally - every existing `if (!res.ok)` call
+ * site keeps working unchanged.
+ */
+export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch {
+    throw new Error(OFFLINE_MESSAGE);
+  }
+}
+
 export interface PayloadUser {
   id: number;
   email: string;
@@ -30,7 +53,7 @@ export interface LoginResult {
 
 /** POST /api/users/login - standard Payload email/password auth. */
 export async function loginToPayload(email: string, password: string): Promise<LoginResult> {
-  const res = await fetch(`${API_BASE_URL}/api/users/login`, {
+  const res = await apiFetch(`${API_BASE_URL}/api/users/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
@@ -56,7 +79,7 @@ export async function loginToPayload(email: string, password: string): Promise<L
  * loginToPayload so callers don't need to branch on which method was used.
  */
 export async function loginWithPin(phone: string, pin: string): Promise<LoginResult> {
-  const res = await fetch(`${API_BASE_URL}/api/auth/pin-login`, {
+  const res = await apiFetch(`${API_BASE_URL}/api/auth/pin-login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, pin }),
@@ -85,7 +108,7 @@ export async function loginWithPin(phone: string, pin: string): Promise<LoginRes
  * already-lapsed session (that needs loginWithPin/loginToPayload again).
  */
 export async function refreshTillToken(payloadToken: string): Promise<LoginResult> {
-  const res = await fetch(`${API_BASE_URL}/api/auth/till-refresh`, {
+  const res = await apiFetch(`${API_BASE_URL}/api/auth/till-refresh`, {
     method: 'POST',
     headers: { Authorization: `JWT ${payloadToken}` },
   });
@@ -111,7 +134,7 @@ export async function refreshTillToken(payloadToken: string): Promise<LoginResul
  */
 export async function fetchPowerSyncToken(payloadToken: string, storeId?: number | null): Promise<string> {
   const url = storeId != null ? `${API_BASE_URL}/api/powersync/token?storeId=${storeId}` : `${API_BASE_URL}/api/powersync/token`;
-  const res = await fetch(url, {
+  const res = await apiFetch(url, {
     method: 'GET',
     headers: { Authorization: `JWT ${payloadToken}` },
   });

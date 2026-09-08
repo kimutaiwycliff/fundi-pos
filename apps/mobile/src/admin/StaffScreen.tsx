@@ -4,7 +4,7 @@ import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, ScrollView, Platform } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { API_BASE_URL } from '../lib/auth';
+import { API_BASE_URL, OFFLINE_MESSAGE } from '../lib/auth';
 import { showAlert } from '../components/AppNotice';
 
 interface Staff {
@@ -40,12 +40,14 @@ export function StaffScreen({ payloadToken, tenantId }: { payloadToken: string; 
       headers: { Authorization: `JWT ${payloadToken}` },
     })
       .then((r) => r.json())
-      .then((body) => setStaff(body?.docs ?? []));
+      .then((body) => setStaff(body?.docs ?? []))
+      .catch(() => showAlert('Could not load staff', OFFLINE_MESSAGE));
     fetch(`${API_BASE_URL}/api/stores?where[tenant][equals]=${tenantId}&sort=name&limit=100`, {
       headers: { Authorization: `JWT ${payloadToken}` },
     })
       .then((r) => r.json())
-      .then((body) => setStores(body?.docs ?? []));
+      .then((body) => setStores(body?.docs ?? []))
+      .catch(() => showAlert('Could not load stores', OFFLINE_MESSAGE));
   }
 
   useEffect(() => {
@@ -55,17 +57,21 @@ export function StaffScreen({ payloadToken, tenantId }: { payloadToken: string; 
 
   async function toggleBan(member: Staff) {
     const nextStatus = member.status === 'banned' ? 'active' : 'banned';
-    const res = await fetch(`${API_BASE_URL}/api/users/${member.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-      body: JSON.stringify({ status: nextStatus }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      showAlert('Failed', body?.errors?.[0]?.message ?? 'Failed to update status');
-      return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/users/${member.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        showAlert('Failed', body?.errors?.[0]?.message ?? 'Failed to update status');
+        return;
+      }
+      refresh();
+    } catch {
+      showAlert('Failed', OFFLINE_MESSAGE);
     }
-    refresh();
   }
 
   return (
@@ -164,20 +170,24 @@ function StaffFormModal({
     const data: Record<string, unknown> = { name, email, phone: phone || null, role, store: storeId, tenant: tenantId };
     if (password) data.password = password;
     if (pin) data.pin = pin;
-    const res = await fetch(isEdit ? `${API_BASE_URL}/api/users/${staff?.id}` : `${API_BASE_URL}/api/users`, {
-      method: isEdit ? 'PATCH' : 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      setError(body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} staff member`);
+    try {
+      const res = await fetch(isEdit ? `${API_BASE_URL}/api/users/${staff?.id}` : `${API_BASE_URL}/api/users`, {
+        method: isEdit ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setError(body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} staff member`);
+        return;
+      }
+      onSaved();
+      onClose();
+    } catch {
+      setError(OFFLINE_MESSAGE);
+    } finally {
       setBusy(false);
-      return;
     }
-    setBusy(false);
-    onSaved();
-    onClose();
   }
 
   return (

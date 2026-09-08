@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { fuzzySearch } from '@/lib/fuzzy-search';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 import type { CustomerRef } from './page';
 
 // Credit ("pay later") sales must be tied to a known customer. Existing
@@ -36,26 +37,30 @@ export function CustomerPicker({
   async function handleCreate() {
     if (!query.trim() || !newPhone.trim()) return;
     setSaving(true);
-    const response = await fetch('/api/payload/customers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: query.trim(), phone: newPhone.trim(), email: newEmail.trim() || null, loyaltyPoints: 0 }),
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok) {
-      toast.error(body?.errors?.[0]?.message ?? 'Failed to add customer');
+    try {
+      const response = await clientFetch('/api/payload/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: query.trim(), phone: newPhone.trim(), email: newEmail.trim() || null, loyaltyPoints: 0 }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        toast.error(errorMessageFrom(body, 'Failed to add customer'));
+        return;
+      }
+      const doc = body.doc as CustomerRef;
+      onCreated(doc);
+      onChange(doc);
+      toast.success('Customer added');
+      setCreating(false);
+      setQuery('');
+      setNewPhone('');
+      setNewEmail('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
       setSaving(false);
-      return;
     }
-    const doc = body.doc as CustomerRef;
-    onCreated(doc);
-    onChange(doc);
-    toast.success('Customer added');
-    setCreating(false);
-    setQuery('');
-    setNewPhone('');
-    setNewEmail('');
-    setSaving(false);
   }
 
   if (value) {

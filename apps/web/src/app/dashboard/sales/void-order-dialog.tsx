@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 import type { ManagerRef, Order } from './page';
 
 // Mirrors apps/desktop/src/VoidOrderPanel.tsx - authorize-status always
@@ -41,25 +42,29 @@ export function VoidOrderDialog({
     event.preventDefault();
     setBusy(true);
 
-    const response = await fetch(`/api/payload/orders/${order.id}/authorize-status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, managerId: Number(managerId), pin }),
-    });
+    try {
+      const response = await clientFetch(`/api/payload/orders/${order.id}/authorize-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, managerId: Number(managerId), pin }),
+      });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      toast.error(body?.error ?? `Failed to ${status === 'voided' ? 'void' : 'refund'} sale`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        toast.error(errorMessageFrom(body, `Failed to ${status === 'voided' ? 'void' : 'refund'} sale`));
+        return;
+      }
+
+      toast.success(`Order ${status}`);
+      onOpenChange(false);
+      setManagerId('');
+      setPin('');
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
       setBusy(false);
-      return;
     }
-
-    toast.success(`Order ${status}`);
-    onOpenChange(false);
-    setManagerId('');
-    setPin('');
-    setBusy(false);
-    router.refresh();
   }
 
   return (

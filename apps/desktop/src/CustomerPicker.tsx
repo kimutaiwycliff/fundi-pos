@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { normalizeKenyanPhone } from '@hardware-pos/business-logic';
 import { getDb } from './database';
-import { API_BASE_URL } from './auth';
+import { API_BASE_URL, apiFetch } from './auth';
 import { useToast } from './Toast';
 
 export interface LocalCustomer {
@@ -63,7 +62,7 @@ export function CustomerPicker({ tenantId, payloadToken, value, onChange }: Cust
     }
     setSaving(true);
     try {
-      const res = await tauriFetch(`${API_BASE_URL}/api/customers`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
         body: JSON.stringify({ name: query.trim(), phone: normalizedPhone }),

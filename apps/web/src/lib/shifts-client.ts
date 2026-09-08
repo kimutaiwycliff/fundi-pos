@@ -3,6 +3,8 @@
 // apps/api - same Shifts collection, same server-computed
 // expectedCash/variance (apps/api/src/collections/Shifts.ts), so cash-up
 // reconciliation behaves identically regardless of which client opened it.
+import { clientFetch } from './client-fetch';
+
 export interface Shift {
   id: number;
   status: 'open' | 'closed';
@@ -18,10 +20,14 @@ export async function findOpenShift(terminal: string, cashierId: number): Promis
     'where[status][equals]': 'open',
     limit: '1',
   });
-  const response = await fetch(`/api/payload/shifts?${params.toString()}`);
-  if (!response.ok) return null;
-  const body = await response.json().catch(() => null);
-  return body?.docs?.[0] ?? null;
+  try {
+    const response = await clientFetch(`/api/payload/shifts?${params.toString()}`);
+    if (!response.ok) return null;
+    const body = await response.json().catch(() => null);
+    return body?.docs?.[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function openShift(args: {
@@ -30,7 +36,7 @@ export async function openShift(args: {
   cashierId: number;
   openingFloat: number;
 }): Promise<Shift> {
-  const response = await fetch('/api/payload/shifts', {
+  const response = await clientFetch('/api/payload/shifts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -46,7 +52,7 @@ export async function openShift(args: {
 }
 
 export async function closeShift(shiftId: number, closingCashCounted: number): Promise<Shift> {
-  const response = await fetch(`/api/payload/shifts/${shiftId}`, {
+  const response = await clientFetch(`/api/payload/shifts/${shiftId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: 'closed', closingCashCounted }),

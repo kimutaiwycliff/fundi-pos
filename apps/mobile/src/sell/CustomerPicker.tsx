@@ -4,7 +4,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList } from 'react-native';
 import { getDb } from '../db/database';
-import { API_BASE_URL } from '../lib/auth';
+import { API_BASE_URL, apiFetch } from '../lib/auth';
 import { showAlert } from '../components/AppNotice';
 
 export interface LocalCustomer {
@@ -64,7 +64,7 @@ export function CustomerPicker({
     if (!query.trim() || !newPhone.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/customers`, {
+      const res = await apiFetch(`${API_BASE_URL}/api/customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
         body: JSON.stringify({ tenant: tenantId, name: query.trim(), phone: newPhone.trim(), email: newEmail.trim() || null, loyaltyPoints: 0 }),

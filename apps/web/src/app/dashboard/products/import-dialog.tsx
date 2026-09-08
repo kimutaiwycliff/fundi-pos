@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 type Store = { id: number; name: string };
 
@@ -55,25 +56,31 @@ export function ImportProductsDialog({ stores }: { stores: Store[] }) {
     formData.append('file', file);
     if (storeId) formData.append('storeId', storeId);
 
-    const response = await fetch('/api/products/bulk-upload', { method: 'POST', body: formData });
-    const body = await response.json().catch(() => null);
+    try {
+      const response = await clientFetch('/api/products/bulk-upload', { method: 'POST', body: formData });
+      const body = await response.json().catch(() => null);
 
-    if (!response.ok) {
-      const message = body?.error ?? 'Upload failed';
+      if (!response.ok) {
+        const message = errorMessageFrom(body, 'Upload failed');
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
+      const uploadResult = body as UploadResult;
+      setResult(uploadResult);
+      const variantNote = uploadResult.variantsAddedCount > 0 ? `, ${uploadResult.variantsAddedCount} variant${uploadResult.variantsAddedCount === 1 ? '' : 's'} added` : '';
+      toast.success(
+        `${uploadResult.createdCount} product${uploadResult.createdCount === 1 ? '' : 's'} created${variantNote}, ${uploadResult.skippedCount} skipped`,
+      );
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       setError(message);
       toast.error(message);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const uploadResult = body as UploadResult;
-    setResult(uploadResult);
-    setLoading(false);
-    const variantNote = uploadResult.variantsAddedCount > 0 ? `, ${uploadResult.variantsAddedCount} variant${uploadResult.variantsAddedCount === 1 ? '' : 's'} added` : '';
-    toast.success(
-      `${uploadResult.createdCount} product${uploadResult.createdCount === 1 ? '' : 's'} created${variantNote}, ${uploadResult.skippedCount} skipped`,
-    );
-    router.refresh();
   }
 
   return (

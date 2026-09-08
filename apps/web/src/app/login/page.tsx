@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LogoMark } from '@/components/marketing/logo-mark';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,21 +24,26 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const response = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      const response = await clientFetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      setError(body?.error ?? 'Login failed');
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setError(errorMessageFrom(body, 'Login failed'));
+        return;
+      }
+
+      router.push('/dashboard');
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
       setLoading(false);
-      return;
     }
-
-    router.push('/dashboard');
-    router.refresh();
   }
 
   return (

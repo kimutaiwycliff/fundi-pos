@@ -3,7 +3,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { View, Text, Pressable, ScrollView, Modal, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { API_BASE_URL, type PayloadUser } from '../lib/auth';
+import { API_BASE_URL, OFFLINE_MESSAGE, type PayloadUser } from '../lib/auth';
 import { usePullToRefresh } from '../lib/usePullToRefresh';
 
 type Range = 'today' | '7d' | '30d' | 'all';
@@ -180,12 +180,14 @@ export function ReportsScreen({ user, payloadToken }: { user: PayloadUser; paylo
   const [dayDetail, setDayDetail] = useState<SalesSummary | null>(null);
   const [dayLoading, setDayLoading] = useState(false);
   const [stockValue, setStockValue] = useState<StockValue | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const trendRange = range === '7d' ? '7d' : '30d';
   const canSeeProfit = user.role === 'owner';
 
   const refresh = useCallback(() => {
     setLoading(true);
+    setLoadError(null);
     Promise.all([
       fetch(`${API_BASE_URL}/api/reports/sales-summary?range=${range}`, { headers: { Authorization: `JWT ${payloadToken}` } }).then((r) => r.json()),
       fetch(`${API_BASE_URL}/api/reports/sales-daily?range=${trendRange}`, { headers: { Authorization: `JWT ${payloadToken}` } }).then((r) => r.json()),
@@ -196,6 +198,7 @@ export function ReportsScreen({ user, payloadToken }: { user: PayloadUser; paylo
         setDaily(dailyBody?.days ?? []);
         setStockValue(stockValueBody);
       })
+      .catch(() => setLoadError(OFFLINE_MESSAGE))
       .finally(() => setLoading(false));
   }, [range, trendRange, payloadToken]);
 
@@ -218,6 +221,7 @@ export function ReportsScreen({ user, payloadToken }: { user: PayloadUser; paylo
     fetch(`${API_BASE_URL}/api/reports/sales-summary?date=${selectedDate}`, { headers: { Authorization: `JWT ${payloadToken}` } })
       .then((r) => r.json())
       .then(setDayDetail)
+      .catch(() => setLoadError(OFFLINE_MESSAGE))
       .finally(() => setDayLoading(false));
   }, [selectedDate, payloadToken]);
 
@@ -242,8 +246,10 @@ export function ReportsScreen({ user, payloadToken }: { user: PayloadUser; paylo
           ))}
         </View>
 
+        {loadError && summary ? <Text className="text-center text-destructive">{loadError}</Text> : null}
+
         {!summary || loading ? (
-          <Text className="mt-8 text-center text-muted-foreground">Loading...</Text>
+          <Text className="mt-8 text-center text-muted-foreground">{!summary && loadError ? loadError : 'Loading...'}</Text>
         ) : (
           <>
             <Animated.View entering={FadeInDown.duration(200)} className="flex-row flex-wrap gap-3">

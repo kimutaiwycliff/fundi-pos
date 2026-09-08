@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 type Store = { id: number; name: string };
 type Staff = {
@@ -78,25 +79,31 @@ export function StaffDialog({ stores, staff }: { stores: Store[]; staff?: Staff 
       return;
     }
 
-    const response = await fetch(isEdit ? `/api/payload/users/${staff!.id}` : '/api/payload/users', {
-      method: isEdit ? 'PATCH' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    try {
+      const response = await clientFetch(isEdit ? `/api/payload/users/${staff!.id}` : '/api/payload/users', {
+        method: isEdit ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      const message = body?.errors?.[0]?.message ?? `Failed to ${isEdit ? 'update' : 'create'} staff member`;
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const message = errorMessageFrom(body, `Failed to ${isEdit ? 'update' : 'create'} staff member`);
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
+      setOpen(false);
+      toast.success(isEdit ? 'Staff member updated' : 'Staff member added');
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       setError(message);
       toast.error(message);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setOpen(false);
-    setLoading(false);
-    toast.success(isEdit ? 'Staff member updated' : 'Staff member added');
-    router.refresh();
   }
 
   return (

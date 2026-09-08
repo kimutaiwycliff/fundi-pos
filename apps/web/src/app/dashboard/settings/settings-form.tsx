@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 interface Tenant {
   id: number;
@@ -29,26 +30,30 @@ export function SettingsForm({ tenant }: { tenant: Tenant }) {
     event.preventDefault();
     setLoading(true);
 
-    const response = await fetch(`/api/payload/tenants/${tenant.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: form.name,
-        receiptHeader: form.receiptHeader || null,
-        receiptFooter: form.receiptFooter || null,
-      }),
-    });
+    try {
+      const response = await clientFetch(`/api/payload/tenants/${tenant.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name,
+          receiptHeader: form.receiptHeader || null,
+          receiptFooter: form.receiptFooter || null,
+        }),
+      });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      toast.error(body?.errors?.[0]?.message ?? 'Failed to save settings');
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        toast.error(errorMessageFrom(body, 'Failed to save settings'));
+        return;
+      }
+
+      toast.success('Settings saved');
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
       setLoading(false);
-      return;
     }
-
-    toast.success('Settings saved');
-    setLoading(false);
-    router.refresh();
   }
 
   return (

@@ -12,6 +12,7 @@ import { getTerminalId, getTerminalName } from '@/lib/terminal';
 import { findOpenShift, type Shift } from '@/lib/shifts-client';
 import { deleteHeldSale, holdSale, listHeldSales, type HeldSale } from '@/lib/held-sales';
 import { stockKey } from '@/lib/stock-key';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 import type { CurrentUser } from '@/lib/current-user';
 import { ProductSearch } from './product-search';
 import { CartPanel } from './cart-panel';
@@ -269,65 +270,69 @@ export function SellClient({
     const orderId = crypto.randomUUID();
     const paymentStatus = tenderType === 'credit' ? 'pending' : 'paid';
 
-    const response = await fetch('/api/payload/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: orderId,
-        store: activeStoreId,
-        terminal: terminalId,
-        terminalName: getTerminalName(),
-        cashier: me.id,
-        customer: selectedCustomer?.id ?? null,
-        lineItems: cart.map((l) => ({
-          product: l.product.id,
-          variant: l.variantId,
+    try {
+      const response = await clientFetch('/api/payload/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: orderId,
+          store: activeStoreId,
+          terminal: terminalId,
+          terminalName: getTerminalName(),
+          cashier: me.id,
+          customer: selectedCustomer?.id ?? null,
+          lineItems: cart.map((l) => ({
+            product: l.product.id,
+            variant: l.variantId,
+            quantity: l.quantity,
+            unitPrice: lineUnitPrice(l.product, l.variantId),
+            discount: l.discountAmount,
+          })),
+          taxTotal: totals.taxTotal,
+          discountTotal: totals.discountTotal,
+          total: totals.total,
+          tenderType,
+          paymentStatus,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        toast.error(errorMessageFrom(body, 'Failed to complete sale'));
+        return;
+      }
+
+      const cartAtSale = cart;
+      toast.success(`Sale completed — ${totals.total.toFixed(2)}`);
+      setReceiptCustomer(selectedCustomer);
+      setReceipt({
+        orderId,
+        createdAt: new Date().toISOString(),
+        cashierLabel: me.name || me.email,
+        customerLabel: selectedCustomer?.name ?? null,
+        lines: cartAtSale.map((l) => ({
+          label: lineDisplayLabel(l.product, l.variantId),
           quantity: l.quantity,
-          unitPrice: lineUnitPrice(l.product, l.variantId),
-          discount: l.discountAmount,
+          lineTotal: l.quantity * lineUnitPrice(l.product, l.variantId) - l.discountAmount,
         })),
         taxTotal: totals.taxTotal,
         discountTotal: totals.discountTotal,
         total: totals.total,
         tenderType,
-        paymentStatus,
-      }),
-    });
-
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      toast.error(body?.errors?.[0]?.message ?? 'Failed to complete sale');
+        isUnpaidCredit: tenderType === 'credit',
+        isSettledCredit: false,
+        settledAtLabel: null,
+      });
+      setCart([]);
+      setSelectedCustomer(null);
+      setSuggestions([]);
+      setMobileCartOpen(false);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
       setCompleting(false);
-      return;
     }
-
-    const cartAtSale = cart;
-    toast.success(`Sale completed — ${totals.total.toFixed(2)}`);
-    setReceiptCustomer(selectedCustomer);
-    setReceipt({
-      orderId,
-      createdAt: new Date().toISOString(),
-      cashierLabel: me.name || me.email,
-      customerLabel: selectedCustomer?.name ?? null,
-      lines: cartAtSale.map((l) => ({
-        label: lineDisplayLabel(l.product, l.variantId),
-        quantity: l.quantity,
-        lineTotal: l.quantity * lineUnitPrice(l.product, l.variantId) - l.discountAmount,
-      })),
-      taxTotal: totals.taxTotal,
-      discountTotal: totals.discountTotal,
-      total: totals.total,
-      tenderType,
-      isUnpaidCredit: tenderType === 'credit',
-      isSettledCredit: false,
-      settledAtLabel: null,
-    });
-    setCart([]);
-    setSelectedCustomer(null);
-    setSuggestions([]);
-    setMobileCartOpen(false);
-    setCompleting(false);
-    router.refresh();
   }
 
   const checkoutDisabled =

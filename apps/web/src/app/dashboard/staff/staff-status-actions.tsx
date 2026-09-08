@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 // Ban is the always-safe, always-reversible action (Users.ts's own `status`
 // field comment: Orders/Shifts/AuditLog hold required relationships to a
@@ -40,38 +41,46 @@ export function StaffStatusActions({
   async function handleToggleBan() {
     setLoading(true);
     const nextStatus = status === 'banned' ? 'active' : 'banned';
-    const response = await fetch(`/api/payload/users/${staffId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: nextStatus }),
-    });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      toast.error(body?.errors?.[0]?.message ?? 'Failed to update status');
+    try {
+      const response = await clientFetch(`/api/payload/users/${staffId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        toast.error(errorMessageFrom(body, 'Failed to update status'));
+        return;
+      }
+      toast.success(nextStatus === 'banned' ? 'Staff member banned' : 'Staff member reactivated');
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
       setLoading(false);
-      return;
     }
-    toast.success(nextStatus === 'banned' ? 'Staff member banned' : 'Staff member reactivated');
-    setLoading(false);
-    router.refresh();
   }
 
   async function handleDelete() {
     setLoading(true);
-    const response = await fetch(`/api/payload/users/${staffId}`, { method: 'DELETE' });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      // Users.ts's beforeDelete hook pre-checks for referencing Orders/
-      // Shifts/AuditLog rows and throws a clear, actionable APIError before
-      // Postgres's own FK constraint would otherwise reject the delete with
-      // a generic, unhelpful message - safe to show this verbatim.
-      toast.error(body?.errors?.[0]?.message ?? 'Failed to delete staff member');
+    try {
+      const response = await clientFetch(`/api/payload/users/${staffId}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        // Users.ts's beforeDelete hook pre-checks for referencing Orders/
+        // Shifts/AuditLog rows and throws a clear, actionable APIError before
+        // Postgres's own FK constraint would otherwise reject the delete with
+        // a generic, unhelpful message - safe to show this verbatim.
+        toast.error(errorMessageFrom(body, 'Failed to delete staff member'));
+        return;
+      }
+      toast.success('Staff member deleted');
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
       setLoading(false);
-      return;
     }
-    toast.success('Staff member deleted');
-    setLoading(false);
-    router.refresh();
   }
 
   return (

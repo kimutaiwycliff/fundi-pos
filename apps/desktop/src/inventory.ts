@@ -20,12 +20,16 @@ export interface StockLevel {
 }
 
 export async function fetchStockLevels(payloadToken: string, storeId: number): Promise<StockLevel[]> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/reports/stock-levels?store=${storeId}`, {
-    headers: { Authorization: `JWT ${payloadToken}` },
-  });
-  if (!res.ok) return [];
-  const body = await res.json().catch(() => null);
-  return body?.levels ?? [];
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/reports/stock-levels?store=${storeId}`, {
+      headers: { Authorization: `JWT ${payloadToken}` },
+    });
+    if (!res.ok) return [];
+    const body = await res.json().catch(() => null);
+    return body?.levels ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export interface PickableProduct {
@@ -40,17 +44,21 @@ export interface PickableProduct {
 // every other list call in this file), not a local query, for the same
 // reason stock levels aren't local either.
 export async function fetchProductCatalog(payloadToken: string): Promise<PickableProduct[]> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/products?limit=2000&depth=0&sort=name`, {
-    headers: { Authorization: `JWT ${payloadToken}` },
-  });
-  if (!res.ok) return [];
-  const body = await res.json().catch(() => null);
-  return (body?.docs ?? []).map((p: { id: number; name: string; sku?: string; variants?: Array<{ id?: string; label: string }> }) => ({
-    id: p.id,
-    name: p.name,
-    sku: p.sku ?? '',
-    variants: (p.variants ?? []).filter((v): v is { id: string; label: string } => Boolean(v.id)),
-  }));
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/products?limit=2000&depth=0&sort=name`, {
+      headers: { Authorization: `JWT ${payloadToken}` },
+    });
+    if (!res.ok) return [];
+    const body = await res.json().catch(() => null);
+    return (body?.docs ?? []).map((p: { id: number; name: string; sku?: string; variants?: Array<{ id?: string; label: string }> }) => ({
+      id: p.id,
+      name: p.name,
+      sku: p.sku ?? '',
+      variants: (p.variants ?? []).filter((v): v is { id: string; label: string } => Boolean(v.id)),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 // Every manual stock change is a new StockMovements row, never a direct
@@ -62,19 +70,23 @@ export async function recordStockMovement(
   payloadToken: string,
   args: { product: number; variant: string | null; store: number; quantityDelta: number; reason: 'restock' | 'adjustment' | 'write_off' },
 ): Promise<boolean> {
-  const res = await tauriFetch(`${API_BASE_URL}/api/stock-movements`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-    body: JSON.stringify({
-      id: crypto.randomUUID(),
-      product: args.product,
-      variant: args.variant,
-      store: args.store,
-      quantityDelta: args.quantityDelta,
-      reason: args.reason,
-      clientTimestamp: new Date().toISOString(),
-      sourceTerminal: 'desktop-till',
-    }),
-  });
-  return res.ok;
+  try {
+    const res = await tauriFetch(`${API_BASE_URL}/api/stock-movements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+      body: JSON.stringify({
+        id: crypto.randomUUID(),
+        product: args.product,
+        variant: args.variant,
+        store: args.store,
+        quantityDelta: args.quantityDelta,
+        reason: args.reason,
+        clientTimestamp: new Date().toISOString(),
+        sourceTerminal: 'desktop-till',
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

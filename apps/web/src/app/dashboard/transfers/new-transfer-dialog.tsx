@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ProductCombobox } from '@/components/product-combobox';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 interface Store {
   id: number;
@@ -48,30 +49,36 @@ export function NewTransferDialog({ stores, products }: { stores: Store[]; produ
     setLoading(true);
     setError(null);
 
-    const response = await fetch('/api/payload/stock-transfers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fromStore: Number(fromStore),
-        toStore: Number(toStore),
-        lineItems: [{ product: Number(product), quantity: Number(quantity) || 1 }],
-        status: 'draft',
-      }),
-    });
+    try {
+      const response = await clientFetch('/api/payload/stock-transfers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromStore: Number(fromStore),
+          toStore: Number(toStore),
+          lineItems: [{ product: Number(product), quantity: Number(quantity) || 1 }],
+          status: 'draft',
+        }),
+      });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      const message = body?.errors?.[0]?.message ?? 'Failed to create transfer';
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const message = errorMessageFrom(body, 'Failed to create transfer');
+        setError(message);
+        toast.error(message);
+        return;
+      }
+
+      setOpen(false);
+      toast.success('Transfer created');
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
       setError(message);
       toast.error(message);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setOpen(false);
-    setLoading(false);
-    toast.success('Transfer created');
-    router.refresh();
   }
 
   return (
