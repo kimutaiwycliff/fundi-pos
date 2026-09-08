@@ -84,7 +84,8 @@ export function Restock({ user, storeId, payloadToken }: { user: PayloadUser; st
 
 function NewRestockForm({ user, storeId, payloadToken }: { user: PayloadUser; storeId: number | null; payloadToken: string }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
-  const canSeeCost = user.role === 'owner';
+  // Matches Products.ts's own costPrice field access - owner and manager.
+  const canSeeCost = user.role === 'owner' || user.role === 'manager';
   const showToast = useToast();
 
   const [suggestions, setSuggestions] = useState<RestockSuggestion[]>([]);
@@ -350,7 +351,8 @@ function PurchaseOrderDetailPane({
   onBack: () => void;
   onDeleted: () => void;
 }) {
-  const canSeeCost = user.role === 'owner';
+  // Matches Products.ts's own costPrice field access - owner and manager.
+  const canSeeCost = user.role === 'owner' || user.role === 'manager';
   const showToast = useToast();
   const [po, setPo] = useState<PurchaseOrderDetail | null>(null);
   const [checked, setChecked] = useState<Record<number, boolean>>({});

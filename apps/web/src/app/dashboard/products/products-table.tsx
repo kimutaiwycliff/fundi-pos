@@ -21,6 +21,7 @@ type Store = { id: number; name: string };
 export function ProductsTable({
   products,
   canSeeCost,
+  canEditFields,
   branchStock = null,
   branchName = null,
   stores,
@@ -30,6 +31,7 @@ export function ProductsTable({
 }: {
   products: Product[];
   canSeeCost: boolean;
+  canEditFields: boolean;
   branchStock?: Record<number, number> | null;
   branchName?: string | null;
   stores: Store[];
@@ -134,6 +136,7 @@ export function ProductsTable({
                       allProducts={products}
                       stockLevels={stockLevels}
                       canSeeCost={canSeeCost}
+                      canEditFields={canEditFields}
                       mediaUrlById={mediaUrlById}
                     />
                   </TableCell>

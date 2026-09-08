@@ -73,7 +73,11 @@ export default async function ProductsPage({
     // client-side" pattern as branchStock above.
     payloadFetch<{ docs: { id: number; url: string }[] }>('/api/media?limit=1000&depth=0'),
   ]);
-  const canSeeCost = me.role === 'owner';
+  // Matches Products.ts's own costPrice field access - owner and manager.
+  const canSeeCost = me.role === 'owner' || me.role === 'manager';
+  // Matches Products.ts's field-level access on everything except `image` -
+  // a cashier can still change a product's photo, nothing else.
+  const canEditFields = me.role === 'owner' || me.role === 'manager';
   const mediaUrlById: Record<number, string> = Object.fromEntries(mediaDocs.map((m) => [m.id, m.url]));
 
   // Products are tenant-wide, not store-owned - a branch toggle here can't
@@ -107,6 +111,7 @@ export default async function ProductsPage({
             allProducts={products}
             stockLevels={stockLevels}
             canSeeCost={canSeeCost}
+            canEditFields={canEditFields}
             mediaUrlById={mediaUrlById}
           />
         </div>
@@ -115,6 +120,7 @@ export default async function ProductsPage({
       <ProductsTable
         products={products}
         canSeeCost={canSeeCost}
+        canEditFields={canEditFields}
         branchStock={branchStock}
         branchName={branchName}
         stores={stores}

@@ -28,7 +28,9 @@ export async function GET(request: Request) {
     return Response.json({ error: 'store is required' }, { status: 400 });
   }
   const windowDays = Number(url.searchParams.get('windowDays') ?? '30') || 30;
-  const canSeeCost = user.role === 'owner';
+  // Matches Products.ts's own costPrice field access - owner and manager,
+  // not just owner.
+  const canSeeCost = user.role === 'owner' || user.role === 'manager';
   const tenantId = toID(user.tenant);
 
   const [movements, products, orders] = await Promise.all([

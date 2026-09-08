@@ -82,6 +82,17 @@ interface VariantStock {
 export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadUser; payloadToken: string; storeId: number | null }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
   const placeholderColor = useMutedPlaceholderColor();
+  // Matches Products.ts's own field-level access: cost is owner/manager-only,
+  // and every other editable field here (price, active, variant label/sku/
+  // price, related products) is locked to the same pair server-side now too -
+  // this just makes the UI honest about that instead of showing controls
+  // that would silently no-op for a cashier. A cashier CAN still change the
+  // product's own photo and each variant's photo - image has no access
+  // restriction on either side. cost_price itself was previously shown here
+  // unconditionally (a real gap: PowerSync replicates the raw column to
+  // every device regardless of role, since field-level Payload access only
+  // applies to the REST API, not the sync stream) - gated now to match intent.
+  const canManage = user.role === 'owner' || user.role === 'manager';
 
   const [query, setQuery] = useState('');
   const [products, setProducts] = useState<LocalProductRow[]>([]);
@@ -479,12 +490,20 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                 </View>
               </View>
 
+              {!canManage ? (
+                <View className="rounded-lg border border-border bg-card p-3">
+                  <Text className="text-xs text-muted-foreground">
+                    Only owners/managers can edit this product&apos;s details - you can still update its photo (and each variant&apos;s) above and below.
+                  </Text>
+                </View>
+              ) : null}
+
               <View className="flex-row items-center justify-between rounded-lg border border-border bg-card p-3">
                 <View className="shrink pr-3">
                   <Text className="text-foreground">Active</Text>
                   <Text className="text-xs text-muted-foreground">Inactive products are hidden from Sell</Text>
                 </View>
-                <Switch value={!!selected.is_active} onValueChange={toggleActive} trackColor={{ true: '#df5102' }} />
+                <Switch value={!!selected.is_active} onValueChange={toggleActive} disabled={!canManage} trackColor={{ true: '#df5102' }} />
               </View>
 
               <View className="gap-2 rounded-lg border border-border bg-card p-3">
@@ -493,25 +512,30 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                   <TextInput
                     className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-foreground"
                     keyboardType="decimal-pad"
+                    editable={canManage}
                     value={priceDraft}
                     onChangeText={setPriceDraft}
                   />
-                  <Pressable
-                    android_ripple={{ color: '#ffffff40' }}
-                    disabled={!priceDirty || saving}
-                    onPress={savePrice}
-                    className={`rounded-md bg-primary px-4 py-2 ${!priceDirty || saving ? 'opacity-50' : 'active:opacity-80'}`}
-                  >
-                    <Text className="font-medium text-primary-foreground">{saving ? 'Saving...' : 'Save'}</Text>
-                  </Pressable>
+                  {canManage ? (
+                    <Pressable
+                      android_ripple={{ color: '#ffffff40' }}
+                      disabled={!priceDirty || saving}
+                      onPress={savePrice}
+                      className={`rounded-md bg-primary px-4 py-2 ${!priceDirty || saving ? 'opacity-50' : 'active:opacity-80'}`}
+                    >
+                      <Text className="font-medium text-primary-foreground">{saving ? 'Saving...' : 'Save'}</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               </View>
 
               <View className="flex-row flex-wrap gap-3">
-                <View className="min-w-[45%] flex-1 gap-1 rounded-lg border border-border bg-card p-3">
-                  <Text className="text-xs text-muted-foreground">Cost price</Text>
-                  <Text className="text-lg font-semibold text-foreground">{selected.cost_price.toFixed(2)}</Text>
-                </View>
+                {canManage ? (
+                  <View className="min-w-[45%] flex-1 gap-1 rounded-lg border border-border bg-card p-3">
+                    <Text className="text-xs text-muted-foreground">Cost price</Text>
+                    <Text className="text-lg font-semibold text-foreground">{selected.cost_price.toFixed(2)}</Text>
+                  </View>
+                ) : null}
                 <View className="min-w-[45%] flex-1 gap-1 rounded-lg border border-border bg-card p-3">
                   <Text className="text-xs text-muted-foreground">Tax rate</Text>
                   <Text className="text-lg font-semibold text-foreground">{(selected.tax_rate * 100).toFixed(0)}%</Text>
@@ -533,9 +557,11 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
               <View className="gap-2 rounded-lg border border-border bg-card p-3">
                 <View className="flex-row items-center justify-between">
                   <Text className="text-sm font-medium text-foreground">Variants</Text>
-                  <Pressable android_ripple={{}} onPress={addVariant}>
-                    <Text className="text-sm font-medium text-primary">+ Add</Text>
-                  </Pressable>
+                  {canManage ? (
+                    <Pressable android_ripple={{}} onPress={addVariant}>
+                      <Text className="text-sm font-medium text-primary">+ Add</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
                 {workingVariants.length === 0 ? (
                   <Text className="text-xs text-muted-foreground">No variants - this product is sold as-is.</Text>
@@ -558,18 +584,22 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                             className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
                             placeholder="Label (e.g. Red / L)"
                             placeholderTextColor={placeholderColor}
+                            editable={canManage}
                             value={v.label}
                             onChangeText={(t) => updateVariantField(index, 'label', t)}
                           />
-                          <Pressable android_ripple={{}} onPress={() => removeVariant(index)}>
-                            <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                          </Pressable>
+                          {canManage ? (
+                            <Pressable android_ripple={{}} onPress={() => removeVariant(index)}>
+                              <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                            </Pressable>
+                          ) : null}
                         </View>
                         <View className="flex-row gap-2">
                           <TextInput
                             className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
                             placeholder="SKU"
                             placeholderTextColor={placeholderColor}
+                            editable={canManage}
                             value={v.sku}
                             onChangeText={(t) => updateVariantField(index, 'sku', t)}
                           />
@@ -577,6 +607,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                             className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
                             placeholder="Barcode"
                             placeholderTextColor={placeholderColor}
+                            editable={canManage}
                             value={v.barcode}
                             onChangeText={(t) => updateVariantField(index, 'barcode', t)}
                           />
@@ -587,17 +618,20 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                             placeholder="Sell price (blank = inherit)"
                             placeholderTextColor={placeholderColor}
                             keyboardType="decimal-pad"
+                            editable={canManage}
                             value={v.sellPrice}
                             onChangeText={(t) => updateVariantField(index, 'sellPrice', t)}
                           />
-                          <TextInput
-                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                            placeholder="Cost price (blank = inherit)"
-                            placeholderTextColor={placeholderColor}
-                            keyboardType="decimal-pad"
-                            value={v.costPrice}
-                            onChangeText={(t) => updateVariantField(index, 'costPrice', t)}
-                          />
+                          {canManage ? (
+                            <TextInput
+                              className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                              placeholder="Cost price (blank = inherit)"
+                              placeholderTextColor={placeholderColor}
+                              keyboardType="decimal-pad"
+                              value={v.costPrice}
+                              onChangeText={(t) => updateVariantField(index, 'costPrice', t)}
+                            />
+                          ) : null}
                         </View>
                         {storeId != null && vStock != null ? <Text className="text-xs text-muted-foreground">{vStock} in stock</Text> : null}
                       </View>
@@ -635,7 +669,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                       <Pressable
                         key={p.id}
                         android_ripple={{}}
-                        disabled={savingRelatedId === p.id}
+                        disabled={savingRelatedId === p.id || !canManage}
                         onPress={() => toggleRelated(Number(p.id))}
                         className="flex-row items-center justify-between border-b border-border/50 py-2"
                       >

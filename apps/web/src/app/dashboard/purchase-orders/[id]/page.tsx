@@ -25,7 +25,7 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
     getCurrentUser(),
     payloadFetch<PurchaseOrderDetail>(`/api/purchase-orders/${id}?depth=1`),
   ]);
-  const canSeeCost = me.role === 'owner';
+  const canSeeCost = me.role === 'owner' || me.role === 'manager';
 
   const lines = po.lineItems.map((l) => ({
     productName: l.product?.name ?? `#${l.product}`,

@@ -15,7 +15,7 @@ export default async function NewPurchaseOrderPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">New restock list</h1>
-      <NewPurchaseOrderForm stores={stores} suppliers={suppliers} canSeeCost={me.role === 'owner'} />
+      <NewPurchaseOrderForm stores={stores} suppliers={suppliers} canSeeCost={me.role === 'owner' || me.role === 'manager'} />
     </div>
   );
 }

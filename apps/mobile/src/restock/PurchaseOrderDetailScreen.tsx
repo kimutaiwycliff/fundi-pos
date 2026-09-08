@@ -22,7 +22,8 @@ export function PurchaseOrderDetailScreen({
   onDeleted: () => void;
   onBack: () => void;
 }) {
-  const canSeeCost = user.role === 'owner';
+  // Matches Products.ts's own costPrice field access - owner and manager.
+  const canSeeCost = user.role === 'owner' || user.role === 'manager';
   const [po, setPo] = useState<PurchaseOrderDetail | null>(null);
   const [checked, setChecked] = useState<Record<number, boolean>>({});
   const [quantities, setQuantities] = useState<Record<number, string>>({});

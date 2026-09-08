@@ -1,8 +1,23 @@
-import type { CollectionConfig } from 'payload';
+import type { CollectionConfig, FieldAccess } from 'payload';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 import { generateProductCodes } from '../hooks/generateProductCodes.ts';
 import { isTenantUser, toID } from '../lib/relations.ts';
+
+// FIELD-level access, not access/index.ts's collection-level managerOrOwner -
+// that one is typed `Access` (returns a Where clause for row-filtering) and
+// isn't assignable to a field's own `access.update`/`access.read`, which
+// must return a plain boolean. Using it directly here would still typecheck-
+// fail (confirmed live), and worse, would be a real bug if the type were
+// forced: a returned Where object is truthy, so every field guarded with it
+// would silently evaluate as "allowed" for ANY tenant user, not just
+// manager/owner. This is the field-level equivalent - same owner-or-manager
+// check, boolean return - reused below both to gate costPrice's visibility
+// and to lock every other writable field back down once the collection's
+// own `update` access is loosened to let a cashier through at all (see
+// below, for the image field's sake).
+const managerOrOwnerField: FieldAccess = ({ req }) =>
+  req.user?.collection === 'platform-admins' || req.user?.role === 'owner' || req.user?.role === 'manager';
 
 export const Products: CollectionConfig = {
   slug: 'products',
@@ -10,7 +25,14 @@ export const Products: CollectionConfig = {
   access: {
     read: ownTenantOnly,
     create: managerOrOwner,
-    update: managerOrOwner,
+    // Loosened from managerOrOwner: a cashier can now attempt an update at
+    // all (needed so they can change a product's own image at will), but
+    // every field below except `image` re-locks itself to managerOrOwner
+    // at the field level - Payload checks collection access first (can
+    // this operation be attempted?) and field access second (which fields
+    // in the request actually get applied), so this alone doesn't open
+    // anything else up.
+    update: ownTenantOnly,
     delete: managerOrOwner,
   },
   fields: [
@@ -20,11 +42,14 @@ export const Products: CollectionConfig = {
     // hook before Payload's own required-field check would ever run - the
     // dashboard's product dialog hides both fields entirely and never sends
     // one, per the user's own instruction not to have to deal with them.
-    { name: 'sku', type: 'text', index: true },
-    { name: 'barcode', type: 'text', index: true },
-    { name: 'name', type: 'text', required: true },
-    { name: 'category', type: 'text' },
+    { name: 'sku', type: 'text', index: true, access: { update: managerOrOwnerField } },
+    { name: 'barcode', type: 'text', index: true, access: { update: managerOrOwnerField } },
+    { name: 'name', type: 'text', required: true, access: { update: managerOrOwnerField } },
+    { name: 'category', type: 'text', access: { update: managerOrOwnerField } },
     {
+      // Deliberately no access.update override here - any tenant user
+      // (cashier included) can change a product's own photo. Everything
+      // else on this collection stays manager/owner-only.
       name: 'image',
       type: 'upload',
       relationTo: 'media',
@@ -35,6 +60,7 @@ export const Products: CollectionConfig = {
       type: 'checkbox',
       defaultValue: true,
       index: true,
+      access: { update: managerOrOwnerField },
       admin: {
         description: 'Archived products are hidden from the Sell page and the default Products list, but stay intact on past orders, stock movements, and reports.',
       },
@@ -42,10 +68,19 @@ export const Products: CollectionConfig = {
     {
       name: 'variants',
       type: 'array',
+      // Deliberately NO access.update override at the array level - tested
+      // live and confirmed an array field's own access gates the WHOLE
+      // array (any change to it, including just a sub-field on an existing
+      // row), not just structural add/remove. Restricting it here would
+      // have blocked a cashier from touching a variant's `image` too,
+      // defeating the point. Every sub-field below still has its own
+      // access.update, individually - that's what actually stops a
+      // cashier from changing label/sku/price, whether on an existing row
+      // or one they try to add.
       fields: [
-        { name: 'label', type: 'text', required: true }, // e.g. "Red / L"
-        { name: 'sku', type: 'text' },
-        { name: 'barcode', type: 'text' },
+        { name: 'label', type: 'text', required: true, access: { update: managerOrOwnerField } }, // e.g. "Red / L"
+        { name: 'sku', type: 'text', access: { update: managerOrOwnerField } },
+        { name: 'barcode', type: 'text', access: { update: managerOrOwnerField } },
         // Denormalized copy of the parent product's own tenant, stamped in
         // beforeChange below - PowerSync's sync rules don't support joins
         // (see Orders.ts's lineItems.tenantId for the full explanation),
@@ -62,15 +97,21 @@ export const Products: CollectionConfig = {
         // Null/unset means "use the product's own price" - most variants
         // (e.g. a T-shirt's colors) don't need their own price, but some
         // (e.g. a drill's battery-capacity options) genuinely do.
-        { name: 'sellPrice', type: 'number', admin: { step: 0.01, description: "Leave blank to use the product's own sell price." } },
+        {
+          name: 'sellPrice',
+          type: 'number',
+          admin: { step: 0.01, description: "Leave blank to use the product's own sell price." },
+          access: { update: managerOrOwnerField },
+        },
         {
           name: 'costPrice',
           type: 'number',
           admin: { step: 0.01, description: "Leave blank to use the product's own cost price." },
-          // Same owner-only visibility as the product-level costPrice field
-          // above - a variant's cost shouldn't leak margin info to non-owners
-          // just because it happens to live inside an array.
-          access: { read: ({ req }) => req.user?.collection === 'platform-admins' || req.user?.role === 'owner' },
+          // Same owner/manager-only visibility as the product-level
+          // costPrice field below - a variant's cost shouldn't leak margin
+          // info to a cashier just because it happens to live inside an
+          // array.
+          access: { read: managerOrOwnerField, update: managerOrOwnerField },
         },
       ],
     },
@@ -80,15 +121,14 @@ export const Products: CollectionConfig = {
       required: true,
       defaultValue: 0,
       admin: { step: 0.01 },
-      // Cost (and therefore margin) is owner-only - a manager/cashier can
-      // still set it when receiving stock (collection-level create/update
-      // stays managerOrOwner below), but it never comes back in any
-      // response to their own session afterward. overrideAccess: true
-      // server-side code (reports, receipts) is unaffected.
-      access: { read: ({ req }) => req.user?.collection === 'platform-admins' || req.user?.role === 'owner' },
+      // Cost (and therefore margin) is owner/manager-only - it never comes
+      // back in any response to a cashier's own session, and a cashier's
+      // update request can't change it either (overrideAccess: true
+      // server-side code - reports, receipts - is unaffected either way).
+      access: { read: managerOrOwnerField, update: managerOrOwnerField },
     },
-    { name: 'sellPrice', type: 'number', required: true, defaultValue: 0, admin: { step: 0.01 } },
-    { name: 'taxRate', type: 'number', required: true, defaultValue: 0, admin: { step: 0.01 } },
+    { name: 'sellPrice', type: 'number', required: true, defaultValue: 0, admin: { step: 0.01 }, access: { update: managerOrOwnerField } },
+    { name: 'taxRate', type: 'number', required: true, defaultValue: 0, admin: { step: 0.01 }, access: { update: managerOrOwnerField } },
     {
       // Caps how much a cashier can knock off this specific product's line
       // total at the till (see cart-panel.tsx's discount input, clamped to
@@ -103,6 +143,7 @@ export const Products: CollectionConfig = {
       defaultValue: 0,
       min: 0,
       admin: { step: 0.01, description: 'Maximum amount a cashier may discount this product by per unit at the till. 0 = no discount allowed.' },
+      access: { update: managerOrOwnerField },
     },
     {
       name: 'reorderPoint',
@@ -110,12 +151,14 @@ export const Products: CollectionConfig = {
       required: true,
       defaultValue: 0,
       admin: { description: 'Dashboard flags this product as low-stock per store once on-hand quantity drops to or below this.' },
+      access: { update: managerOrOwnerField },
     },
-    { name: 'isBundle', type: 'checkbox', defaultValue: false },
+    { name: 'isBundle', type: 'checkbox', defaultValue: false, access: { update: managerOrOwnerField } },
     {
       name: 'bundleComponents',
       type: 'array',
       admin: { condition: (data) => Boolean(data?.isBundle) },
+      access: { update: managerOrOwnerField },
       fields: [
         { name: 'product', type: 'relationship', relationTo: 'products', required: true },
         { name: 'quantity', type: 'number', required: true, defaultValue: 1 },
@@ -130,6 +173,7 @@ export const Products: CollectionConfig = {
       type: 'relationship',
       relationTo: 'products',
       hasMany: true,
+      access: { update: managerOrOwnerField },
     },
   ],
   hooks: {

@@ -39,7 +39,8 @@ function lineKey(productId: number, variant: string | null) {
 export function RestockScreen({ user, storeId, payloadToken }: { user: PayloadUser; storeId: number | null; payloadToken: string }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
   const placeholderColor = useMutedPlaceholderColor();
-  const canSeeCost = user.role === 'owner';
+  // Matches Products.ts's own costPrice field access - owner and manager.
+  const canSeeCost = user.role === 'owner' || user.role === 'manager';
 
   const [suggestions, setSuggestions] = useState<RestockSuggestion[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);

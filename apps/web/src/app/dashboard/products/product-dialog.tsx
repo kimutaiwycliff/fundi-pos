@@ -66,11 +66,13 @@ function RelatedProductsField({
   excludeId,
   value,
   onChange,
+  disabled,
 }: {
   allProducts: Product[];
   excludeId?: number;
   value: number[];
   onChange: (next: number[]) => void;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const options = allProducts.filter((p) => p.id !== excludeId);
@@ -84,7 +86,7 @@ function RelatedProductsField({
     <div className="flex flex-col gap-2">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button type="button" variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between font-normal">
+          <Button type="button" variant="outline" role="combobox" aria-expanded={open} disabled={disabled} className="w-full justify-between font-normal">
             <span className="truncate text-muted-foreground">
               {selected.length > 0 ? `${selected.length} selected` : 'Search products to link…'}
             </span>
@@ -209,6 +211,7 @@ export function ProductDialog({
   allProducts,
   stockLevels,
   canSeeCost,
+  canEditFields,
   mediaUrlById,
 }: {
   product?: Product;
@@ -216,10 +219,22 @@ export function ProductDialog({
   allProducts: Product[];
   stockLevels: StockLevel[];
   canSeeCost: boolean;
+  // Owner/manager only - a cashier can still open this dialog and change
+  // the product's own photo (ImageField below is never gated by this),
+  // but every other field is disabled client-side so the form is honest
+  // about what a cashier's save will actually change - the same fields
+  // are independently locked server-side (Products.ts's own field-level
+  // access), this is purely about not showing an editable-looking input
+  // that silently no-ops.
+  canEditFields: boolean;
   mediaUrlById: Record<number, string>;
 }) {
   const router = useRouter();
   const isEdit = Boolean(product);
+  // Create mode is unaffected - create access itself is still manager/
+  // owner-only server-side (unchanged), so a cashier can't reach a create
+  // dialog in practice; this only kicks in for editing an existing product.
+  const fieldsDisabled = isEdit && !canEditFields;
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -427,13 +442,18 @@ export function ProductDialog({
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex min-w-0 flex-col gap-4">
+          {fieldsDisabled ? (
+            <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              Only owners/managers can edit a product&apos;s details - you can still update its photo below.
+            </p>
+          ) : null}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="name">Name</Label>
-            <Input id="name" required value={form.name} onChange={update('name')} />
+            <Input id="name" required disabled={fieldsDisabled} value={form.name} onChange={update('name')} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="category">Category</Label>
-            <Input id="category" value={form.category} onChange={update('category')} />
+            <Input id="category" disabled={fieldsDisabled} value={form.category} onChange={update('category')} />
           </div>
           <ImageField
             label="Product image"
@@ -444,23 +464,25 @@ export function ProductDialog({
             }}
           />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="costPrice">Cost price</Label>
-              <Input id="costPrice" type="number" step="0.01" value={form.costPrice} onChange={update('costPrice')} />
-            </div>
+            {canSeeCost ? (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="costPrice">Cost price</Label>
+                <Input id="costPrice" type="number" step="0.01" disabled={fieldsDisabled} value={form.costPrice} onChange={update('costPrice')} />
+              </div>
+            ) : null}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="sellPrice">Sell price</Label>
-              <Input id="sellPrice" type="number" step="0.01" value={form.sellPrice} onChange={update('sellPrice')} />
+              <Input id="sellPrice" type="number" step="0.01" disabled={fieldsDisabled} value={form.sellPrice} onChange={update('sellPrice')} />
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="taxRate">Tax rate</Label>
-              <Input id="taxRate" type="number" step="0.01" value={form.taxRate} onChange={update('taxRate')} />
+              <Input id="taxRate" type="number" step="0.01" disabled={fieldsDisabled} value={form.taxRate} onChange={update('taxRate')} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="reorderPoint">Reorder point</Label>
-              <Input id="reorderPoint" type="number" step="1" value={form.reorderPoint} onChange={update('reorderPoint')} />
+              <Input id="reorderPoint" type="number" step="1" disabled={fieldsDisabled} value={form.reorderPoint} onChange={update('reorderPoint')} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="maxDiscountAmount">Max discount</Label>
@@ -469,6 +491,7 @@ export function ProductDialog({
                 type="number"
                 step="0.01"
                 min="0"
+                disabled={fieldsDisabled}
                 value={form.maxDiscountAmount}
                 onChange={update('maxDiscountAmount')}
               />
@@ -478,7 +501,7 @@ export function ProductDialog({
           <div className="flex flex-col gap-2 border-t pt-4">
             <div className="flex items-center justify-between">
               <Label>Variants</Label>
-              <Button type="button" variant="outline" size="sm" onClick={addVariant}>
+              <Button type="button" variant="outline" size="sm" disabled={fieldsDisabled} onClick={addVariant}>
                 Add variant
               </Button>
             </div>
@@ -494,6 +517,7 @@ export function ProductDialog({
                     <div className="flex items-center gap-2">
                       <Input
                         placeholder="e.g. Red / L"
+                        disabled={fieldsDisabled}
                         value={variant.label}
                         onChange={updateVariantLabel(index)}
                         className="min-w-0 flex-1"
@@ -502,6 +526,7 @@ export function ProductDialog({
                         type="button"
                         variant="ghost"
                         size="icon"
+                        disabled={fieldsDisabled}
                         onClick={() => removeVariant(index)}
                         aria-label="Remove variant"
                       >
@@ -519,6 +544,7 @@ export function ProductDialog({
                         <Input
                           type="number"
                           step="0.01"
+                          disabled={fieldsDisabled}
                           placeholder={form.sellPrice || '0'}
                           value={variant.sellPrice ?? ''}
                           onChange={updateVariantPrice(index, 'sellPrice')}
@@ -530,6 +556,7 @@ export function ProductDialog({
                           <Input
                             type="number"
                             step="0.01"
+                            disabled={fieldsDisabled}
                             placeholder={form.costPrice || '0'}
                             value={variant.costPrice ?? ''}
                             onChange={updateVariantPrice(index, 'costPrice')}
@@ -553,6 +580,7 @@ export function ProductDialog({
               excludeId={product?.id}
               value={relatedProducts}
               onChange={setRelatedProducts}
+              disabled={fieldsDisabled}
             />
           </div>
 
@@ -561,7 +589,7 @@ export function ProductDialog({
             {isEdit ? (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button type="button" variant={product!.isActive ? 'destructive' : 'outline'} disabled={archiveLoading}>
+                  <Button type="button" variant={product!.isActive ? 'destructive' : 'outline'} disabled={archiveLoading || fieldsDisabled}>
                     {product!.isActive ? 'Archive product' : 'Restore product'}
                   </Button>
                 </AlertDialogTrigger>
