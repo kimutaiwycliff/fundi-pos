@@ -74,6 +74,34 @@ export async function loginWithPin(phone: string, pin: string): Promise<LoginRes
 }
 
 /**
+ * POST /api/auth/till-refresh - slides this till's session forward another
+ * TILL_TOKEN_TTL_SECONDS (30 days server-side, see apps/api/src/lib/
+ * tillAuth.ts) without requiring a fresh phone+PIN login. Called
+ * periodically from App.tsx while connected (see its own refresh-timer
+ * effect) - a till that's regularly online this way never actually hits
+ * its 30-day local resume cap (session.ts); only one that goes fully
+ * offline for the entire window does. Requires the CURRENT token to still
+ * be unexpired - this is a sliding renewal, not a way to resurrect an
+ * already-lapsed session (that needs loginWithPin/loginToPayload again).
+ */
+export async function refreshTillToken(payloadToken: string): Promise<LoginResult> {
+  const res = await fetch(`${API_BASE_URL}/api/auth/till-refresh`, {
+    method: 'POST',
+    headers: { Authorization: `JWT ${payloadToken}` },
+  });
+
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body?.error ?? `Session refresh failed (HTTP ${res.status})`);
+  }
+  if (!body?.token) {
+    throw new Error('Refresh response did not include a token');
+  }
+
+  return { payloadToken: body.token as string, user: body.user as PayloadUser };
+}
+
+/**
  * GET /api/powersync/token - exchanges the Payload session JWT for a
  * short-lived (1hr) RS256 JWT scoped for PowerSync client auth (tenant_id/
  * store_id/role claims, see apps/api/src/lib/powersyncAuth.ts). Called once

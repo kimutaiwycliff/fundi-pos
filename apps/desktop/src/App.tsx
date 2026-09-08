@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { getDb } from "./database";
-import { loginToPayload, loginWithPin, type PayloadUser } from "./auth";
-import { connectPowerSync, disconnectPowerSync, ensureAppDataDir } from "./powersync";
+import { loginToPayload, loginWithPin, refreshTillToken, type PayloadUser } from "./auth";
+import { connectPowerSync, disconnectPowerSync, ensureAppDataDir, refreshPayloadToken } from "./powersync";
 import { getTerminalId, getTerminalName, setTerminalName } from "./terminal";
 import { checkPinLocallyById } from "./pin";
 import { loadSession, saveSession, clearSession, updateSessionStore, type PersistedSession } from "./session";
@@ -37,8 +37,10 @@ function App() {
   const terminalId = useRef(getTerminalId()).current;
   // A till that logged in online at least once can resume straight into
   // the Till UI later via its cached PIN, even fully offline (session.ts
-  // handles the 24h expiry) - null once either no session was ever saved,
-  // it's past 24h, or the user chose "use a different account" below.
+  // handles the 30-day expiry, slid forward automatically while online by
+  // the refresh effect below) - null once either no session was ever
+  // saved, it's past 30 days, or the user chose "use a different account"
+  // below.
   const [resumeCandidate, setResumeCandidate] = useState<PersistedSession | null>(() => loadSession());
   const [resumePin, setResumePin] = useState("");
   const [resumeError, setResumeError] = useState<string | null>(null);
@@ -65,6 +67,35 @@ function App() {
     });
     return () => dispose();
   }, []);
+
+  // Slides this till's session forward while it's actually connected, well
+  // ahead of its 30-day server-side/local-resume cap (tillAuth.ts's
+  // TILL_TOKEN_TTL_SECONDS, session.ts's matching OFFLINE_SESSION_TTL_MS) -
+  // a till that's regularly online this way never actually needs a fresh
+  // phone+PIN login; only one that goes fully offline for the entire
+  // window does. Failures (offline, banned, canceled subscription) are
+  // silently ignored here - the next attempt retries, and a genuinely
+  // banned/canceled account is caught sooner anyway by PowerSync's own
+  // ~1hr credential re-check (/api/powersync/token) - this timer isn't the
+  // place to interrupt an already-working till mid-shift over a transient
+  // network blip.
+  useEffect(() => {
+    if (state !== "connected" || !user) return;
+    const TILL_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+    const interval = setInterval(async () => {
+      if (!payloadTokenRef.current) return;
+      try {
+        const { payloadToken: freshToken, user: freshUser } = await refreshTillToken(payloadTokenRef.current);
+        payloadTokenRef.current = freshToken;
+        setUser(freshUser);
+        await refreshPayloadToken(freshToken);
+        saveSession(freshToken, freshUser, activeStoreId);
+      } catch (err) {
+        console.warn("Till session refresh failed (will retry later):", err);
+      }
+    }, TILL_REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [state, user, activeStoreId]);
 
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
@@ -281,7 +312,7 @@ function App() {
             Use a different account
           </button>
           <p className="terminal-tag">
-            Works offline - this till already signed in as this person within the last 24h.
+            Works offline - this till already signed in as this person within the last 30 days.
           </p>
           {renderUpdateBanner()}
         </div>

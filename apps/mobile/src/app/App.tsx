@@ -8,8 +8,8 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { loginToPayload, loginWithPin, type PayloadUser } from '../lib/auth';
-import { connectPowerSync, disconnectPowerSync } from '../db/database';
+import { loginToPayload, loginWithPin, refreshTillToken, type PayloadUser } from '../lib/auth';
+import { connectPowerSync, disconnectPowerSync, refreshPayloadToken } from '../db/database';
 import { getTerminalId, getTerminalName, setTerminalName } from '../lib/terminal';
 import { checkPinLocallyById, MIN_PIN_LENGTH, MAX_PIN_LENGTH } from '../lib/pin';
 import { loadSession, saveSession, clearSession, updateSessionStore, type PersistedSession } from '../lib/session';
@@ -75,6 +75,35 @@ function AppInner() {
       setInitializing(false);
     })();
   }, []);
+
+  // Slides this till's session forward while it's actually connected, well
+  // ahead of its 30-day server-side/local-resume cap (tillAuth.ts's
+  // TILL_TOKEN_TTL_SECONDS, session.ts's matching OFFLINE_SESSION_TTL_MS) -
+  // a till that's regularly online this way never actually needs a fresh
+  // phone+PIN login; only one that goes fully offline for the entire
+  // window does. Failures (offline, banned, canceled subscription) are
+  // silently ignored here - the next attempt retries, and a genuinely
+  // banned/canceled account is caught sooner anyway by PowerSync's own
+  // ~1hr credential re-check (/api/powersync/token) - this timer isn't the
+  // place to interrupt an already-working till mid-shift over a transient
+  // network blip. Matches apps/desktop/src/App.tsx's identical effect.
+  useEffect(() => {
+    if (state !== 'connected' || !user) return;
+    const TILL_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
+    const interval = setInterval(async () => {
+      if (!payloadTokenRef.current) return;
+      try {
+        const { payloadToken: freshToken, user: freshUser } = await refreshTillToken(payloadTokenRef.current);
+        payloadTokenRef.current = freshToken;
+        setUser(freshUser);
+        refreshPayloadToken(freshToken);
+        await saveSession(freshToken, freshUser, activeStoreId);
+      } catch (err) {
+        console.warn('Till session refresh failed (will retry later):', err);
+      }
+    }, TILL_REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [state, user, activeStoreId]);
 
   // Fingerprint is purely an additive shortcut on top of the same
   // resumeCandidate PIN flow below (see biometric.ts's own note on why) -
@@ -160,10 +189,11 @@ function AppInner() {
   }
 
   // Re-entry for a till that already logged in online at least once
-  // (session.ts, up to 24h old) - gated by the same local, zero-network PIN
-  // mechanism (pin.ts's checkPinLocallyById). Deliberately checks only
-  // resumeCandidate's own user id: this is "resume MY session", not a
-  // general login.
+  // (session.ts, up to 30 days old, slid forward automatically while
+  // online by the refresh effect above) - gated by the same local,
+  // zero-network PIN mechanism (pin.ts's checkPinLocallyById). Deliberately
+  // checks only resumeCandidate's own user id: this is "resume MY session",
+  // not a general login.
   async function handleResume(pinOverride?: string) {
     if (!resumeCandidate) return;
     setResumeError(null);
@@ -369,7 +399,7 @@ function AppInner() {
         <Pressable android_ripple={{}} className="items-center py-2" onPress={handleUseDifferentAccount} disabled={resumeBusy}>
           <Text className="text-muted-foreground">Use a different account</Text>
         </Pressable>
-        <Text className="text-center text-xs text-muted-foreground">Works offline - this till already signed in as this person within the last 24h.</Text>
+        <Text className="text-center text-xs text-muted-foreground">Works offline - this till already signed in as this person within the last 30 days.</Text>
       </LoginShell>
     );
   }

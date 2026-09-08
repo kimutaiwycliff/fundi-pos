@@ -1,10 +1,10 @@
 import config from '@payload-config';
 import { getPayload } from 'payload';
 import { addSessionToUser } from 'payload/shared';
-import { SignJWT } from 'jose';
 import { verifyPin } from '@/lib/pin';
 import { checkTenantAccess } from '@/lib/billing';
 import { toID } from '@/lib/relations';
+import { extendTillSession, mintTillToken } from '@/lib/tillAuth';
 
 // Fast till login: phone + PIN instead of email + password (the web
 // dashboard keeps email/password - Payload's auth strategy is built around
@@ -103,22 +103,19 @@ export async function POST(request: Request) {
     req: undefined as unknown as Parameters<typeof addSessionToUser>[0]['req'],
     user,
   });
+  if (!sid) {
+    // Users.ts's auth config always has useSessions: true (Payload's own
+    // default) - addSessionToUser only ever returns an undefined sid when
+    // that's false, so this should be unreachable in practice.
+    return Response.json({ error: 'Could not start a session' }, { status: 500 });
+  }
 
-  const issuedAt = Math.floor(Date.now() / 1000);
-  const tokenExpiration = collectionConfig.auth.tokenExpiration ?? 2 * 60 * 60;
-  const exp = issuedAt + tokenExpiration;
-  // payload.secret, not process.env.PAYLOAD_SECRET directly - Payload's own
-  // verification (auth/strategies/jwt.js) signs/checks against this exact
-  // value, and nothing guarantees it's untransformed from the raw env var.
-  const secret = new TextEncoder().encode(payload.secret);
-  // Header must include typ: 'JWT' - Payload's own jwtSign() does, and a
-  // token missing it was silently rejected by the JWT auth strategy
-  // (confirmed live: /api/users/me came back { user: null } with it absent).
-  const token = await new SignJWT({ id: user.id, collection: 'users', email: user.email, sid })
-    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-    .setIssuedAt(issuedAt)
-    .setExpirationTime(exp)
-    .sign(secret);
+  // addSessionToUser above sized this session's own expiresAt off the
+  // shared collectionConfig.auth.tokenExpiration (2h, same as the web
+  // dashboard) - tills get a much longer-lived one instead, to support
+  // fully offline operation once initially connected (see tillAuth.ts).
+  await extendTillSession(payload, user.id, sid);
+  const { token, exp } = await mintTillToken(payload, { id: user.id, email: user.email, sid });
 
   await payload.create({
     collection: 'audit-log',

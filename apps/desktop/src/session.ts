@@ -11,11 +11,19 @@ import type { PayloadUser } from './auth';
 // already uses for this till's own id/name.
 const SESSION_KEY = 'hardware-pos-offline-session';
 
-// User's own call: 24h balances covering a single offline business day/
-// overnight outage against how long a lost or stolen till could keep
-// working before the server gets a chance to notice (banned staff,
-// role changes, etc) via a fresh online login.
-const OFFLINE_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+// 30 days, matching the server's own TILL_TOKEN_TTL_SECONDS
+// (apps/api/src/lib/tillAuth.ts) and mobile's session.ts exactly - a till
+// connected once can keep resuming fully offline for up to this long. Kept
+// well short of "forever" for the same reason it was ever bounded at all:
+// how long a lost/stolen till or a since-banned staff member could keep
+// working before a fresh online login (or the periodic background refresh
+// in App.tsx, which slides this window forward on its own while online)
+// would catch it. PowerSync's own ~1hr credential re-check (see
+// /api/powersync/token) independently re-verifies banned/billing status
+// too, so a till with ANY connectivity during those 30 days is caught much
+// sooner than this bound alone suggests - it's a true worst case, not the
+// typical one.
+const OFFLINE_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface PersistedSession {
   payloadToken: string;
