@@ -72,13 +72,15 @@ interface VariantStock {
 // The mobile catalog browser - takes over the bottom tab's "Inventory" slot
 // (stock-level auditing moves into More; see RootTabs.tsx) since checking
 // what you sell and at what price is a more frequent need than stock
-// auditing. Now at full editing parity with web's product-dialog.tsx for
-// an *existing* product - image, variants (add/edit/remove, each with
-// their own optional image/price override), and related-product linking -
-// the one thing still web-only is creating a brand-new product from
-// scratch (new products arrive via web or the bulk Excel import; nothing
-// in this screen builds one from blank). Per-store stock stays a simple
-// read + StockAdjustmentModal-style single adjustment, not a full editor.
+// auditing. At full editing parity with web's product-dialog.tsx for both
+// an *existing* product (image, variants, related-product linking) and
+// creating a brand-new one from scratch (canManage-gated "+ New product",
+// mirroring web's own create dialog - name/category/price/variants, no
+// sku/barcode input since Payload auto-generates both). relatedProducts
+// linking still requires an existing product id, so a newly-created
+// product gets those added afterwards via the edit modal, same as before.
+// Per-store stock stays a simple read + StockAdjustmentModal-style single
+// adjustment, not a full editor.
 export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadUser; payloadToken: string; storeId: number | null }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
   const placeholderColor = useMutedPlaceholderColor();
@@ -116,6 +118,27 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   const [relatedIds, setRelatedIds] = useState<number[]>([]);
   const [relatedQuery, setRelatedQuery] = useState('');
   const [savingRelatedId, setSavingRelatedId] = useState<string | null>(null);
+
+  // Create-from-scratch flow - the one gap this file's own header comment
+  // used to call out ("the one thing still web-only is creating a
+  // brand-new product"). Entry point is canManage-gated (Products.access.
+  // create is managerOrOwner server-side, same as every other field here),
+  // so unlike the edit modal above there's no need for per-field canManage
+  // checks inside it. sku/barcode are deliberately not collected - Payload
+  // auto-generates both via generateProductCodes when left blank, matching
+  // web's own create dialog exactly.
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newCategory, setNewCategory] = useState('');
+  const [newCostPrice, setNewCostPrice] = useState('');
+  const [newSellPrice, setNewSellPrice] = useState('');
+  const [newTaxRate, setNewTaxRate] = useState('');
+  const [newMaxDiscount, setNewMaxDiscount] = useState('');
+  const [newReorderPoint, setNewReorderPoint] = useState('');
+  const [newImage, setNewImage] = useState<{ id: number; url: string } | null>(null);
+  const [uploadingNewImage, setUploadingNewImage] = useState(false);
+  const [newVariants, setNewVariants] = useState<WorkingVariant[]>([]);
+  const [savingNew, setSavingNew] = useState(false);
 
   const refresh = useCallback(() => {
     getDb()
@@ -421,10 +444,140 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   const priceDirty = selected != null && Number(priceDraft) !== selected.sell_price;
   const bareStock = stock.find((s) => s.variant_id == null)?.quantity ?? 0;
 
+  function openCreate() {
+    setNewName('');
+    setNewCategory('');
+    setNewCostPrice('');
+    setNewSellPrice('');
+    setNewTaxRate('');
+    setNewMaxDiscount('');
+    setNewReorderPoint('');
+    setNewImage(null);
+    setNewVariants([]);
+    setCreating(true);
+  }
+
+  function closeCreate() {
+    setCreating(false);
+  }
+
+  async function handleNewImage() {
+    setUploadingNewImage(true);
+    try {
+      const uploaded = await pickImage();
+      if (uploaded) setNewImage(uploaded);
+    } finally {
+      setUploadingNewImage(false);
+    }
+  }
+
+  function addNewVariant() {
+    setNewVariants((prev) => [...prev, { id: null, label: '', sku: '', barcode: '', sellPrice: '', costPrice: '', imageId: null, imageUrl: null }]);
+  }
+
+  function removeNewVariant(index: number) {
+    setNewVariants((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateNewVariantField(index: number, field: 'label' | 'sku' | 'barcode' | 'sellPrice' | 'costPrice', value: string) {
+    setNewVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)));
+  }
+
+  async function pickNewVariantImage(index: number) {
+    const uploaded = await pickImage();
+    if (!uploaded) return;
+    setNewVariants((prev) => prev.map((v, i) => (i === index ? { ...v, imageId: uploaded.id, imageUrl: uploaded.url } : v)));
+  }
+
+  async function createProduct() {
+    const name = newName.trim();
+    if (!name) {
+      showAlert('Name required', 'Enter a product name');
+      return;
+    }
+    setSavingNew(true);
+    try {
+      const payloadVariants = newVariants
+        .filter((v) => v.label.trim())
+        .map((v) => ({
+          label: v.label.trim(),
+          sku: v.sku || undefined,
+          barcode: v.barcode || undefined,
+          sellPrice: v.sellPrice === '' ? undefined : Number(v.sellPrice),
+          costPrice: v.costPrice === '' ? undefined : Number(v.costPrice),
+          image: v.imageId ?? undefined,
+        }));
+      const res = await fetch(`${API_BASE_URL}/api/products`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+        body: JSON.stringify({
+          tenant: tenantId,
+          name,
+          category: newCategory.trim() || undefined,
+          image: newImage?.id,
+          costPrice: newCostPrice === '' ? 0 : Number(newCostPrice),
+          sellPrice: newSellPrice === '' ? 0 : Number(newSellPrice),
+          taxRate: newTaxRate === '' ? 0 : Number(newTaxRate),
+          maxDiscountAmount: newMaxDiscount === '' ? 0 : Number(newMaxDiscount),
+          reorderPoint: newReorderPoint === '' ? 0 : Number(newReorderPoint),
+          variants: payloadVariants,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        showAlert('Failed to create product', body?.errors?.[0]?.message ?? 'Could not create product');
+        return;
+      }
+      const doc = body?.doc;
+      // Optimistic insert, same "patch local state right after a successful
+      // write" pattern every other mutation above uses - PowerSync's sync
+      // stream will bring the real row down shortly after and refresh()
+      // will reconcile it then. Unlike an edit, a pull-to-refresh in that
+      // brief window would make this entry disappear until sync catches up
+      // (there's no local row yet to re-read) - a known, self-correcting
+      // gap, not a bug.
+      if (doc) {
+        setProducts((prev) =>
+          [
+            ...prev,
+            {
+              id: String(doc.id),
+              name: doc.name,
+              sku: doc.sku ?? null,
+              barcode: doc.barcode ?? null,
+              category: doc.category ?? null,
+              cost_price: doc.costPrice ?? 0,
+              sell_price: doc.sellPrice ?? 0,
+              tax_rate: doc.taxRate ?? 0,
+              reorder_point: doc.reorderPoint ?? 0,
+              is_active: doc.isActive === false ? 0 : 1,
+              image_id: newImage?.id ?? null,
+              image_url: newImage?.url ?? null,
+              variant_count: payloadVariants.length,
+            },
+          ].sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      }
+      showToast('Product created');
+      closeCreate();
+    } catch {
+      showAlert('Failed to create product', OFFLINE_MESSAGE);
+    } finally {
+      setSavingNew(false);
+    }
+  }
+
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-background">
       <View className="border-b border-border p-3">
-        <Text className="mb-2 text-2xl font-semibold text-foreground">Products</Text>
+        <View className="mb-2 flex-row items-center justify-between">
+          <Text className="text-2xl font-semibold text-foreground">Products</Text>
+          {canManage ? (
+            <Pressable android_ripple={{}} onPress={openCreate}>
+              <Text className="text-sm font-medium text-primary">+ New product</Text>
+            </Pressable>
+          ) : null}
+        </View>
         <TextInput
           className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
           placeholder="Search by name, SKU, or barcode..."
@@ -701,6 +854,200 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
               </View>
             </ScrollView>
           ) : null}
+        </SafeAreaView>
+      </Modal>
+
+      <Modal visible={creating} animationType="slide" onRequestClose={closeCreate}>
+        <SafeAreaView edges={['top']} className="flex-1 bg-background">
+          <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
+            <Text className="text-lg font-semibold text-foreground">New product</Text>
+            <Pressable android_ripple={{}} onPress={closeCreate}>
+              <Text className="text-muted-foreground">Close</Text>
+            </Pressable>
+          </View>
+          <ScrollView contentContainerClassName="gap-4 p-4">
+            <View className="flex-row items-center gap-3 rounded-lg border border-border bg-card p-3">
+              {newImage ? (
+                <Image source={{ uri: newImage.url }} className="h-14 w-14 rounded-md bg-muted" resizeMode="cover" />
+              ) : (
+                <View className="h-14 w-14 items-center justify-center rounded-md border border-dashed border-border">
+                  <Ionicons name="image-outline" size={20} color="#71717a" />
+                </View>
+              )}
+              <View className="flex-1 gap-1">
+                <Text className="text-xs text-muted-foreground">Product image</Text>
+                <Pressable
+                  android_ripple={{ color: '#ffffff40' }}
+                  disabled={uploadingNewImage}
+                  onPress={handleNewImage}
+                  className={`self-start rounded-md border border-border px-3 py-1.5 ${uploadingNewImage ? 'opacity-50' : 'active:opacity-70'}`}
+                >
+                  <Text className="text-sm text-foreground">{uploadingNewImage ? 'Uploading...' : newImage ? 'Replace' : 'Upload'}</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View className="gap-2 rounded-lg border border-border bg-card p-3">
+              <Text className="text-xs text-muted-foreground">Name</Text>
+              <TextInput
+                className="rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                placeholder="Product name"
+                placeholderTextColor={placeholderColor}
+                value={newName}
+                onChangeText={setNewName}
+              />
+            </View>
+
+            <View className="gap-2 rounded-lg border border-border bg-card p-3">
+              <Text className="text-xs text-muted-foreground">Category</Text>
+              <TextInput
+                className="rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                placeholder="Optional"
+                placeholderTextColor={placeholderColor}
+                value={newCategory}
+                onChangeText={setNewCategory}
+              />
+            </View>
+
+            <View className="flex-row flex-wrap gap-3">
+              <View className="min-w-[45%] flex-1 gap-2 rounded-lg border border-border bg-card p-3">
+                <Text className="text-xs text-muted-foreground">Sell price</Text>
+                <TextInput
+                  className="rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={placeholderColor}
+                  value={newSellPrice}
+                  onChangeText={setNewSellPrice}
+                />
+              </View>
+              <View className="min-w-[45%] flex-1 gap-2 rounded-lg border border-border bg-card p-3">
+                <Text className="text-xs text-muted-foreground">Cost price</Text>
+                <TextInput
+                  className="rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={placeholderColor}
+                  value={newCostPrice}
+                  onChangeText={setNewCostPrice}
+                />
+              </View>
+              <View className="min-w-[45%] flex-1 gap-2 rounded-lg border border-border bg-card p-3">
+                <Text className="text-xs text-muted-foreground">Tax rate (e.g. 0.16 = 16%)</Text>
+                <TextInput
+                  className="rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  placeholderTextColor={placeholderColor}
+                  value={newTaxRate}
+                  onChangeText={setNewTaxRate}
+                />
+              </View>
+              <View className="min-w-[45%] flex-1 gap-2 rounded-lg border border-border bg-card p-3">
+                <Text className="text-xs text-muted-foreground">Reorder point</Text>
+                <TextInput
+                  className="rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={placeholderColor}
+                  value={newReorderPoint}
+                  onChangeText={setNewReorderPoint}
+                />
+              </View>
+              <View className="min-w-[45%] flex-1 gap-2 rounded-lg border border-border bg-card p-3">
+                <Text className="text-xs text-muted-foreground">Max cashier discount</Text>
+                <TextInput
+                  className="rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  placeholderTextColor={placeholderColor}
+                  value={newMaxDiscount}
+                  onChangeText={setNewMaxDiscount}
+                />
+              </View>
+            </View>
+
+            <View className="gap-2 rounded-lg border border-border bg-card p-3">
+              <View className="flex-row items-center justify-between">
+                <Text className="text-sm font-medium text-foreground">Variants</Text>
+                <Pressable android_ripple={{}} onPress={addNewVariant}>
+                  <Text className="text-sm font-medium text-primary">+ Add</Text>
+                </Pressable>
+              </View>
+              {newVariants.length === 0 ? (
+                <Text className="text-xs text-muted-foreground">No variants - this product will be sold as-is.</Text>
+              ) : (
+                newVariants.map((v, index) => (
+                  <View key={`new-${index}`} className="gap-2 border-b border-border/50 pb-3 pt-1">
+                    <View className="flex-row items-center gap-2">
+                      <Pressable onPress={() => pickNewVariantImage(index)}>
+                        {v.imageUrl ? (
+                          <Image source={{ uri: v.imageUrl }} className="h-10 w-10 rounded-md bg-muted" resizeMode="cover" />
+                        ) : (
+                          <View className="h-10 w-10 items-center justify-center rounded-md border border-dashed border-border">
+                            <Ionicons name="image-outline" size={14} color="#71717a" />
+                          </View>
+                        )}
+                      </Pressable>
+                      <TextInput
+                        className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                        placeholder="Label (e.g. Red / L)"
+                        placeholderTextColor={placeholderColor}
+                        value={v.label}
+                        onChangeText={(t) => updateNewVariantField(index, 'label', t)}
+                      />
+                      <Pressable android_ripple={{}} onPress={() => removeNewVariant(index)}>
+                        <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                      </Pressable>
+                    </View>
+                    <View className="flex-row gap-2">
+                      <TextInput
+                        className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                        placeholder="SKU (optional)"
+                        placeholderTextColor={placeholderColor}
+                        value={v.sku}
+                        onChangeText={(t) => updateNewVariantField(index, 'sku', t)}
+                      />
+                      <TextInput
+                        className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                        placeholder="Barcode (optional)"
+                        placeholderTextColor={placeholderColor}
+                        value={v.barcode}
+                        onChangeText={(t) => updateNewVariantField(index, 'barcode', t)}
+                      />
+                    </View>
+                    <View className="flex-row gap-2">
+                      <TextInput
+                        className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                        placeholder="Sell price (blank = inherit)"
+                        placeholderTextColor={placeholderColor}
+                        keyboardType="decimal-pad"
+                        value={v.sellPrice}
+                        onChangeText={(t) => updateNewVariantField(index, 'sellPrice', t)}
+                      />
+                      <TextInput
+                        className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                        placeholder="Cost price (blank = inherit)"
+                        placeholderTextColor={placeholderColor}
+                        keyboardType="decimal-pad"
+                        value={v.costPrice}
+                        onChangeText={(t) => updateNewVariantField(index, 'costPrice', t)}
+                      />
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+
+            <Pressable
+              android_ripple={{ color: '#ffffff40' }}
+              disabled={savingNew || !newName.trim()}
+              onPress={createProduct}
+              className={`items-center rounded-md bg-primary py-3 ${savingNew || !newName.trim() ? 'opacity-50' : 'active:opacity-80'}`}
+            >
+              <Text className="font-medium text-primary-foreground">{savingNew ? 'Creating...' : 'Create product'}</Text>
+            </Pressable>
+          </ScrollView>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
