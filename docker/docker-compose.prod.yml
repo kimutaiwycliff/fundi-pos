@@ -61,7 +61,7 @@ services:
           memory: 512M
 
   # This service is intentionally never actually brought up on a box that
-  # already has its own Caddy (e.g. pharmatrack's) - see docker/README.md.
+  # already has its own Caddy (e.g. a co-located app's) - see docker/README.md.
   # Kept here, correctly configured, for a genuinely standalone/dedicated
   # VPS deployment.
   caddy:

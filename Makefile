@@ -23,12 +23,22 @@
 
 REPO        ?= kimutaiwycliff/fundi-pos
 SSH_KEY     ?= clif.pem
-DEPLOY_HOST ?= 52.209.226.85
+DEPLOY_HOST ?=
 DEPLOY_USER ?= ubuntu
 DEPLOY_PATH ?= fundi
 COMPOSE     := docker compose -f docker-compose.yml -f docker-compose.prod.yml
 
-SSH := ssh -i $(SSH_KEY) -o ConnectTimeout=15 -o ServerAliveInterval=15 -o StrictHostKeyChecking=accept-new $(DEPLOY_USER)@$(DEPLOY_HOST)
+# Name of the external Docker network a separate, unrelated app on the same
+# host already owns (see docker/docker-compose.yml's `colocated_net`) - must
+# be set to whatever that network is actually called. Not hardcoded here on
+# purpose: it identifies a third party's infrastructure, not ours.
+COLOCATED_NETWORK_NAME ?=
+
+# DEPLOY_HOST has no default on purpose (this repo is public / may become
+# public) - it must be passed explicitly, e.g.:
+#   make vps-check DEPLOY_HOST=1.2.3.4
+# SSH/SCP below fail loudly instead of silently trying to reach an empty host.
+SSH = $(if $(DEPLOY_HOST),,$(error DEPLOY_HOST is not set - export DEPLOY_HOST=<ip> or pass DEPLOY_HOST=<ip> on the make command line))ssh -i $(SSH_KEY) -o ConnectTimeout=15 -o ServerAliveInterval=15 -o StrictHostKeyChecking=accept-new $(DEPLOY_USER)@$(DEPLOY_HOST)
 SCP := scp -i $(SSH_KEY) -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new
 
 .DEFAULT_GOAL := help
@@ -44,9 +54,10 @@ new-vps: vps-check vps-install-docker vps-clone vps-network point-vps vps-env vp
 	@echo ""
 	@echo "New VPS is up, migrated, and restored from the latest backup."
 	@echo "Still manual (outside this repo): if this box shares a domain with"
-	@echo "another Caddy-fronted app (like the old one did with pharmatrack),"
-	@echo "update that Caddy's upstream to point at this box's IP. If this is"
-	@echo "a standalone box (WITH_CADDY=1), just confirm DNS points here."
+	@echo "another Caddy-fronted app (as the old one did with a separate,"
+	@echo "unrelated app), update that Caddy's upstream to point at this"
+	@echo "box's IP. If this is a standalone box (WITH_CADDY=1), just confirm"
+	@echo "DNS points here."
 	@echo "Once things look right: make snapshot-env  (keeps the disaster-"
 	@echo "recovery secret in sync with whatever's actually running now)."
 
@@ -90,8 +101,9 @@ vps-clone: ## Clone (or fast-forward pull) this repo onto DEPLOY_HOST at DEPLOY_
 	$(SSH) 'test -d $(DEPLOY_PATH)/.git && (cd $(DEPLOY_PATH) && git pull --ff-only) || git clone https://github.com/$(REPO).git $(DEPLOY_PATH)'
 
 .PHONY: vps-network
-vps-network: ## Create the external Docker network the compose stack expects (pharmatrack_default), if it doesn't already exist
-	$(SSH) 'docker network inspect pharmatrack_default >/dev/null 2>&1 || docker network create pharmatrack_default'
+vps-network: ## Create the external Docker network the compose stack expects to join (name from COLOCATED_NETWORK_NAME), if it doesn't already exist
+	@test -n "$(COLOCATED_NETWORK_NAME)" || (echo "Usage: make vps-network COLOCATED_NETWORK_NAME=<network-name> (see docker/docker-compose.yml's colocated_net and docker/.env.example)"; exit 1)
+	$(SSH) 'docker network inspect $(COLOCATED_NETWORK_NAME) >/dev/null 2>&1 || docker network create $(COLOCATED_NETWORK_NAME)'
 
 .PHONY: point-vps
 point-vps: ## Repoint the GitHub Actions deploy secrets (DEPLOY_HOST/USER/PATH) at DEPLOY_HOST — affects every future deploy.yml/provision-*.yml run
@@ -182,5 +194,5 @@ logs: ## Tail logs for one service on DEPLOY_HOST: make logs SERVICE=fundi-paylo
 	$(SSH) "cd $(DEPLOY_PATH)/docker && $(COMPOSE) logs -f --tail=200 $(SERVICE)"
 
 .PHONY: status
-status: ## Show container status on DEPLOY_HOST (fundi's own containers + anything else on the box, e.g. pharmatrack)
+status: ## Show container status on DEPLOY_HOST (fundi's own containers + anything else on the box, e.g. a co-located app)
 	$(SSH) "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"

@@ -11,11 +11,13 @@ name: Deploy to production
 # used locally. Deliberately no registry/image-push step - the server
 # builds its own image from source over SSH, same as always.
 #
-# The server (52.209.226.85) is co-located with an unrelated production
-# app (pharmatrack) behind a shared Caddy - this workflow only ever
-# touches fundi's own containers (build + up -d two named services), never
-# Caddy or pharmatrack's containers/network, and verifies pharmatrack's
-# own domain still responds after every deploy as a regression check.
+# The server is co-located with a separate, unrelated production app behind
+# a shared Caddy reverse proxy - this workflow only ever touches fundi's own
+# containers (build + up -d two named services), never Caddy or that other
+# app's containers/network, and verifies that other app's containers are
+# still healthy after every deploy as a regression check. (The other app's
+# name is a third party's infrastructure detail, kept out of this repo -
+# see the COLOCATED_APP_NAME secret used below.)
 on:
   workflow_run:
     workflows: ['CI']
@@ -111,24 +113,26 @@ jobs:
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "cd '${{ secrets.DEPLOY_PATH }}' && bash docker/migrate.sh"
 
-      - name: Verify pharmatrack is unaffected
-        # pharmatrack shares the same box/Caddy - this deploy never touches
-        # its containers or network, so this should always pass; it exists to
-        # catch a regression in the same step that would introduce one, not
-        # later. Checked over SSH via `docker ps` (not a public HTTPS curl
-        # from the runner) - the first real run of this pipeline hit a false
-        # positive here: Cloudflare's WAF returned 403 to the GitHub Actions
-        # runner's datacenter IP even though pharmatrack was genuinely
-        # healthy (confirmed 200 from an unrelated IP at the same moment).
-        # Container status is a direct, WAF-immune signal of whether this
-        # deploy actually affected pharmatrack, which is the only thing this
-        # check can meaningfully attest to anyway.
+      - name: Verify the co-located app is unaffected
+        # A separate, unrelated app shares the same box/Caddy - this deploy
+        # never touches its containers or network, so this should always
+        # pass; it exists to catch a regression in the same step that would
+        # introduce one, not later. Checked over SSH via `docker ps` (not a
+        # public HTTPS curl from the runner) - the first real run of this
+        # pipeline hit a false positive here: Cloudflare's WAF returned 403 to
+        # the GitHub Actions runner's datacenter IP even though the other app
+        # was genuinely healthy (confirmed 200 from an unrelated IP at the
+        # same moment). Container status is a direct, WAF-immune signal of
+        # whether this deploy actually affected the other app, which is the
+        # only thing this check can meaningfully attest to anyway. Its name
+        # (COLOCATED_APP_NAME secret) identifies a third party's
+        # infrastructure, so it's kept as a secret rather than hardcoded.
         run: |
           set -euo pipefail
           bad=$(ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "docker ps --filter 'name=pharmatrack' --format '{{.Names}}\t{{.Status}}'" | tee /dev/stderr | grep -v -E 'Up ' || true)
+            "docker ps --filter 'name=${{ secrets.COLOCATED_APP_NAME }}' --format '{{.Names}}\t{{.Status}}'" | tee /dev/stderr | grep -v -E 'Up ' || true)
           if [ -n "$bad" ]; then
-            echo "::error::pharmatrack container(s) not in an Up state after this deploy - see above. This does NOT auto-rollback; investigate immediately."
+            echo "::error::co-located app container(s) not in an Up state after this deploy - see above. This does NOT auto-rollback; investigate immediately."
             exit 1
           fi

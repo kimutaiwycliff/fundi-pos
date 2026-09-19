@@ -73,18 +73,20 @@ jobs:
           echo "api.fundipos.co.ke/admin -> $code"
           [ "$code" = "200" ]
 
-      - name: Verify pharmatrack is unaffected
+      - name: Verify the co-located app is unaffected
         # Same reasoning as deploy.yml's own equivalent step - this workflow
         # only ever touches fundi's own containers (fundi-payload-api,
         # fundi-web), but checked over SSH (not a public HTTPS curl) since
         # Cloudflare's WAF has previously 403'd the Actions runner's own IP
-        # even when pharmatrack was genuinely healthy.
+        # even when the other, co-located app was genuinely healthy. Its
+        # name (COLOCATED_APP_NAME secret) identifies a third party's
+        # infrastructure, so it's kept as a secret rather than hardcoded.
         run: |
           set -euo pipefail
           bad=$(ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "docker ps --filter 'name=pharmatrack' --format '{{.Names}}\t{{.Status}}'" | tee /dev/stderr | grep -v -E 'Up ' || true)
+            "docker ps --filter 'name=${{ secrets.COLOCATED_APP_NAME }}' --format '{{.Names}}\t{{.Status}}'" | tee /dev/stderr | grep -v -E 'Up ' || true)
           if [ -n "$bad" ]; then
-            echo "::error::pharmatrack container(s) not in an Up state after this - see above."
+            echo "::error::co-located app container(s) not in an Up state after this - see above."
             exit 1
           fi

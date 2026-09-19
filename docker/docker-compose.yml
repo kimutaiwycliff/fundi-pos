@@ -33,14 +33,14 @@ services:
       retries: 10
 
   # Named fundi-payload-api, not payload-api: this stack shares an external
-  # Docker network (pharmatrack_net, below) with a completely separate
-  # compose project on the same host. Compose always registers a service's
-  # own name as a network alias on EVERY network it joins - confirmed live,
-  # this is NOT suppressed by also setting `networks.<net>.aliases`, so the
-  # only reliable fix is giving the service itself a name that can't
-  # collide with anything on the other project's side. This one wouldn't
-  # have collided today, but is named consistently with fundi-web below,
-  # which did.
+  # Docker network (colocated_net, below) with a completely separate,
+  # unrelated compose project on the same host. Compose always registers a
+  # service's own name as a network alias on EVERY network it joins -
+  # confirmed live, this is NOT suppressed by also setting
+  # `networks.<net>.aliases`, so the only reliable fix is giving the service
+  # itself a name that can't collide with anything on the other project's
+  # side. This one wouldn't have collided today, but is named consistently
+  # with fundi-web below, which did.
   fundi-payload-api:
     build:
       context: ..
@@ -82,7 +82,7 @@ services:
       R2_ENDPOINT: ${R2_ENDPOINT:-}
       R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
     ports: ["3001:3000"]
-    networks: [default, pharmatrack_net]
+    networks: [default, colocated_net]
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,19 +105,19 @@ services:
     volumes:
       - ./powersync:/config:ro
     ports: ["8080:8080"]
-    networks: [default, pharmatrack_net]
+    networks: [default, colocated_net]
     depends_on:
       postgres:
         condition: service_healthy
       postgres-storage:
         condition: service_healthy
 
-  # Named fundi-web, not web: pharmatrack's OWN compose project also has a
-  # service literally named `web` - this is the collision that actually
-  # happened live (pharmatrack.co.ke briefly served this app's landing page
-  # because Docker's embedded DNS had two containers registered under the
-  # same alias on the shared network). See fundi-payload-api's comment
-  # above for the full mechanism.
+  # Named fundi-web, not web: the other, unrelated compose project sharing
+  # this host also has a service literally named `web` - this is the
+  # collision that actually happened live (this app's landing page was
+  # briefly served on the other app's own domain, because Docker's embedded
+  # DNS had two containers registered under the same alias on the shared
+  # network). See fundi-payload-api's comment above for the full mechanism.
   fundi-web:
     build:
       context: ..
@@ -152,7 +152,7 @@ services:
       # this network.
       PAYLOAD_API_URL: http://fundi-payload-api:3000
     ports: ["3000:3000"]
-    networks: [default, pharmatrack_net]
+    networks: [default, colocated_net]
     depends_on: [fundi-payload-api]
 
 volumes:
@@ -161,11 +161,14 @@ volumes:
 
 networks:
   default: {}
-  # Pre-existing network pharmatrack's own Caddy container is already on -
-  # joining it (not replacing our own `default` network) is what lets that
-  # Caddy reach fundi-payload-api/fundi-web/fundi-powersync by container
-  # name, without this stack's Postgres instances ever being reachable from
-  # pharmatrack's side.
-  pharmatrack_net:
+  # Pre-existing network a separate, unrelated app's own Caddy container is
+  # already on - joining it (not replacing our own `default` network) is
+  # what lets that Caddy reach fundi-payload-api/fundi-web/fundi-powersync by
+  # container name, without this stack's Postgres instances ever being
+  # reachable from that other app's side. The real network name is a
+  # third party's infrastructure detail, not ours, so it's supplied via
+  # COLOCATED_NETWORK_NAME in docker/.env rather than hardcoded here - see
+  # docker/.env.example.
+  colocated_net:
     external: true
-    name: pharmatrack_default
+    name: ${COLOCATED_NETWORK_NAME}

@@ -58,8 +58,8 @@ Or: `make restore-from DUMP=s3://<BACKUP_S3_BUCKET>/pos_saas-20260901-020000.sql
 
 One command: `make new-vps DEPLOY_HOST=<new-ip>` (add `WITH_CADDY=1
 API_DOMAIN=... WEB_DOMAIN=... POWERSYNC_DOMAIN=...` if this box terminates
-its own TLS rather than sitting behind another app's Caddy, e.g.
-pharmatrack's). It runs steps 1–6 below in order, then verifies. What it
+its own TLS rather than sitting behind another, co-located app's Caddy).
+It runs steps 1–6 below in order, then verifies. What it
 does, and how it seeds `docker/.env` (step 3) without a password manager:
 
 1. **Provision a new box.** Install Docker + the Docker Compose plugin.
@@ -84,8 +84,11 @@ does, and how it seeds `docker/.env` (step 3) without a password manager:
    - Also recreate `docker/Caddyfile`'s domain env vars (`API_DOMAIN`,
      `WEB_DOMAIN`, `POWERSYNC_DOMAIN`) if this box is the one terminating TLS
      directly (see `docker/README.md` for when that's/isn't the case, e.g.
-     alongside pharmatrack's own Caddy) — `make vps-set-domains API_DOMAIN=...
-     WEB_DOMAIN=... POWERSYNC_DOMAIN=...`.
+     alongside a co-located app's own Caddy) — `make vps-set-domains API_DOMAIN=...
+     WEB_DOMAIN=... POWERSYNC_DOMAIN=...`. If instead this box joins a
+     co-located app's existing network (see `docker-compose.yml`'s
+     `colocated_net`), also set `COLOCATED_NETWORK_NAME` in `docker/.env`
+     (see `docker/.env.example`).
 4. **Bring up just the databases first**, so there's something to restore into:
    ```sh
    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d postgres postgres-storage backup
