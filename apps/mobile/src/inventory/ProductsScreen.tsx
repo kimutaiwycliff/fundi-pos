@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@powersync/react';
 import Fuse from 'fuse.js';
 import * as ImagePicker from 'expo-image-picker';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -97,7 +98,6 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   const canManage = user.role === 'owner' || user.role === 'manager';
 
   const [query, setQuery] = useState('');
-  const [products, setProducts] = useState<LocalProductRow[]>([]);
   const [selected, setSelected] = useState<LocalProductRow | null>(null);
   const [stock, setStock] = useState<VariantStock[]>([]);
   const [priceDraft, setPriceDraft] = useState('');
@@ -140,25 +140,22 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   const [newVariants, setNewVariants] = useState<WorkingVariant[]>([]);
   const [savingNew, setSavingNew] = useState(false);
 
-  const refresh = useCallback(() => {
-    getDb()
-      .getAll<LocalProductRow>(
-        `SELECT p.id, p.name, p.sku, p.barcode, p.category, p.cost_price, p.sell_price, p.tax_rate, p.reorder_point, p.is_active, p.image_id, m.url AS image_url,
-                (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
-         FROM products p
-         LEFT JOIN media m ON m.id = p.image_id
-         WHERE p.tenant_id = ?
-         ORDER BY p.name LIMIT 5000`,
-        [tenantId],
-      )
-      .then(setProducts);
-  }, [tenantId]);
+  // Reactive: PowerSync's useQuery re-runs this automatically whenever
+  // `products`, `products_variants`, or `media` change locally - including
+  // rows that just landed via a background sync - so a product created
+  // elsewhere (web, or this same device) appears here without needing a
+  // remount or a pull-to-refresh.
+  const { data: products, refresh } = useQuery<LocalProductRow>(
+    `SELECT p.id, p.name, p.sku, p.barcode, p.category, p.cost_price, p.sell_price, p.tax_rate, p.reorder_point, p.is_active, p.image_id, m.url AS image_url,
+            (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
+     FROM products p
+     LEFT JOIN media m ON m.id = p.image_id
+     WHERE p.tenant_id = ?
+     ORDER BY p.name LIMIT 5000`,
+    [tenantId],
+  );
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  const { refreshing, onRefresh } = usePullToRefresh(refresh);
+  const { refreshing, onRefresh } = usePullToRefresh(refresh!);
 
   const results = useMemo(() => {
     const trimmed = query.trim();
@@ -227,9 +224,10 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   // Writes go straight to Payload over REST, same online-only pattern
   // StaffScreen.tsx/StockAdjustmentModal.tsx already use - PowerSync's sync
   // rules are read-only from the client's side, there's no local write path
-  // for a replicated table. Local `products` state is updated optimistically
-  // right after a successful PATCH rather than waiting for the write to
-  // round-trip back down through PowerSync's own sync stream.
+  // for a replicated table. `products` (the live useQuery above) picks up
+  // each PATCH's effect on its own once it round-trips back down; `selected`
+  // (the open detail modal's own state) is still patched directly below for
+  // instant in-modal feedback.
   async function savePrice() {
     if (!selected) return;
     const nextPrice = Number(priceDraft);
@@ -249,7 +247,6 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
         showAlert('Failed to save', body?.errors?.[0]?.message ?? 'Could not update sell price');
         return;
       }
-      setProducts((prev) => prev.map((p) => (p.id === selected.id ? { ...p, sell_price: nextPrice } : p)));
       setSelected((prev) => (prev ? { ...prev, sell_price: nextPrice } : prev));
       showToast('Sell price updated');
     } catch {
@@ -272,7 +269,6 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
         showAlert('Failed to save', body?.errors?.[0]?.message ?? 'Could not update status');
         return;
       }
-      setProducts((prev) => prev.map((p) => (p.id === selected.id ? { ...p, is_active: next ? 1 : 0 } : p)));
       setSelected((prev) => (prev ? { ...prev, is_active: next ? 1 : 0 } : prev));
     } catch {
       showAlert('Failed to save', OFFLINE_MESSAGE);
@@ -340,7 +336,6 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
         showAlert('Failed to save', body?.errors?.[0]?.message ?? 'Could not update image');
         return;
       }
-      setProducts((prev) => prev.map((p) => (p.id === selected.id ? { ...p, image_id: uploaded.id, image_url: uploaded.url } : p)));
       setSelected((prev) => (prev ? { ...prev, image_id: uploaded.id, image_url: uploaded.url } : prev));
     } catch {
       showAlert('Failed to save', OFFLINE_MESSAGE);
@@ -397,7 +392,6 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
         showAlert('Failed to save', body?.errors?.[0]?.message ?? 'Could not update variants');
         return;
       }
-      setProducts((prev) => prev.map((p) => (p.id === selected.id ? { ...p, variant_count: payloadVariants.length } : p)));
       showToast('Variants updated');
     } catch {
       showAlert('Failed to save', OFFLINE_MESSAGE);
@@ -528,36 +522,11 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
         showAlert('Failed to create product', body?.errors?.[0]?.message ?? 'Could not create product');
         return;
       }
-      const doc = body?.doc;
-      // Optimistic insert, same "patch local state right after a successful
-      // write" pattern every other mutation above uses - PowerSync's sync
-      // stream will bring the real row down shortly after and refresh()
-      // will reconcile it then. Unlike an edit, a pull-to-refresh in that
-      // brief window would make this entry disappear until sync catches up
-      // (there's no local row yet to re-read) - a known, self-correcting
-      // gap, not a bug.
-      if (doc) {
-        setProducts((prev) =>
-          [
-            ...prev,
-            {
-              id: String(doc.id),
-              name: doc.name,
-              sku: doc.sku ?? null,
-              barcode: doc.barcode ?? null,
-              category: doc.category ?? null,
-              cost_price: doc.costPrice ?? 0,
-              sell_price: doc.sellPrice ?? 0,
-              tax_rate: doc.taxRate ?? 0,
-              reorder_point: doc.reorderPoint ?? 0,
-              is_active: doc.isActive === false ? 0 : 1,
-              image_id: newImage?.id ?? null,
-              image_url: newImage?.url ?? null,
-              variant_count: payloadVariants.length,
-            },
-          ].sort((a, b) => a.name.localeCompare(b.name)),
-        );
-      }
+      // `products` is now a live PowerSync query result (see useQuery
+      // above), not local state to patch - it picks up this new row on its
+      // own once the sync stream brings it back down, typically well
+      // within a second on a connected socket (the same connection this
+      // POST itself just depended on to succeed).
       showToast('Product created');
       closeCreate();
     } catch {

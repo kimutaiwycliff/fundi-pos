@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
+import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { View, Text, Pressable, FlatList, Image, RefreshControl } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Image, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getDb } from '../db/database';
+import { useQuery } from '@powersync/react';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import type { PayloadUser } from '../lib/auth';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { isLowStock, type StockLevel } from './types';
@@ -32,67 +34,59 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
   const canManage = user.role === 'owner' || user.role === 'manager';
 
   const [tab, setTab] = useState<Tab>('levels');
-  const [levels, setLevels] = useState<StockLevel[]>([]);
-  const [flagged, setFlagged] = useState<FlaggedMovement[]>([]);
+  const [query, setQuery] = useState('');
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const placeholderColor = useMutedPlaceholderColor();
 
-  const refreshLevels = useCallback(() => {
-    if (storeId == null) {
-      setLevels([]);
-      return;
-    }
-    // Bare products (no variants) unioned with one row per variant for
-    // products that have them - a variant-having product never shows a
-    // bare-self row, matching web's identical "tracked separately" rule.
-    getDb()
-      .getAll<StockLevel>(
-        `SELECT p.id AS product_id, NULL AS variant_id, p.name AS product_name, NULL AS variant_label, p.sku AS sku, p.reorder_point AS reorder_point, pm.url AS image_url,
-                COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS quantity
-         FROM products p
-         LEFT JOIN media pm ON pm.id = p.image_id
-         WHERE p.tenant_id = ? AND p.is_active = 1
-           AND NOT EXISTS (SELECT 1 FROM products_variants pv WHERE pv._parent_id = p.id)
-         UNION ALL
-         SELECT p.id AS product_id, pv.id AS variant_id, p.name AS product_name, pv.label AS variant_label, pv.sku AS sku, p.reorder_point AS reorder_point, COALESCE(vm.url, pm.url) AS image_url,
-                COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS quantity
-         FROM products_variants pv
-         JOIN products p ON p.id = pv._parent_id
-         LEFT JOIN media pm ON pm.id = p.image_id
-         LEFT JOIN media vm ON vm.id = pv.image_id
-         WHERE p.tenant_id = ? AND p.is_active = 1
-         ORDER BY product_name`,
-        [storeId, tenantId, storeId, tenantId],
-      )
-      .then((rows) => {
-        setLevels([...rows].sort((a, b) => Number(isLowStock(b)) - Number(isLowStock(a))));
-      });
-  }, [storeId, tenantId]);
+  // Reactive: re-runs on its own whenever products/products_variants/
+  // stock_movements/media change locally (a new product, a new variant, a
+  // stock adjustment landing via sync or via StockAdjustmentModal below),
+  // so this list never needs a remount or a pull-to-refresh to catch up.
+  // storeId ?? -1 (rather than skipping the query) since hooks can't be
+  // called conditionally - a -1 store id naturally matches zero rows,
+  // same empty-state result the old early-return produced.
+  //
+  // Bare products (no variants) unioned with one row per variant for
+  // products that have them - a variant-having product never shows a
+  // bare-self row, matching web's identical "tracked separately" rule.
+  const { data: rawLevels, refresh: refreshLevels } = useQuery<StockLevel>(
+    `SELECT p.id AS product_id, NULL AS variant_id, p.name AS product_name, NULL AS variant_label, p.sku AS sku, p.reorder_point AS reorder_point, pm.url AS image_url,
+            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS quantity
+     FROM products p
+     LEFT JOIN media pm ON pm.id = p.image_id
+     WHERE p.tenant_id = ? AND p.is_active = 1
+       AND NOT EXISTS (SELECT 1 FROM products_variants pv WHERE pv._parent_id = p.id)
+     UNION ALL
+     SELECT p.id AS product_id, pv.id AS variant_id, p.name AS product_name, pv.label AS variant_label, pv.sku AS sku, p.reorder_point AS reorder_point, COALESCE(vm.url, pm.url) AS image_url,
+            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS quantity
+     FROM products_variants pv
+     JOIN products p ON p.id = pv._parent_id
+     LEFT JOIN media pm ON pm.id = p.image_id
+     LEFT JOIN media vm ON vm.id = pv.image_id
+     WHERE p.tenant_id = ? AND p.is_active = 1
+     ORDER BY product_name`,
+    [storeId ?? -1, tenantId, storeId ?? -1, tenantId],
+  );
+  const levels = useMemo(() => [...rawLevels].sort((a, b) => Number(isLowStock(b)) - Number(isLowStock(a))), [rawLevels]);
 
-  const refreshFlagged = useCallback(() => {
-    if (storeId == null) {
-      setFlagged([]);
-      return;
-    }
-    getDb()
-      .getAll<FlaggedMovement>(
-        `SELECT sm.id, sm.quantity_delta, sm.reason, sm.source_terminal, sm.client_timestamp, p.name AS product_name
-         FROM stock_movements sm
-         JOIN products p ON p.id = sm.product_id
-         WHERE sm.store_id = ? AND sm.flagged_for_review = 1
-         ORDER BY sm.client_timestamp DESC LIMIT 100`,
-        [storeId],
-      )
-      .then(setFlagged);
-  }, [storeId]);
+  const results = useMemo(() => {
+    const trimmed = query.trim();
+    if (!trimmed) return levels;
+    const fuse = new Fuse(levels, { threshold: 0.4, ignoreLocation: true, keys: ['product_name', 'variant_label', 'sku'] });
+    return fuse.search(trimmed).map((r) => r.item);
+  }, [query, levels]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    refreshLevels();
-    refreshFlagged();
-  }, [refreshLevels, refreshFlagged]);
+  const { data: flagged, refresh: refreshFlagged } = useQuery<FlaggedMovement>(
+    `SELECT sm.id, sm.quantity_delta, sm.reason, sm.source_terminal, sm.client_timestamp, p.name AS product_name
+     FROM stock_movements sm
+     JOIN products p ON p.id = sm.product_id
+     WHERE sm.store_id = ? AND sm.flagged_for_review = 1
+     ORDER BY sm.client_timestamp DESC LIMIT 100`,
+    [storeId ?? -1],
+  );
 
-  const levelsRefresh = usePullToRefresh(refreshLevels);
-  const flaggedRefresh = usePullToRefresh(refreshFlagged);
+  const levelsRefresh = usePullToRefresh(refreshLevels!);
+  const flaggedRefresh = usePullToRefresh(refreshFlagged!);
 
   if (storeId == null) {
     return (
@@ -124,13 +118,27 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
       </View>
 
       {tab === 'levels' ? (
+        <View className="border-b border-border p-3">
+          <TextInput
+            className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
+            placeholder="Search by name, variant, or SKU..."
+            placeholderTextColor={placeholderColor}
+            value={query}
+            onChangeText={setQuery}
+          />
+        </View>
+      ) : null}
+
+      {tab === 'levels' ? (
         <FlatList
           className="flex-1"
           contentContainerClassName="gap-2 p-3"
-          data={levels}
+          data={results}
           keyExtractor={(l) => `${l.product_id}::${l.variant_id ?? ''}`}
           refreshControl={<RefreshControl refreshing={levelsRefresh.refreshing} onRefresh={levelsRefresh.onRefresh} tintColor="#df5102" />}
-          ListEmptyComponent={<Text className="mt-8 text-center text-muted-foreground">No products yet.</Text>}
+          ListEmptyComponent={
+            <Text className="mt-8 text-center text-muted-foreground">{query.trim() ? 'No matches found.' : 'No products yet.'}</Text>
+          }
           renderItem={({ item }) => {
             const low = isLowStock(item);
             return (
@@ -185,8 +193,8 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
         terminalId={terminalId}
         onClose={() => setAdjustOpen(false)}
         onRecorded={() => {
-          refreshLevels();
-          refreshFlagged();
+          refreshLevels?.();
+          refreshFlagged?.();
         }}
       />
     </SafeAreaView>

@@ -7,6 +7,7 @@ import { KeyboardProvider, KeyboardAvoidingView } from 'react-native-keyboard-co
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
+import { PowerSyncContext } from '@powersync/react';
 import { Ionicons } from '@expo/vector-icons';
 import { loginToPayload, loginWithPin, refreshTillToken, type PayloadUser } from '../lib/auth';
 import { connectPowerSync, disconnectPowerSync, refreshPayloadToken } from '../db/database';
@@ -538,7 +539,23 @@ export const App = () => {
         <KeyboardProvider>
           {/* "auto" tracks the OS color scheme itself (light content on dark, dark content on light) - same source of truth as global.css's prefers-color-scheme tokens, so the status bar never mismatches the app's own theme. */}
           <StatusBar style="auto" />
-          <AppInner />
+          {/* Lets any screen use @powersync/react's useQuery for a live,
+              auto-refreshing view of local SQLite instead of a one-shot
+              getAll() - getDb() lazily creates the shared instance
+              regardless of connection state, so this is safe to mount
+              before login too. The cast below is a real but harmless
+              mismatch: apps/mobile pins @powersync/common@2.1.0 (for
+              @powersync/react-native), while @powersync/react itself still
+              depends on @powersync/common@^2.0.0 and npm hasn't deduped
+              the two into one copy - so TypeScript sees two structurally
+              near-identical but nominally distinct `Table`/`SchemaType`
+              classes. Both are the same class at runtime; only the type
+              checker can't tell. Safe to drop once @powersync/react ships
+              a release compatible with @powersync/common 2.1.x. */}
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual-package-instance cast, see comment above */}
+          <PowerSyncContext.Provider value={getDb() as any}>
+            <AppInner />
+          </PowerSyncContext.Provider>
           <AppNoticeHost />
         </KeyboardProvider>
       </GestureHandlerRootView>

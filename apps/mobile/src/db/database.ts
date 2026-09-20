@@ -59,6 +59,20 @@ export function refreshPayloadToken(payloadToken: string): void {
   connectorInstance?.setPayloadToken(payloadToken);
 }
 
+/**
+ * Re-establishes the PowerSync connection if it's dropped (app backgrounded,
+ * a wifi blip, a stalled socket) - nothing else in this app watches for that
+ * and reconnects on its own, so this is the recovery path pull-to-refresh
+ * calls on every screen. A no-op when already connected or not logged in;
+ * swallows a failed attempt the same way every other best-effort retry in
+ * this app does, since a genuinely offline user should still see their pull-
+ * to-refresh gesture complete (just against whatever's already local).
+ */
+export async function ensureConnected(): Promise<void> {
+  if (getDb().connected || !connectorInstance) return;
+  await getDb().connect(connectorInstance).catch(() => undefined);
+}
+
 export async function disconnectPowerSync(): Promise<void> {
   await getDb().disconnect();
   connectorInstance = null;

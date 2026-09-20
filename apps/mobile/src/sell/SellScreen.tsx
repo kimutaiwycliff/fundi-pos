@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@powersync/react';
 import Fuse from 'fuse.js';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown, SlideInDown, SlideOutDown } from 'react-native-reanimated';
@@ -106,7 +107,6 @@ export function SellScreen({
   const placeholderColor = useMutedPlaceholderColor();
 
   const [query, setQuery] = useState('');
-  const [catalog, setCatalog] = useState<LocalProduct[]>([]);
   const [recentProductIds, setRecentProductIds] = useState<number[]>([]);
   const [frequentlyBoughtIds, setFrequentlyBoughtIds] = useState<number[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -149,35 +149,27 @@ export function SellScreen({
     setCart([]);
     setSelectedCustomer(null);
     setQuery('');
-    setCatalog([]);
   }, [storeId]);
 
-  // Whole active catalog for this store, loaded once (not per keystroke) so
-  // search can fuzzy-match client-side - same "fetch everything, filter in
-  // memory" shape as apps/web's dashboard/sell/page.tsx + product-search.tsx,
-  // just against local SQLite instead of a Payload REST fetch.
-  useEffect(() => {
-    if (storeId == null) return;
-    let active = true;
-    getDb()
-      .getAll<LocalProduct>(
-        `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, p.tax_rate, p.max_discount_amount, m.url AS image_url,
-                COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
-                          WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS stock_on_hand,
-                (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
-         FROM products p
-         LEFT JOIN media m ON m.id = p.image_id
-         WHERE p.tenant_id = ? AND p.is_active = 1
-         ORDER BY p.name LIMIT 5000`,
-        [storeId, tenantId],
-      )
-      .then((rows) => {
-        if (active) setCatalog(rows);
-      });
-    return () => {
-      active = false;
-    };
-  }, [tenantId, storeId]);
+  // Whole active catalog for this store, kept live via PowerSync's reactive
+  // useQuery (re-runs on its own whenever products/products_variants/
+  // stock_movements/media change locally, including a row that just landed
+  // via sync) so search can fuzzy-match client-side against up-to-date data
+  // - same "fetch everything, filter in memory" shape as apps/web's
+  // dashboard/sell/page.tsx + product-search.tsx, just against local SQLite
+  // instead of a Payload REST fetch. storeId ?? -1 since hooks can't be
+  // called conditionally - a -1 store id naturally matches zero rows.
+  const { data: catalog } = useQuery<LocalProduct>(
+    `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, p.tax_rate, p.max_discount_amount, m.url AS image_url,
+            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
+                      WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS stock_on_hand,
+            (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
+     FROM products p
+     LEFT JOIN media m ON m.id = p.image_id
+     WHERE p.tenant_id = ? AND p.is_active = 1
+     ORDER BY p.name LIMIT 5000`,
+    [storeId ?? -1, tenantId],
+  );
 
   // Idle-state default is this store's recently sold products, not the
   // whole catalog - matches the web Sell page's own "search-first" flow
