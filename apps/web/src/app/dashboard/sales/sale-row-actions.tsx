@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { CreditCard, Mail, MessageCircle, MoreHorizontal, Receipt as ReceiptIcon, ShieldAlert } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -10,8 +11,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { buildInvoiceText, invoiceSubject, mailtoInvoiceHref, whatsappInvoiceHref } from '@/lib/invoice-message';
+import { buildInvoiceText, invoiceSubject, mailtoInvoiceHref } from '@/lib/invoice-message';
 import type { InvoiceData } from '@/lib/invoice-message';
+import { sendInvoicePdfViaWhatsApp } from '@/lib/send-invoice-pdf';
 import type { CreditPayment, ManagerRef, Order, TenantReceiptInfo } from './page';
 import { ReceiptDialog } from './receipt-dialog';
 import { VoidOrderDialog } from './void-order-dialog';
@@ -42,6 +44,7 @@ export function SaleRowActions({
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
 
   const canShowSettle =
     canSettle && order.tenderType === 'credit' && order.paymentStatus === 'pending' && order.status === 'completed';
@@ -49,6 +52,23 @@ export function SaleRowActions({
   const canShowInvoice = order.tenderType === 'credit' && order.status === 'completed';
   const invoiceMessage = canShowInvoice ? buildInvoiceText(invoiceData, tenant) : '';
   const invoiceSubjectLine = canShowInvoice ? invoiceSubject(invoiceData, tenant) : '';
+
+  async function handleWhatsApp() {
+    if (!contact.phone) return;
+    setSendingWhatsApp(true);
+    try {
+      await sendInvoicePdfViaWhatsApp({
+        orderId: order.id,
+        phone: contact.phone,
+        subject: invoiceSubjectLine,
+        message: invoiceMessage,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSendingWhatsApp(false);
+    }
+  }
 
   return (
     <>
@@ -66,22 +86,9 @@ export function SaleRowActions({
           {canShowInvoice ? (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem disabled={!contact.phone} asChild={Boolean(contact.phone)}>
-                {contact.phone ? (
-                  <a
-                    href={whatsappInvoiceHref(contact.phone, invoiceMessage)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <MessageCircle data-icon="inline-start" />
-                    Send invoice via WhatsApp
-                  </a>
-                ) : (
-                  <span>
-                    <MessageCircle data-icon="inline-start" />
-                    Send invoice via WhatsApp
-                  </span>
-                )}
+              <DropdownMenuItem disabled={!contact.phone || sendingWhatsApp} onSelect={() => void handleWhatsApp()}>
+                <MessageCircle data-icon="inline-start" />
+                {sendingWhatsApp ? 'Preparing...' : 'Send invoice via WhatsApp'}
               </DropdownMenuItem>
               <DropdownMenuItem disabled={!contact.email} asChild={Boolean(contact.email)}>
                 {contact.email ? (

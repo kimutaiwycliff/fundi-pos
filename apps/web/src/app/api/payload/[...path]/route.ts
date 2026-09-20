@@ -24,7 +24,11 @@ async function proxy(request: Request, path: string[]) {
   }
 
   const response = await fetch(target, init);
-  const body = await response.text();
+  // arrayBuffer (not .text()) so binary responses - e.g. the invoice-pdf
+  // route's application/pdf body - pass through byte-for-byte instead of
+  // being corrupted by a UTF-8 text decode/re-encode round trip. Works
+  // identically for JSON bodies too, since Response accepts either.
+  const body = await response.arrayBuffer();
   return new Response(body, {
     status: response.status,
     headers: { 'Content-Type': response.headers.get('Content-Type') ?? 'application/json' },

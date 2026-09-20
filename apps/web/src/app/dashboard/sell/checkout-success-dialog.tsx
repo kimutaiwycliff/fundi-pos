@@ -56,6 +56,7 @@ export function CheckoutSuccessDialog({
           <div className="flex flex-col gap-1.5">
             <p className="text-xs text-muted-foreground">Send invoice to customer</p>
             <SendInvoiceButtons
+              orderId={receipt.orderId}
               phone={customer?.phone ?? null}
               email={customer?.email ?? null}
               subject={invoiceSubject(invoiceData, tenant)}
