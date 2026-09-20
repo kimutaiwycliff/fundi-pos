@@ -71,18 +71,28 @@ jobs:
         # each build leaves the previous image's now-unreferenced layers
         # and build cache behind, and nothing ever reclaimed them. Caught
         # live: the server ran out of disk mid-build (`npm ci` failing with
-        # ENOSPC) on back-to-back deploys. `-a` removes every unused image,
-        # not just dangling ones, plus stopped containers/unused networks/
-        # build cache - deliberately NOT `--volumes`, since that would also
-        # remove pgdata/pgdata_storage, this server's actual database. Never
-        # touches an image or container still in use (postgres, powersync,
-        # the co-located app), so this is safe to run unconditionally on
-        # every deploy, same as the unconditional powersync restart below.
+        # ENOSPC) on back-to-back deploys.
+        #
+        # `docker image prune -af` + `docker builder prune -af` only, NOT
+        # `docker system prune` - system prune also unconditionally sweeps
+        # unused networks, and this box's `colocated_net` (docker-compose.
+        # yml's own network block) is an *external* network this stack
+        # only joins, owned and created by a completely separate co-located
+        # app's own compose project. `docker network rm`/prune normally
+        # refuses to remove a network with active container endpoints, but
+        # this box is shared infrastructure this workflow doesn't fully
+        # control the state of - not worth the risk of taking down a third
+        # party's app over reclaiming a few hundred MB of network objects,
+        # which were never the actual disk hog here anyway (images/build
+        # cache were). Neither of these two commands ever touches a
+        # network, a container, or a volume - only unreferenced image
+        # layers and build cache, so still safe to run unconditionally on
+        # every deploy.
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/deploy_key -o ConnectTimeout=15 -o ServerAliveInterval=15 \
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "docker system prune -af"
+            "docker image prune -af && docker builder prune -af"
 
       - name: Build and restart containers
         run: |
