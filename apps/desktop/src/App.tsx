@@ -8,6 +8,7 @@ import { loadSession, saveSession, clearSession, updateSessionStore, type Persis
 import { checkForUpdate, type AvailableUpdate } from "./updateCheck";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { AppShell } from "./AppShell";
+import { LoadingScreen } from "./LoadingScreen";
 import { WrenchIcon } from "./icons";
 import "./App.css";
 
@@ -276,8 +277,34 @@ function App() {
     );
   }
 
+  // Full-screen takeover only for "connecting", not "logging-in":
+  // establishing the initial PowerSync connection (right after a fresh
+  // login or a cached-PIN resume, both above) is the one moment here
+  // that's worth blocking the whole screen for - it's rare, there's no
+  // form usefully left underneath it, and it can genuinely take a few
+  // seconds on a slow network. The credential-check step ("logging-in")
+  // deliberately stays as the existing inline button-label/error-banner
+  // treatment below: it's usually near-instant, and it's the step most
+  // likely to end in a normal validation error (wrong PIN/password) that
+  // the user should see resolved right back on the same form, not behind
+  // a full-screen flash-and-return.
+  if (state === "connecting") {
+    return (
+      <LoadingScreen
+        message={
+          resumeCandidate
+            ? `Welcome back, ${resumeCandidate.user.name || resumeCandidate.user.email}...`
+            : undefined
+        }
+      />
+    );
+  }
+
   if (resumeCandidate) {
-    const resumeBusy = state === "logging-in" || state === "connecting";
+    // "connecting" is handled by the full-screen takeover above and never
+    // reaches this render, so the only busy state left to reflect here is
+    // the local PIN check itself.
+    const resumeBusy = state === "logging-in";
     return (
       <main className="login-shell">
         <div className="login-card">
@@ -320,8 +347,11 @@ function App() {
     );
   }
 
-  const busy = state === "logging-in" || state === "connecting";
-  const submitLabel = state === "logging-in" ? "Logging in..." : state === "connecting" ? "Connecting..." : "Log in";
+  // Same as above: "connecting" is caught by the full-screen takeover
+  // before this point, so the only busy state left to label here is the
+  // credential check itself.
+  const busy = state === "logging-in";
+  const submitLabel = state === "logging-in" ? "Logging in..." : "Log in";
 
   return (
     <main className="login-shell">
