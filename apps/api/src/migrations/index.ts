@@ -13,6 +13,7 @@ import * as migration_20260903_114432_add_tenant_status_and_platform_audit_log f
 import * as migration_20260907_055634_add_posts_blog from './20260907_055634_add_posts_blog';
 import * as migration_20260907_061318_add_po_line_item_variant from './20260907_061318_add_po_line_item_variant';
 import * as migration_20260907_075353_add_po_partial_receive from './20260907_075353_add_po_partial_receive';
+import * as migration_20260921_102609_add_tenant_shifts_required from './20260921_102609_add_tenant_shifts_required';
 
 export const migrations = [
   {
@@ -88,6 +89,11 @@ export const migrations = [
   {
     up: migration_20260907_075353_add_po_partial_receive.up,
     down: migration_20260907_075353_add_po_partial_receive.down,
-    name: '20260907_075353_add_po_partial_receive'
+    name: '20260907_075353_add_po_partial_receive',
+  },
+  {
+    up: migration_20260921_102609_add_tenant_shifts_required.up,
+    down: migration_20260921_102609_add_tenant_shifts_required.down,
+    name: '20260921_102609_add_tenant_shifts_required'
   },
 ];

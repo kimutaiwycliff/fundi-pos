@@ -224,6 +224,10 @@ export interface Tenant {
    * Printed at the bottom of every receipt (e.g. "Thank you for your business!", return policy).
    */
   receiptFooter?: string | null;
+  /**
+   * Require staff to open a shift before they can complete a sale. Owners can always turn this off for their whole business.
+   */
+  shiftsRequired?: boolean | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -895,6 +899,7 @@ export interface TenantsSelect<T extends boolean = true> {
   billingStatus?: T;
   receiptHeader?: T;
   receiptFooter?: T;
+  shiftsRequired?: T;
   updatedAt?: T;
   createdAt?: T;
 }
