@@ -8,6 +8,7 @@ interface Tenant {
   name: string;
   receiptHeader: string | null;
   receiptFooter: string | null;
+  shiftsRequired: boolean | null;
 }
 
 export default async function SettingsPage() {

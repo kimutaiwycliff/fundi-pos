@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 interface Tenant {
@@ -15,6 +16,7 @@ interface Tenant {
   name: string;
   receiptHeader: string | null;
   receiptFooter: string | null;
+  shiftsRequired: boolean | null;
 }
 
 export function SettingsForm({ tenant }: { tenant: Tenant }) {
@@ -23,6 +25,7 @@ export function SettingsForm({ tenant }: { tenant: Tenant }) {
     name: tenant.name,
     receiptHeader: tenant.receiptHeader ?? '',
     receiptFooter: tenant.receiptFooter ?? '',
+    shiftsRequired: tenant.shiftsRequired !== false,
   });
   const [loading, setLoading] = useState(false);
 
@@ -38,6 +41,7 @@ export function SettingsForm({ tenant }: { tenant: Tenant }) {
           name: form.name,
           receiptHeader: form.receiptHeader || null,
           receiptFooter: form.receiptFooter || null,
+          shiftsRequired: form.shiftsRequired,
         }),
       });
 
@@ -95,6 +99,28 @@ export function SettingsForm({ tenant }: { tenant: Tenant }) {
               rows={2}
               value={form.receiptFooter}
               onChange={(e) => setForm((f) => ({ ...f, receiptFooter: e.target.value }))}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardDescription>Sales</CardDescription>
+          <CardTitle className="text-base font-medium">Shift requirement</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <Label htmlFor="shiftsRequired" className="flex flex-col items-start gap-1 font-normal">
+              <span className="font-medium">Require an open shift before selling</span>
+              <span className="text-sm text-muted-foreground">
+                When off, staff on web, Android, and desktop can complete a sale without opening a shift first.
+              </span>
+            </Label>
+            <Switch
+              id="shiftsRequired"
+              checked={form.shiftsRequired}
+              onCheckedChange={(checked) => setForm((f) => ({ ...f, shiftsRequired: checked }))}
             />
           </div>
         </CardContent>
