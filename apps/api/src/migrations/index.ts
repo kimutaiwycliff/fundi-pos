@@ -15,6 +15,7 @@ import * as migration_20260907_061318_add_po_line_item_variant from './20260907_
 import * as migration_20260907_075353_add_po_partial_receive from './20260907_075353_add_po_partial_receive';
 import * as migration_20260921_102609_add_tenant_shifts_required from './20260921_102609_add_tenant_shifts_required';
 import * as migration_20260921_131801_add_tenant_enforce_discount_caps from './20260921_131801_add_tenant_enforce_discount_caps';
+import * as migration_20260921_133639_add_quotations from './20260921_133639_add_quotations';
 
 export const migrations = [
   {
@@ -100,6 +101,11 @@ export const migrations = [
   {
     up: migration_20260921_131801_add_tenant_enforce_discount_caps.up,
     down: migration_20260921_131801_add_tenant_enforce_discount_caps.down,
-    name: '20260921_131801_add_tenant_enforce_discount_caps'
+    name: '20260921_131801_add_tenant_enforce_discount_caps',
+  },
+  {
+    up: migration_20260921_133639_add_quotations.up,
+    down: migration_20260921_133639_add_quotations.down,
+    name: '20260921_133639_add_quotations'
   },
 ];

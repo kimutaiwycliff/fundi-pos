@@ -79,6 +79,7 @@ export interface Config {
     orders: Order;
     'credit-payments': CreditPayment;
     'purchase-orders': PurchaseOrder;
+    quotations: Quotation;
     suppliers: Supplier;
     'stock-transfers': StockTransfer;
     customers: Customer;
@@ -106,6 +107,7 @@ export interface Config {
     orders: OrdersSelect<false> | OrdersSelect<true>;
     'credit-payments': CreditPaymentsSelect<false> | CreditPaymentsSelect<true>;
     'purchase-orders': PurchaseOrdersSelect<false> | PurchaseOrdersSelect<true>;
+    quotations: QuotationsSelect<false> | QuotationsSelect<true>;
     suppliers: SuppliersSelect<false> | SuppliersSelect<true>;
     'stock-transfers': StockTransfersSelect<false> | StockTransfersSelect<true>;
     customers: CustomersSelect<false> | CustomersSelect<true>;
@@ -527,6 +529,36 @@ export interface Supplier {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "quotations".
+ */
+export interface Quotation {
+  id: number;
+  tenant: number | Tenant;
+  store?: (number | null) | Store;
+  customerName?: string | null;
+  /**
+   * e.g. 0712345678 - used to send the quotation via WhatsApp.
+   */
+  customerPhone?: string | null;
+  /**
+   * Optional - e.g. validity period, terms. Printed at the bottom of the PDF.
+   */
+  notes?: string | null;
+  lineItems: {
+    product: number | Product;
+    variant?: string | null;
+    label: string;
+    quantity: number;
+    unitPrice: number;
+    id?: string | null;
+  }[];
+  total: number;
+  createdBy?: (number | null) | User;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "stock-transfers".
  */
 export interface StockTransfer {
@@ -778,6 +810,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'purchase-orders';
         value: number | PurchaseOrder;
+      } | null)
+    | ({
+        relationTo: 'quotations';
+        value: number | Quotation;
       } | null)
     | ({
         relationTo: 'suppliers';
@@ -1122,6 +1158,31 @@ export interface PurchaseOrdersSelect<T extends boolean = true> {
       };
   status?: T;
   receivedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "quotations_select".
+ */
+export interface QuotationsSelect<T extends boolean = true> {
+  tenant?: T;
+  store?: T;
+  customerName?: T;
+  customerPhone?: T;
+  notes?: T;
+  lineItems?:
+    | T
+    | {
+        product?: T;
+        variant?: T;
+        label?: T;
+        quantity?: T;
+        unitPrice?: T;
+        id?: T;
+      };
+  total?: T;
+  createdBy?: T;
   updatedAt?: T;
   createdAt?: T;
 }

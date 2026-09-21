@@ -14,6 +14,7 @@ import { StockMovements } from './collections/StockMovements.ts';
 import { Orders } from './collections/Orders.ts';
 import { CreditPayments } from './collections/CreditPayments.ts';
 import { PurchaseOrders } from './collections/PurchaseOrders.ts';
+import { Quotations } from './collections/Quotations.ts';
 import { Suppliers } from './collections/Suppliers.ts';
 import { StockTransfers } from './collections/StockTransfers.ts';
 import { Customers } from './collections/Customers.ts';
@@ -51,6 +52,7 @@ export default buildConfig({
     Orders,
     CreditPayments,
     PurchaseOrders,
+    Quotations,
     Suppliers,
     StockTransfers,
     Customers,
