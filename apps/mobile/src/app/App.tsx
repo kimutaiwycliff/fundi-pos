@@ -2,7 +2,7 @@ import '../../global.css';
 import { StatusBar } from 'expo-status-bar';
 import { useMutedPlaceholderColor, useNavigationTheme } from '../lib/theme';
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, TextInput, Pressable, ActivityIndicator, Platform, Linking, Image } from 'react-native';
+import { View, Text, TextInput, Pressable, Platform, Linking, Image } from 'react-native';
 import { KeyboardProvider, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -19,6 +19,8 @@ import { RootTabs } from '../navigation/RootTabs';
 import { checkForUpdate, type AvailableUpdate } from '../lib/updateCheck';
 import { PinPad } from '../components/PinPad';
 import { AppNoticeHost } from '../components/AppNotice';
+import { LoadingScreen } from '../components/LoadingScreen';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { isBiometricAvailable, isBiometricEnabledFor, authenticateWithBiometrics } from '../lib/biometric';
 
 type ConnectionState = 'idle' | 'logging-in' | 'connecting' | 'connected' | 'error';
@@ -293,11 +295,7 @@ function AppInner() {
   }
 
   if (initializing) {
-    return (
-      <View className="flex-1 items-center justify-center bg-background">
-        <ActivityIndicator color="#df5102" />
-      </View>
-    );
+    return <LoadingScreen />;
   }
 
   // One-time, before even the login screen - guarantees every till gets a
@@ -534,32 +532,38 @@ function PrimaryButton({ label, onPress, disabled }: { label: string; onPress: (
 
 export const App = () => {
   return (
-    <SafeAreaProvider>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <KeyboardProvider>
-          {/* "auto" tracks the OS color scheme itself (light content on dark, dark content on light) - same source of truth as global.css's prefers-color-scheme tokens, so the status bar never mismatches the app's own theme. */}
-          <StatusBar style="auto" />
-          {/* Lets any screen use @powersync/react's useQuery for a live,
-              auto-refreshing view of local SQLite instead of a one-shot
-              getAll() - getDb() lazily creates the shared instance
-              regardless of connection state, so this is safe to mount
-              before login too. The cast below is a real but harmless
-              mismatch: apps/mobile pins @powersync/common@2.1.0 (for
-              @powersync/react-native), while @powersync/react itself still
-              depends on @powersync/common@^2.0.0 and npm hasn't deduped
-              the two into one copy - so TypeScript sees two structurally
-              near-identical but nominally distinct `Table`/`SchemaType`
-              classes. Both are the same class at runtime; only the type
-              checker can't tell. Safe to drop once @powersync/react ships
-              a release compatible with @powersync/common 2.1.x. */}
-          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual-package-instance cast, see comment above */}
-          <PowerSyncContext.Provider value={getDb() as any}>
-            <AppInner />
-          </PowerSyncContext.Provider>
-          <AppNoticeHost />
-        </KeyboardProvider>
-      </GestureHandlerRootView>
-    </SafeAreaProvider>
+    // Wraps the entire tree - this component is the true root (index.js just
+    // calls registerRootComponent(App), no other wrapper in between) - so an
+    // otherwise-uncaught render error anywhere below (including inside
+    // AppInner) shows ErrorScreen instead of leaving a blank/crashed screen.
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <KeyboardProvider>
+            {/* "auto" tracks the OS color scheme itself (light content on dark, dark content on light) - same source of truth as global.css's prefers-color-scheme tokens, so the status bar never mismatches the app's own theme. */}
+            <StatusBar style="auto" />
+            {/* Lets any screen use @powersync/react's useQuery for a live,
+                auto-refreshing view of local SQLite instead of a one-shot
+                getAll() - getDb() lazily creates the shared instance
+                regardless of connection state, so this is safe to mount
+                before login too. The cast below is a real but harmless
+                mismatch: apps/mobile pins @powersync/common@2.1.0 (for
+                @powersync/react-native), while @powersync/react itself still
+                depends on @powersync/common@^2.0.0 and npm hasn't deduped
+                the two into one copy - so TypeScript sees two structurally
+                near-identical but nominally distinct `Table`/`SchemaType`
+                classes. Both are the same class at runtime; only the type
+                checker can't tell. Safe to drop once @powersync/react ships
+                a release compatible with @powersync/common 2.1.x. */}
+            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual-package-instance cast, see comment above */}
+            <PowerSyncContext.Provider value={getDb() as any}>
+              <AppInner />
+            </PowerSyncContext.Provider>
+            <AppNoticeHost />
+          </KeyboardProvider>
+        </GestureHandlerRootView>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 };
 
