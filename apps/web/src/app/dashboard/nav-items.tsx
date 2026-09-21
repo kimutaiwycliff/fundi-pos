@@ -18,7 +18,7 @@ import {
   UserCog,
   type LucideIcon,
 } from 'lucide-react';
-import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar';
 
 const ICONS: Record<string, LucideIcon> = {
   '/dashboard': LayoutDashboard,
@@ -38,6 +38,10 @@ const ICONS: Record<string, LucideIcon> = {
 
 export function NavItems({ items }: { items: { href: string; label: string }[] }) {
   const pathname = usePathname();
+  // Closes the mobile Sheet on nav so the page just navigated to is
+  // actually visible - harmless on desktop widths, where this Sheet
+  // state is never rendered at all.
+  const { setOpenMobile } = useSidebar();
 
   return (
     <SidebarMenu>
@@ -50,7 +54,7 @@ export function NavItems({ items }: { items: { href: string; label: string }[] }
         return (
           <SidebarMenuItem key={item.href}>
             <SidebarMenuButton asChild isActive={isActive}>
-              <Link href={item.href}>
+              <Link href={item.href} onClick={() => setOpenMobile(false)}>
                 <Icon />
                 <span>{item.label}</span>
               </Link>
