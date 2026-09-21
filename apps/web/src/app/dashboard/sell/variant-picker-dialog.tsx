@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Search } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -31,12 +31,15 @@ export function VariantPickerDialog({
 }) {
   const isMobile = useIsMobile();
   const [query, setQuery] = useState('');
-
-  // Fresh search box every time a different product is opened - matches
-  // product-search.tsx's own setQuery('') on selection.
-  useEffect(() => {
+  // Fresh search box every time a different product is opened - adjusting
+  // state during render (React's own documented alternative to an effect
+  // for this exact case: https://react.dev/learn/you-might-not-need-an-effect)
+  // rather than resetting it in a useEffect, which cascades an extra render.
+  const [lastProductId, setLastProductId] = useState<number | undefined>(product?.id);
+  if (product?.id !== lastProductId) {
+    setLastProductId(product?.id);
     setQuery('');
-  }, [product?.id]);
+  }
 
   const variants = product?.variants ?? [];
   const results = query.trim() ? fuzzySearch(variants, ['label', 'sku', 'barcode'], query) : variants;
