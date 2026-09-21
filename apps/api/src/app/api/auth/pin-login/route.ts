@@ -1,6 +1,7 @@
 import config from '@payload-config';
 import { getPayload } from 'payload';
 import { addSessionToUser } from 'payload/shared';
+import { normalizeKenyanPhone } from '@hardware-pos/business-logic';
 import { verifyPin } from '@/lib/pin';
 import { checkTenantAccess } from '@/lib/billing';
 import { toID } from '@/lib/relations';
@@ -46,10 +47,14 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Too many attempts - try again in a few minutes' }, { status: 429 });
   }
 
+  // Users.phone is stored normalized (see Users.ts's beforeChange) - a
+  // raw un-normalized lookup here would fail to match a phone typed in a
+  // different format than however it was originally entered.
+  const normalizedPhone = normalizeKenyanPhone(phone) ?? phone;
   const payload = await getPayload({ config });
   const matches = await payload.find({
     collection: 'users',
-    where: { phone: { equals: phone } },
+    where: { phone: { equals: normalizedPhone } },
     limit: 1,
     overrideAccess: true,
   });

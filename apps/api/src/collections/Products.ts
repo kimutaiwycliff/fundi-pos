@@ -1,4 +1,5 @@
 import type { CollectionConfig, FieldAccess } from 'payload';
+import { APIError } from 'payload';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 import { generateProductCodes } from '../hooks/generateProductCodes.ts';
@@ -144,6 +145,21 @@ export const Products: CollectionConfig = {
       min: 0,
       admin: { step: 0.01, description: 'Maximum amount a cashier may discount this product by per unit at the till. 0 = no discount allowed.' },
       access: { update: managerOrOwnerField },
+      // Structural "never below cost" guarantee for the common case (a
+      // variant with its own price/cost override can still fall outside
+      // this - Orders.ts's beforeChange hook is the actual unconditional
+      // backstop for that, resolved per-line at checkout). Only
+      // manager/owner can ever set this field, and both already have
+      // legitimate cost visibility, so this needs no new data exposure.
+      validate: (value: number | null | undefined, { siblingData }: { siblingData: Record<string, unknown> }) => {
+        const sellPrice = Number((siblingData as { sellPrice?: number })?.sellPrice ?? 0);
+        const costPrice = Number((siblingData as { costPrice?: number })?.costPrice ?? 0);
+        const margin = sellPrice - costPrice;
+        if (typeof value === 'number' && value > margin) {
+          return `Max discount cannot exceed the margin (sell price - cost price = ${margin.toFixed(2)}).`;
+        }
+        return true;
+      },
     },
     {
       name: 'reorderPoint',
@@ -229,6 +245,27 @@ export const Products: CollectionConfig = {
           req,
         });
         return doc;
+      },
+    ],
+    beforeDelete: [
+      // Same reasoning/pattern as the staff delete-guard in Users.ts:
+      // stock-movements/orders both hold a product reference with real
+      // history value - hard-deleting a product with either would
+      // currently just surface Postgres's FK-constraint violation (if one
+      // exists) as an opaque error. Checking first turns that into an
+      // actionable message and makes "archive vs. delete" an explicit
+      // choice rather than an accident.
+      async ({ req, id }) => {
+        const [movements, orders] = await Promise.all([
+          req.payload.find({ collection: 'stock-movements', where: { product: { equals: id } }, limit: 1, overrideAccess: true }),
+          req.payload.find({ collection: 'orders', where: { 'lineItems.product': { equals: id } }, limit: 1, overrideAccess: true }),
+        ]);
+        if (movements.totalDocs > 0 || orders.totalDocs > 0) {
+          throw new APIError(
+            'This product has order or stock-movement history and cannot be permanently deleted. Archive it instead to hide it while keeping records intact.',
+            400,
+          );
+        }
       },
     ],
   },

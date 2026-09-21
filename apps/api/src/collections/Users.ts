@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload';
 import { APIError } from 'payload';
+import { normalizeKenyanPhone } from '@hardware-pos/business-logic';
 import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
 import { hashPin } from '../lib/pin.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
@@ -170,6 +171,34 @@ export const Users: CollectionConfig = {
       // "Tenant is required" (it never sends one, exactly as it shouldn't
       // have to), which is what surfaced the gap.
       enforceOwnTenant(),
+      // Same normalization Customers.ts already does (0712345678 and
+      // +254712345678 both resolve to the same stored value), plus a
+      // friendly duplicate check - without this, the DB-wide unique index
+      // on `phone` below rejected a re-entry in a *different* format than
+      // whatever was already stored with an opaque error, which is what
+      // the reported "0712345678 rejected, +254712345678 accepted" bug
+      // actually was (a collision on a previously-normalized number, not a
+      // real format rejection - this field had no validation at all before).
+      async ({ req, data, originalDoc }) => {
+        if (data?.phone) {
+          const normalized = normalizeKenyanPhone(String(data.phone));
+          if (!normalized) {
+            throw new APIError('Enter a valid Kenyan phone number, e.g. 0712345678.', 400);
+          }
+          const existing = await req.payload.find({
+            collection: 'users',
+            where: { phone: { equals: normalized } },
+            limit: 1,
+            overrideAccess: true,
+          });
+          const collision = existing.docs.find((doc) => String(doc.id) !== String(originalDoc?.id));
+          if (collision) {
+            throw new APIError('A staff member with this phone number already exists.', 400);
+          }
+          data.phone = normalized;
+        }
+        return data;
+      },
       ({ data }) => {
         if (data?.pin) {
           data.pinHash = hashPin(String(data.pin));

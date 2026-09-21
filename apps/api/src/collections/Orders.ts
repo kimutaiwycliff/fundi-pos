@@ -1,7 +1,8 @@
 import type { CollectionConfig } from 'payload';
+import { APIError } from 'payload';
 import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
 import { isAuthenticated, managerOrOwner, neverDelete, ownTenantOnly } from '../access/index.ts';
-import { toID } from '../lib/relations.ts';
+import { isTenantUser, toID } from '../lib/relations.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
 const REVERSAL_STATUSES = new Set(['refunded', 'voided']);
@@ -141,14 +142,51 @@ export const Orders: CollectionConfig = {
         if (operation !== 'create' || !Array.isArray(data.lineItems)) return data;
 
         const productIds = [...new Set(data.lineItems.map((line: Record<string, unknown>) => Number(line.product)))];
-        const products = await req.payload.find({
-          collection: 'products',
-          where: { id: { in: productIds } },
-          limit: productIds.length,
-          overrideAccess: true,
-          req,
-        });
+        const [products, tenant] = await Promise.all([
+          req.payload.find({
+            collection: 'products',
+            where: { id: { in: productIds } },
+            limit: productIds.length,
+            overrideAccess: true,
+            req,
+          }),
+          req.payload.findByID({ collection: 'tenants', id: Number(data.tenant), overrideAccess: true, req }),
+        ]);
+        const productById = new Map(products.docs.map((p) => [p.id, p]));
         const taxRateByProductId = new Map(products.docs.map((p) => [p.id, p.taxRate]));
+
+        // Discount enforcement - the cap (Products.maxDiscountAmount) was
+        // previously client-only and bypassable via a direct API call;
+        // the cost floor didn't exist anywhere at all. Owners always
+        // bypass the configured cap (they set it and already see cost),
+        // but the floor is unconditional for every role - overrideAccess
+        // here is only ever used server-side (report/receipt code), so
+        // this never blocks anything but a real client-submitted order.
+        const enforceCaps = tenant.enforceDiscountCaps !== false;
+        const isOwner = req.user?.collection === 'platform-admins' || (isTenantUser(req.user) && req.user.role === 'owner');
+        for (const line of data.lineItems as Array<Record<string, unknown>>) {
+          const product = productById.get(Number(line.product));
+          if (!product) continue;
+          const variantId = line.variant as string | null | undefined;
+          const variant = variantId
+            ? ((product.variants ?? []) as Array<{ id?: string; costPrice?: number }>).find((v) => v.id === variantId)
+            : null;
+          const costPrice = Number(variant?.costPrice ?? product.costPrice ?? 0);
+          const quantity = Number(line.quantity);
+          const unitPrice = Number(line.unitPrice);
+          const discount = Number(line.discount ?? 0);
+          const effectiveUnitPrice = quantity > 0 ? unitPrice - discount / quantity : unitPrice;
+
+          if (effectiveUnitPrice < costPrice - 0.01) {
+            throw new APIError(`This item's discount would sell "${String(product.name)}" below cost.`, 400);
+          }
+          if (!isOwner && enforceCaps) {
+            const maxDiscountAmount = Number(product.maxDiscountAmount ?? 0);
+            if (discount > maxDiscountAmount * quantity + 0.01) {
+              throw new APIError(`Discount on "${String(product.name)}" exceeds the maximum allowed for this product.`, 400);
+            }
+          }
+        }
 
         const lines: LineInput[] = data.lineItems.map((line: Record<string, unknown>) => ({
           quantity: Number(line.quantity),

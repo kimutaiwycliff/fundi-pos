@@ -33,6 +33,7 @@ const tenants = new Table({
   name: column.text,
   receipt_header: column.text,
   shifts_required: column.integer,
+  enforce_discount_caps: column.integer,
   receipt_footer: column.text,
   updated_at: column.text,
   created_at: column.text,

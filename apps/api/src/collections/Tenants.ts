@@ -101,6 +101,23 @@ export const Tenants: CollectionConfig = {
       defaultValue: true,
       admin: { description: 'Require staff to open a shift before they can complete a sale. Owners can always turn this off for their whole business.' },
     },
+    {
+      // Same shape/reasoning as shiftsRequired above. Owners are never
+      // bound by each product's maxDiscountAmount cap regardless of this
+      // toggle (they already exclusively configure it and see cost
+      // price) - this setting only controls whether managers/cashiers
+      // are. Defaults true so every existing tenant keeps today's
+      // behavior unchanged. The floor of never selling below cost is
+      // unconditional and NOT governed by this toggle - see Orders.ts's
+      // beforeChange hook.
+      name: 'enforceDiscountCaps',
+      type: 'checkbox',
+      defaultValue: true,
+      admin: {
+        description:
+          "Limit staff (not owners) to each product's Max discount amount at the till. Turn off to let staff discount freely - a sale can still never go below a product's cost.",
+      },
+    },
   ],
   hooks: {
     beforeChange: [

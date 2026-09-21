@@ -25,7 +25,18 @@ export async function GET(request: Request) {
 
   const [movements, products] = await Promise.all([
     payload.find({ collection: 'stock-movements', where, pagination: false, depth: 0, overrideAccess: true }),
-    payload.find({ collection: 'products', where: { tenant: { equals: tenantId } }, pagination: false, depth: 0, overrideAccess: true }),
+    // isActive filtered here so archived products drop out of the levels
+    // below entirely (via the nameByProduct.has() check), not just lose
+    // their display name - this endpoint previously had no archive
+    // awareness at all, which is why an archived product kept showing up
+    // in Inventory (both Web and Desktop read this same endpoint).
+    payload.find({
+      collection: 'products',
+      where: { tenant: { equals: tenantId }, isActive: { equals: true } },
+      pagination: false,
+      depth: 0,
+      overrideAccess: true,
+    }),
   ]);
 
   const reorderPointByProduct = new Map(products.docs.map((p) => [p.id, (p.reorderPoint as number) ?? 0]));
@@ -45,22 +56,28 @@ export async function GET(request: Request) {
     balances.set(key, (balances.get(key) ?? 0) + (m.quantityDelta as number));
   }
 
-  const levels = Array.from(balances.entries()).map(([key, quantity]) => {
-    const [store, product, variant] = key.split('::');
-    const productIdNum = Number(product);
-    const reorderPoint = reorderPointByProduct.get(productIdNum) ?? 0;
-    const variantId = variant || null;
-    return {
-      store: Number(store),
-      product: productIdNum,
-      variant: variantId,
-      productName: nameByProduct.get(productIdNum) ?? `#${product}`,
-      variantLabel: variantId ? (variantLabelByKey.get(`${productIdNum}::${variantId}`) ?? null) : null,
-      quantity,
-      reorderPoint,
-      lowStock: quantity <= reorderPoint,
-    };
-  });
+  const levels = Array.from(balances.entries())
+    // An archived product's past movements are still in the ledger (and
+    // must stay there for history/reports), but nameByProduct only has
+    // entries for the isActive-filtered products query above - this is
+    // the actual exclusion, not just a cosmetic fallback.
+    .filter(([key]) => nameByProduct.has(Number(key.split('::')[1])))
+    .map(([key, quantity]) => {
+      const [store, product, variant] = key.split('::');
+      const productIdNum = Number(product);
+      const reorderPoint = reorderPointByProduct.get(productIdNum) ?? 0;
+      const variantId = variant || null;
+      return {
+        store: Number(store),
+        product: productIdNum,
+        variant: variantId,
+        productName: nameByProduct.get(productIdNum) ?? `#${product}`,
+        variantLabel: variantId ? (variantLabelByKey.get(`${productIdNum}::${variantId}`) ?? null) : null,
+        quantity,
+        reorderPoint,
+        lowStock: quantity <= reorderPoint,
+      };
+    });
 
   return Response.json({ levels });
 }

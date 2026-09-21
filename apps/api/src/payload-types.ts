@@ -228,6 +228,10 @@ export interface Tenant {
    * Require staff to open a shift before they can complete a sale. Owners can always turn this off for their whole business.
    */
   shiftsRequired?: boolean | null;
+  /**
+   * Limit staff (not owners) to each product's Max discount amount at the till. Turn off to let staff discount freely - a sale can still never go below a product's cost.
+   */
+  enforceDiscountCaps?: boolean | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -900,6 +904,7 @@ export interface TenantsSelect<T extends boolean = true> {
   receiptHeader?: T;
   receiptFooter?: T;
   shiftsRequired?: T;
+  enforceDiscountCaps?: T;
   updatedAt?: T;
   createdAt?: T;
 }

@@ -31,7 +31,7 @@ streams:
     auto_subscribe: true
     priority: 1
     query: |
-      SELECT id, name, receipt_header, receipt_footer, shifts_required, created_at, updated_at
+      SELECT id, name, receipt_header, receipt_footer, shifts_required, enforce_discount_caps, created_at, updated_at
       FROM tenants WHERE id = auth.parameter('tenant_id')
 
   # Catalog data: shared across a tenant's stores, so it's tenant-scoped

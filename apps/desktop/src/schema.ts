@@ -29,6 +29,7 @@ const tenants = new Table({
   receipt_header: column.text,
   receipt_footer: column.text,
   shifts_required: column.integer,
+  enforce_discount_caps: column.integer,
   updated_at: column.text,
   created_at: column.text,
 });

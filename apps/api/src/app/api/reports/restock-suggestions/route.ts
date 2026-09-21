@@ -43,7 +43,9 @@ export async function GET(request: Request) {
     }),
     payload.find({
       collection: 'products',
-      where: { tenant: { equals: tenantId } },
+      // Archived (discontinued) products shouldn't generate a restock
+      // suggestion - same isActive gap as /api/reports/stock-levels.
+      where: { tenant: { equals: tenantId }, isActive: { equals: true } },
       pagination: false,
       depth: 0,
       overrideAccess: true,
@@ -84,38 +86,43 @@ export async function GET(request: Request) {
   }
 
   const keys = new Set([...balances.keys(), ...soldQuantity.keys()]);
-  const candidates = Array.from(keys).map((key) => {
-    const [productIdStr, variant] = key.split('::');
-    const productId = Number(productIdStr);
-    const product = productById.get(productId);
-    const variantId = variant || null;
-    const variantDoc = variantId
-      ? ((product?.variants ?? []) as Array<{ id?: string; label: string; costPrice?: number; sellPrice?: number }>).find(
-          (v) => v.id === variantId,
-        )
-      : null;
+  const candidates = Array.from(keys)
+    // productById is isActive-filtered above - an archived product's key
+    // (from past movements/orders) has no entry here, so it's excluded
+    // rather than falling back to a "#id" placeholder name.
+    .filter((key) => productById.has(Number(key.split('::')[0])))
+    .map((key) => {
+      const [productIdStr, variant] = key.split('::');
+      const productId = Number(productIdStr);
+      const product = productById.get(productId);
+      const variantId = variant || null;
+      const variantDoc = variantId
+        ? ((product?.variants ?? []) as Array<{ id?: string; label: string; costPrice?: number; sellPrice?: number }>).find(
+            (v) => v.id === variantId,
+          )
+        : null;
 
-    const reorderPoint = (product?.reorderPoint as number) ?? 0;
-    const currentStock = balances.get(key) ?? 0;
-    const quantitySold = soldQuantity.get(key) ?? 0;
-    const lowStock = currentStock <= reorderPoint;
+      const reorderPoint = (product?.reorderPoint as number) ?? 0;
+      const currentStock = balances.get(key) ?? 0;
+      const quantitySold = soldQuantity.get(key) ?? 0;
+      const lowStock = currentStock <= reorderPoint;
 
-    const costPrice = canSeeCost ? (variantDoc?.costPrice ?? (product?.costPrice as number) ?? 0) : null;
-    const sellPrice = variantDoc?.sellPrice ?? (product?.sellPrice as number) ?? 0;
+      const costPrice = canSeeCost ? (variantDoc?.costPrice ?? (product?.costPrice as number) ?? 0) : null;
+      const sellPrice = variantDoc?.sellPrice ?? (product?.sellPrice as number) ?? 0;
 
-    return {
-      productId,
-      variant: variantId,
-      productName: product?.name ?? `#${productId}`,
-      variantLabel: variantDoc?.label ?? null,
-      currentStock,
-      reorderPoint,
-      quantitySoldInWindow: quantitySold,
-      costPrice,
-      sellPrice,
-      lowStock,
-    };
-  });
+      return {
+        productId,
+        variant: variantId,
+        productName: product?.name ?? `#${productId}`,
+        variantLabel: variantDoc?.label ?? null,
+        currentStock,
+        reorderPoint,
+        quantitySoldInWindow: quantitySold,
+        costPrice,
+        sellPrice,
+        lowStock,
+      };
+    });
 
   // Fast-moving = top 20 by quantity sold in the window, regardless of
   // stock level - deliberately a separate ranking from lowStock so a
