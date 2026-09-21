@@ -659,7 +659,7 @@ export function Till({
       </header>
 
       <div className="till-utilitybar">
-        {storeId != null && tenantId != null && (
+        {storeId != null && tenantId != null && (shiftsRequired || activeShift != null) && (
           <ShiftPanel
             payloadToken={payloadToken}
             tenantId={tenantId}

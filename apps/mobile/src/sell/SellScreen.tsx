@@ -476,15 +476,19 @@ export function SellScreen({
     <SafeAreaView edges={['top']} className="flex-1 bg-background">
         <View className="gap-2 border-b border-border p-3">
           <View className="flex-row items-center justify-between">
-            <ShiftWidget
-              payloadToken={payloadToken}
-              tenantId={tenantId}
-              storeId={storeId}
-              terminal={terminalId}
-              cashierId={user.id}
-              shift={activeShift}
-              onShiftChange={setActiveShift}
-            />
+            {shiftsRequired || activeShift != null ? (
+              <ShiftWidget
+                payloadToken={payloadToken}
+                tenantId={tenantId}
+                storeId={storeId}
+                terminal={terminalId}
+                cashierId={user.id}
+                shift={activeShift}
+                onShiftChange={setActiveShift}
+              />
+            ) : (
+              <View />
+            )}
             <Pressable android_ripple={{}} className="ml-2 rounded-md border border-border px-3 py-1.5 active:opacity-70" onPress={() => setHeldSalesOpen(true)}>
               <Text className="text-sm text-foreground">
                 Held{heldSales.length > 0 ? ` (${heldSales.length})` : ''}

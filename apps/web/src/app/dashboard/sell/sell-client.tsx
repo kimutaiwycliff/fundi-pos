@@ -375,7 +375,7 @@ export function SellClient({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Sell</h1>
         <div className="flex flex-wrap items-center gap-2">
-          {activeStoreId != null && terminalId != null ? (
+          {activeStoreId != null && terminalId != null && (tenant.shiftsRequired || activeShift != null) ? (
             <ShiftWidget
               storeId={activeStoreId}
               terminal={terminalId}
