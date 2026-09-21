@@ -31,6 +31,8 @@ export function TenantStatusActions({ tenantId, status, name }: { tenantId: numb
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [reason, setReason] = useState('');
+  const [confirmName, setConfirmName] = useState('');
+  const [purging, setPurging] = useState(false);
 
   async function setStatus(nextStatus: TenantStatus) {
     setLoading(true);
@@ -49,6 +51,19 @@ export function TenantStatusActions({ tenantId, status, name }: { tenantId: numb
     setLoading(false);
     setReason('');
     router.refresh();
+  }
+
+  async function handlePurge() {
+    setPurging(true);
+    const response = await fetch(`/api/platform/tenants/${tenantId}/purge`, { method: 'POST' });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      toast.error(body?.error ?? 'Failed to permanently delete this tenant');
+      setPurging(false);
+      return;
+    }
+    toast.success(`${name} permanently deleted`);
+    router.push('/platform');
   }
 
   return (
@@ -107,23 +122,55 @@ export function TenantStatusActions({ tenantId, status, name }: { tenantId: numb
           </AlertDialog>
         </>
       ) : (
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button disabled={loading}>{status === 'deleted' ? 'Restore' : 'Reactivate'}</Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {status === 'deleted' ? 'Restore' : 'Reactivate'} {name}?
-              </AlertDialogTitle>
-              <AlertDialogDescription>Every staff member regains access immediately, on every device.</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => setStatus('active')}>{status === 'deleted' ? 'Restore' : 'Reactivate'}</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button disabled={loading}>{status === 'deleted' ? 'Restore' : 'Reactivate'}</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {status === 'deleted' ? 'Restore' : 'Reactivate'} {name}?
+                </AlertDialogTitle>
+                <AlertDialogDescription>Every staff member regains access immediately, on every device.</AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => setStatus('active')}>{status === 'deleted' ? 'Restore' : 'Reactivate'}</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          {status === 'deleted' ? (
+            <AlertDialog onOpenChange={(open) => !open && setConfirmName('')}>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={purging}>
+                  Delete permanently
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Permanently delete {name}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This cannot be undone. Every product, order, staff member, and record this tenant owns is
+                    permanently erased - not just hidden. Type the tenant&apos;s name to confirm.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="confirm-name">
+                    Type <span className="font-semibold">{name}</span> to confirm
+                  </Label>
+                  <Input id="confirm-name" value={confirmName} onChange={(e) => setConfirmName(e.target.value)} />
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction variant="destructive" disabled={confirmName !== name || purging} onClick={handlePurge}>
+                    {purging ? 'Deleting...' : 'Delete permanently'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : null}
+        </>
       )}
     </div>
   );

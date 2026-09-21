@@ -149,6 +149,20 @@ export const Tenants: CollectionConfig = {
           } else if (doc.status === 'deleted') {
             action = 'tenant_soft_deleted';
             summary = `${doc.name} soft-deleted`;
+            // Staff already can't log in once their tenant is deleted
+            // (checkTenantAccess blocks every path) - losing their
+            // phone-login identifier at the same moment costs nothing and
+            // immediately frees the number for a different tenant's staff
+            // to register, since Users.phone is a DB-wide unique index.
+            // Restoring the tenant does not restore these - a freed number
+            // may already be claimed elsewhere by then, which is the point.
+            await req.payload.update({
+              collection: 'users',
+              where: { tenant: { equals: doc.id } },
+              data: { phone: null },
+              overrideAccess: true,
+              req,
+            });
           } else if (previousDoc.status === 'deleted') {
             action = 'tenant_restored';
             summary = `${doc.name} restored`;

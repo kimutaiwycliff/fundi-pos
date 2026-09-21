@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { platformFetch } from '@/lib/platform-client';
+import { TenantStatusFilter } from './status-filter';
 
 type Tenant = {
   id: number;
@@ -16,12 +17,26 @@ function statusVariant(status: Tenant['status']): 'secondary' | 'destructive' {
   return status === 'active' ? 'secondary' : 'destructive';
 }
 
-export default async function PlatformTenantsPage() {
-  const { docs: tenants } = await platformFetch<{ docs: Tenant[] }>('/api/tenants?limit=200&sort=-createdAt&depth=0');
+export default async function PlatformTenantsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const { status } = await searchParams;
+  const showDeleted = status === 'deleted';
+  const statusFilter = showDeleted
+    ? 'where[status][equals]=deleted'
+    : 'where[status][not_equals]=deleted';
+  const { docs: tenants } = await platformFetch<{ docs: Tenant[] }>(
+    `/api/tenants?limit=200&sort=-createdAt&depth=0&${statusFilter}`,
+  );
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold">Tenants</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-semibold">Tenants</h1>
+        <TenantStatusFilter />
+      </div>
       <div className="rounded-md border">
         <Table>
           <TableHeader>
