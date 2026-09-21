@@ -200,6 +200,18 @@ export function SellClient({
     }
   }
 
+  // Owners are never bound by a product's configured cap (they set it and
+  // already see cost); the tenant's enforceDiscountCaps toggle governs
+  // everyone else. Either way, a sale can never go below cost - that's a
+  // hard, unconditional floor enforced server-side in Orders.ts (never
+  // exposed to a cashier's client), not something this UI can pre-clamp
+  // without leaking margin data - so the bypassed case only keeps a basic
+  // "can't make the line negative" sanity bound.
+  const discountCapBypassed = me.role === 'owner' || !tenant.enforceDiscountCaps;
+  function effectiveMaxDiscount(quantity: number, variantId: string | null, product: Product): number {
+    return discountCapBypassed ? quantity * lineUnitPrice(product, variantId) : maxDiscountAmountForLine(quantity, product);
+  }
+
   function updateQuantity(productId: number, variantId: string | null, quantity: number) {
     const stock = stockByKey.get(stockKey(productId, variantId)) ?? 0;
     const line = cart.find((l) => l.product.id === productId && l.variantId === variantId);
@@ -212,7 +224,7 @@ export function SellClient({
         ? prev.filter((l) => !(l.product.id === productId && l.variantId === variantId))
         : prev.map((l) => {
             if (!(l.product.id === productId && l.variantId === variantId)) return l;
-            const max = maxDiscountAmountForLine(quantity, l.product);
+            const max = effectiveMaxDiscount(quantity, variantId, l.product);
             return { ...l, quantity, discountAmount: Math.min(l.discountAmount, max) };
           }),
     );
@@ -221,9 +233,9 @@ export function SellClient({
   function updateDiscountAmount(productId: number, variantId: string | null, rawValue: number) {
     const line = cart.find((l) => l.product.id === productId && l.variantId === variantId);
     if (!line) return;
-    const max = maxDiscountAmountForLine(line.quantity, line.product);
+    const max = effectiveMaxDiscount(line.quantity, variantId, line.product);
     const clamped = Math.min(Math.max(rawValue, 0), max);
-    if (rawValue > max) {
+    if (rawValue > max && !discountCapBypassed) {
       toast.error(`Max discount for ${lineDisplayLabel(line.product, variantId)} is ${max.toFixed(2)}`);
     }
     setCart((prev) =>

@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Check, ChevronsUpDown, ImageIcon, Search, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronsUpDown, ImageIcon, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,6 +45,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { stockKey } from '@/lib/stock-key';
 import { fuzzySearch } from '@/lib/fuzzy-search';
 import { EmptyState } from '@/components/empty-state';
@@ -221,6 +222,8 @@ export function ProductDialog({
   canSeeCost,
   canEditFields,
   mediaUrlById,
+  open: openProp,
+  onOpenChange: onOpenChangeProp,
 }: {
   product?: Product;
   stores: Store[];
@@ -236,6 +239,12 @@ export function ProductDialog({
   // that silently no-ops.
   canEditFields: boolean;
   mediaUrlById: Record<number, string>;
+  // Optionally controllable so products-table.tsx can open a row's own
+  // dialog on a row click, not just its Edit button - falls back to this
+  // component's own internal state when omitted (the create-mode "New
+  // product" button usage stays fully uncontrolled).
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const router = useRouter();
   const isEdit = Boolean(product);
@@ -243,7 +252,9 @@ export function ProductDialog({
   // owner-only server-side (unchanged), so a cashier can't reach a create
   // dialog in practice; this only kicks in for editing an existing product.
   const fieldsDisabled = isEdit && !canEditFields;
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
+  const setOpen = onOpenChangeProp ?? setInternalOpen;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -272,6 +283,11 @@ export function ProductDialog({
   const visibleVariants = variantQuery.trim()
     ? fuzzySearch(indexedVariants, ['v.label', 'v.sku', 'v.barcode'], variantQuery)
     : indexedVariants;
+  // Collapsed by default (all-expanded is what made 40+ variants painful
+  // to scroll past) - a variant added via "Add variant" below inserts
+  // itself expanded, and while searching every matching result shows
+  // expanded regardless of this set's membership.
+  const [expandedVariants, setExpandedVariants] = useState<Set<number>>(new Set());
   const [relatedProducts, setRelatedProducts] = useState<number[]>(product?.relatedProducts ?? []);
 
   const savedVariants = variants.filter((v): v is Variant & { id: string } => Boolean(v.id));
@@ -284,6 +300,7 @@ export function ProductDialog({
   const [stockLoading, setStockLoading] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   function update(field: keyof typeof form) {
     return (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -313,11 +330,33 @@ export function ProductDialog({
   }
 
   function addVariant() {
+    const newIndex = variants.length;
     setVariants((prev) => [...prev, { label: '', sku: '', barcode: '' }]);
+    setExpandedVariants((prev) => new Set(prev).add(newIndex));
   }
 
   function removeVariant(index: number) {
     setVariants((prev) => prev.filter((_, i) => i !== index));
+    // Every index above the removed one shifts down by one now that the
+    // array's been spliced - remap the set so expand state stays attached
+    // to the right variant, not just the right position.
+    setExpandedVariants((prev) => {
+      const next = new Set<number>();
+      for (const i of prev) {
+        if (i < index) next.add(i);
+        else if (i > index) next.add(i - 1);
+      }
+      return next;
+    });
+  }
+
+  function toggleVariantExpanded(index: number) {
+    setExpandedVariants((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -397,6 +436,29 @@ export function ProductDialog({
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setArchiveLoading(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!product) return;
+    setDeleteLoading(true);
+    try {
+      const response = await clientFetch(`/api/payload/products/${product.id}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        // Products.ts's beforeDelete guard returns a friendly message when
+        // the product has real order/stock-movement history - surfaced
+        // here as-is rather than a generic fallback.
+        toast.error(errorMessageFrom(body, 'Failed to delete product'));
+        return;
+      }
+      toast.success('Product deleted');
+      setOpen(false);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -556,60 +618,83 @@ export function ProductDialog({
                   {visibleVariants.length === 0 ? (
                     <EmptyState icon={Search} title={`No variants match "${variantQuery.trim()}"`} description="Try a different name or SKU." />
                   ) : (
-                    visibleVariants.map(({ v: variant, index }) => (
-                  <div key={index} className="flex flex-col gap-2 rounded-lg border p-3">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        placeholder="e.g. Red / L"
-                        disabled={fieldsDisabled}
-                        value={variant.label}
-                        onChange={updateVariantLabel(index)}
-                        className="min-w-0 flex-1"
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        disabled={fieldsDisabled}
-                        onClick={() => removeVariant(index)}
-                        aria-label="Remove variant"
+                    visibleVariants.map(({ v: variant, index }) => {
+                      const isExpanded = variantQuery.trim() ? true : expandedVariants.has(index);
+                      return (
+                      <Collapsible
+                        key={index}
+                        open={isExpanded}
+                        onOpenChange={() => toggleVariantExpanded(index)}
+                        className="rounded-lg border"
                       >
-                        <X className="size-4" />
-                      </Button>
-                    </div>
-                    <ImageField
-                      label="Variant image"
-                      imageUrl={variant.imageUrl ?? null}
-                      onChange={updateVariantImage(index)}
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs text-muted-foreground">Sell price</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          disabled={fieldsDisabled}
-                          placeholder={form.sellPrice || '0'}
-                          value={variant.sellPrice ?? ''}
-                          onChange={updateVariantPrice(index, 'sellPrice')}
-                        />
-                      </div>
-                      {canSeeCost ? (
-                        <div className="flex flex-col gap-1">
-                          <Label className="text-xs text-muted-foreground">Cost price</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
+                        <div className="flex items-center gap-2 p-3">
+                          <CollapsibleTrigger asChild>
+                            <button
+                              type="button"
+                              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                            >
+                              <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', isExpanded ? 'rotate-180' : '')} />
+                              <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                                {variant.label || 'Untitled variant'}
+                              </span>
+                              <span className="shrink-0 text-xs text-muted-foreground">
+                                {(variant.sellPrice ?? (Number(form.sellPrice) || 0)).toFixed(2)}
+                              </span>
+                            </button>
+                          </CollapsibleTrigger>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
                             disabled={fieldsDisabled}
-                            placeholder={form.costPrice || '0'}
-                            value={variant.costPrice ?? ''}
-                            onChange={updateVariantPrice(index, 'costPrice')}
-                          />
+                            onClick={() => removeVariant(index)}
+                            aria-label="Remove variant"
+                          >
+                            <X className="size-4" />
+                          </Button>
                         </div>
-                      ) : null}
-                    </div>
-                  </div>
-                )))}
+                        <CollapsibleContent className="flex flex-col gap-2 px-3 pb-3">
+                          <Input
+                            placeholder="e.g. Red / L"
+                            disabled={fieldsDisabled}
+                            value={variant.label}
+                            onChange={updateVariantLabel(index)}
+                          />
+                          <ImageField
+                            label="Variant image"
+                            imageUrl={variant.imageUrl ?? null}
+                            onChange={updateVariantImage(index)}
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="flex flex-col gap-1">
+                              <Label className="text-xs text-muted-foreground">Sell price</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                disabled={fieldsDisabled}
+                                placeholder={form.sellPrice || '0'}
+                                value={variant.sellPrice ?? ''}
+                                onChange={updateVariantPrice(index, 'sellPrice')}
+                              />
+                            </div>
+                            {canSeeCost ? (
+                              <div className="flex flex-col gap-1">
+                                <Label className="text-xs text-muted-foreground">Cost price</Label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  disabled={fieldsDisabled}
+                                  placeholder={form.costPrice || '0'}
+                                  value={variant.costPrice ?? ''}
+                                  onChange={updateVariantPrice(index, 'costPrice')}
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                      );
+                    }))}
                 </div>
               </div>
             )}
@@ -632,34 +717,60 @@ export function ProductDialog({
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
             {isEdit ? (
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button type="button" variant={product!.isActive ? 'destructive' : 'outline'} disabled={archiveLoading || fieldsDisabled}>
-                    {product!.isActive ? 'Archive product' : 'Restore product'}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>
-                      {product!.isActive ? `Archive ${product!.name}?` : `Restore ${product!.name}?`}
-                    </AlertDialogTitle>
-                    <AlertDialogDescription>
-                      {product!.isActive
-                        ? 'Hidden from the Sell page and the default Products list. Past orders, stock movements, and reports are unaffected, and you can restore it any time.'
-                        : 'Visible again on the Sell page and the default Products list.'}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      variant={product!.isActive ? 'destructive' : 'default'}
-                      onClick={handleArchiveToggle}
-                    >
-                      {product!.isActive ? 'Archive' : 'Restore'}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <div className="flex flex-wrap gap-2">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button type="button" variant={product!.isActive ? 'destructive' : 'outline'} disabled={archiveLoading || deleteLoading || fieldsDisabled}>
+                      {product!.isActive ? 'Archive product' : 'Restore product'}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        {product!.isActive ? `Archive ${product!.name}?` : `Restore ${product!.name}?`}
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {product!.isActive
+                          ? 'Hidden from the Sell page and the default Products list. Past orders, stock movements, and reports are unaffected, and you can restore it any time.'
+                          : 'Visible again on the Sell page and the default Products list.'}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        variant={product!.isActive ? 'destructive' : 'default'}
+                        onClick={handleArchiveToggle}
+                      >
+                        {product!.isActive ? 'Archive' : 'Restore'}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                {!fieldsDisabled ? (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button type="button" variant="outline" disabled={archiveLoading || deleteLoading}>
+                        Delete permanently
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Permanently delete {product!.name}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This cannot be undone. If this product has any order or stock-movement history, the
+                          delete will be blocked - archive it instead to hide it while keeping records intact.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction variant="destructive" onClick={handleDelete}>
+                          Delete permanently
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                ) : null}
+              </div>
             ) : (
               <div />
             )}

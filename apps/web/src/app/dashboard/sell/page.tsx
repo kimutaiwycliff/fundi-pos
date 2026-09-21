@@ -35,6 +35,7 @@ export type TenantReceiptInfo = {
   receiptHeader: string | null;
   receiptFooter: string | null;
   shiftsRequired: boolean;
+  enforceDiscountCaps: boolean;
 };
 
 export interface StockLevel {

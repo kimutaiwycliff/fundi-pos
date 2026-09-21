@@ -9,6 +9,7 @@ interface Tenant {
   receiptHeader: string | null;
   receiptFooter: string | null;
   shiftsRequired: boolean | null;
+  enforceDiscountCaps: boolean | null;
 }
 
 export default async function SettingsPage() {

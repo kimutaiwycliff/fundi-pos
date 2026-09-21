@@ -40,6 +40,10 @@ export function ProductsTable({
   mediaUrlById: Record<number, string>;
 }) {
   const [query, setQuery] = useState('');
+  // Lifted out of ProductDialog so a row click can open that row's own
+  // editor, not just its Edit button - most useful on a phone-width
+  // browser where the button sits off to the right.
+  const [openProductId, setOpenProductId] = useState<number | null>(null);
 
   const filtered = useMemo(
     () => fuzzySearch(products, ['name', 'sku', 'barcode', 'category'], query),
@@ -92,7 +96,11 @@ export function ProductsTable({
               filtered.map((product) => {
                 const imageUrl = product.image != null ? mediaUrlById[product.image] : undefined;
                 return (
-                <TableRow key={product.id}>
+                <TableRow
+                  key={product.id}
+                  onClick={() => setOpenProductId(product.id)}
+                  className="cursor-pointer hover:bg-muted/50"
+                >
                   <TableCell className="font-mono text-xs">{product.sku}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -129,7 +137,11 @@ export function ProductsTable({
                   {branchStock ? (
                     <TableCell className="text-right">{branchStock[product.id] ?? 0}</TableCell>
                   ) : null}
-                  <TableCell>
+                  {/* stopPropagation so the Edit trigger button inside
+                      ProductDialog doesn't also fire the row's own
+                      onClick above (redundant, not harmful, but avoids
+                      any double-toggle weirdness). */}
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <ProductDialog
                       product={product}
                       stores={stores}
@@ -138,6 +150,8 @@ export function ProductsTable({
                       canSeeCost={canSeeCost}
                       canEditFields={canEditFields}
                       mediaUrlById={mediaUrlById}
+                      open={openProductId === product.id}
+                      onOpenChange={(o) => setOpenProductId(o ? product.id : null)}
                     />
                   </TableCell>
                 </TableRow>

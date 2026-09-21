@@ -17,6 +17,7 @@ interface Tenant {
   receiptHeader: string | null;
   receiptFooter: string | null;
   shiftsRequired: boolean | null;
+  enforceDiscountCaps: boolean | null;
 }
 
 export function SettingsForm({ tenant }: { tenant: Tenant }) {
@@ -26,6 +27,7 @@ export function SettingsForm({ tenant }: { tenant: Tenant }) {
     receiptHeader: tenant.receiptHeader ?? '',
     receiptFooter: tenant.receiptFooter ?? '',
     shiftsRequired: tenant.shiftsRequired !== false,
+    enforceDiscountCaps: tenant.enforceDiscountCaps !== false,
   });
   const [loading, setLoading] = useState(false);
 
@@ -42,6 +44,7 @@ export function SettingsForm({ tenant }: { tenant: Tenant }) {
           receiptHeader: form.receiptHeader || null,
           receiptFooter: form.receiptFooter || null,
           shiftsRequired: form.shiftsRequired,
+          enforceDiscountCaps: form.enforceDiscountCaps,
         }),
       });
 
@@ -121,6 +124,29 @@ export function SettingsForm({ tenant }: { tenant: Tenant }) {
               id="shiftsRequired"
               checked={form.shiftsRequired}
               onCheckedChange={(checked) => setForm((f) => ({ ...f, shiftsRequired: checked }))}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardDescription>Sales</CardDescription>
+          <CardTitle className="text-base font-medium">Discount limit</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <Label htmlFor="enforceDiscountCaps" className="flex flex-col items-start gap-1 font-normal">
+              <span className="font-medium">Limit staff to each product&apos;s max discount</span>
+              <span className="text-sm text-muted-foreground">
+                Owners are never limited by this. When off, staff can discount freely too - a sale still can never
+                go below a product&apos;s cost.
+              </span>
+            </Label>
+            <Switch
+              id="enforceDiscountCaps"
+              checked={form.enforceDiscountCaps}
+              onCheckedChange={(checked) => setForm((f) => ({ ...f, enforceDiscountCaps: checked }))}
             />
           </div>
         </CardContent>
