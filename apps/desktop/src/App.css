@@ -1643,3 +1643,26 @@ tr.is-low-stock td:first-child {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------------------------------------------------------------------
+   Quotations screen
+   --------------------------------------------------------------------- */
+.quotation-notes {
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--paper);
+  color: var(--ink);
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.quotation-notes:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.quotation-notes::placeholder {
+  color: var(--ink-faint);
+}

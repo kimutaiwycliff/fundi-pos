@@ -1,18 +1,23 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Till } from './Till';
 import { Reports } from './ReportsScreen';
 import { Inventory } from './InventoryScreen';
 import { Restock } from './RestockScreen';
+import { Quotations } from './QuotationsScreen';
 import type { PayloadUser } from './auth';
-import { BoxIcon, CartIcon, ChartIcon, TruckIcon } from './icons';
+import { BoxIcon, CartIcon, ChartIcon, ReceiptIcon, TruckIcon } from './icons';
 
-type Section = 'sell' | 'reports' | 'inventory' | 'restock';
+type Section = 'sell' | 'reports' | 'inventory' | 'restock' | 'quotations';
 
-const NAV_ITEMS: { key: Section; label: string; Icon: (props: { className?: string }) => React.ReactElement }[] = [
+const NAV_ITEMS: { key: Section; label: string; Icon: (props: { className?: string }) => React.ReactElement; managerOnly?: boolean }[] = [
   { key: 'sell', label: 'Sell', Icon: CartIcon },
   { key: 'reports', label: 'Reports', Icon: ChartIcon },
   { key: 'inventory', label: 'Inventory', Icon: BoxIcon },
   { key: 'restock', label: 'Restock', Icon: TruckIcon },
+  // Matches Quotations.ts's own access control server-side (manager/owner
+  // only for every operation, a cashier session gets a 403) - hidden here
+  // rather than left to fail loudly against a section a cashier can't use.
+  { key: 'quotations', label: 'Quotations', Icon: ReceiptIcon, managerOnly: true },
 ];
 
 interface AppShellProps {
@@ -38,6 +43,10 @@ interface AppShellProps {
 export function AppShell(props: AppShellProps) {
   const [section, setSection] = useState<Section>('sell');
   const [visited, setVisited] = useState<Set<Section>>(() => new Set<Section>(['sell']));
+  // Matches RestockScreen.tsx's/InventoryScreen.tsx's own canSeeCost/canManage
+  // checks - owner and manager only.
+  const canSeeManagerSections = props.user.role === 'owner' || props.user.role === 'manager';
+  const navItems = useMemo(() => NAV_ITEMS.filter((item) => !item.managerOnly || canSeeManagerSections), [canSeeManagerSections]);
 
   function selectSection(key: Section) {
     setSection(key);
@@ -47,7 +56,7 @@ export function AppShell(props: AppShellProps) {
   return (
     <div className="app-shell">
       <nav className="app-sidebar">
-        {NAV_ITEMS.map(({ key, label, Icon }) => (
+        {navItems.map(({ key, label, Icon }) => (
           <button
             key={key}
             type="button"
@@ -91,6 +100,12 @@ export function AppShell(props: AppShellProps) {
         {visited.has('restock') ? (
           <div className="app-shell-pane app-shell-pane-padded" hidden={section !== 'restock'}>
             <Restock user={props.user} storeId={props.activeStoreId} payloadToken={props.payloadToken} />
+          </div>
+        ) : null}
+
+        {visited.has('quotations') && canSeeManagerSections ? (
+          <div className="app-shell-pane app-shell-pane-padded" hidden={section !== 'quotations'}>
+            <Quotations user={props.user} storeId={props.activeStoreId} payloadToken={props.payloadToken} />
           </div>
         ) : null}
       </div>
