@@ -5,6 +5,7 @@ import { BranchFilter } from '@/components/branch-filter';
 import { ProductDialog } from './product-dialog';
 import { ProductsTable } from './products-table';
 import { ImportProductsDialog } from './import-dialog';
+import { ExportProductsButton } from './export-products-button';
 import { ProductStatusFilter } from './status-filter';
 
 type Store = { id: number; name: string };
@@ -106,6 +107,7 @@ export default async function ProductsPage({
             <BranchFilter stores={stores} />
           </Suspense>
           <ImportProductsDialog stores={stores} />
+          <ExportProductsButton />
           <ProductDialog
             stores={stores}
             allProducts={products}

@@ -171,6 +171,15 @@ export function SellScreen({
     [storeId ?? -1, tenantId],
   );
 
+  // Owner-controlled, tenant-wide - defaults to required (matches this
+  // field's own server-side defaultValue: true) whenever the row hasn't
+  // synced down yet, so a device that's never seen this tenant row keeps
+  // today's behavior rather than silently skipping the gate.
+  const { data: tenantRows } = useQuery<{ shifts_required: number }>('SELECT shifts_required FROM tenants WHERE id = ?', [
+    tenantId,
+  ]);
+  const shiftsRequired = tenantRows[0]?.shifts_required !== 0;
+
   // Idle-state default is this store's recently sold products, not the
   // whole catalog - matches the web Sell page's own "search-first" flow
   // (idle center area isn't meant to be a full product browser), while
@@ -370,7 +379,7 @@ export function SellScreen({
 
   async function completeSale() {
     if (cart.length === 0 || storeId == null || tenantId == null) return;
-    if (activeShift == null) {
+    if (shiftsRequired && activeShift == null) {
       showAlert('Open a shift before completing a sale');
       return;
     }
@@ -444,10 +453,11 @@ export function SellScreen({
   }
 
   const trimmedQuery = query.trim();
-  const checkoutDisabled = cart.length === 0 || completing || activeShift == null || (tenderType === 'credit' && !selectedCustomer);
+  const checkoutDisabled =
+    cart.length === 0 || completing || (shiftsRequired && activeShift == null) || (tenderType === 'credit' && !selectedCustomer);
   const checkoutLabel = completing
     ? 'Completing...'
-    : activeShift == null
+    : shiftsRequired && activeShift == null
       ? 'Open a shift to sell'
       : tenderType === 'credit' && !selectedCustomer
         ? 'Select a customer'

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Pressable, Modal, Switch, Platform } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { disconnectPowerSync } from '../db/database';
@@ -216,13 +216,19 @@ export function RootTabs({
   storeId: number | null;
   onSignOut: () => void;
 }) {
+  // Supplying a custom tabBarStyle.height opts the navigator out of its own
+  // default safe-area-aware sizing, so the system nav bar's inset has to be
+  // re-added explicitly here - on gesture-nav devices that inset is small
+  // enough to go unnoticed, but on a classic 3-button nav bar (~48dp) it
+  // was eating into the tab bar itself, partly covering it.
+  const insets = useSafeAreaInsets();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: '#df5102',
         tabBarIcon: ({ color, size }) => <Ionicons name={TAB_ICONS[route.name]} size={size} color={color} />,
-        tabBarStyle: { paddingTop: 8, paddingBottom: 8, height: 64 },
+        tabBarStyle: { paddingTop: 8, paddingBottom: 8 + insets.bottom, height: 64 + insets.bottom },
       })}
     >
       <Tab.Screen name="Overview">{() => <OverviewScreen user={user} storeId={storeId} />}</Tab.Screen>

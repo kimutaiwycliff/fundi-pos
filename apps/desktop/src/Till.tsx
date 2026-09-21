@@ -13,6 +13,7 @@ import { printReceipt } from './printer';
 import { PrinterSettings } from './PrinterSettings';
 import { Drawer } from './Drawer';
 import { ConfirmDialog } from './ConfirmDialog';
+import { VariantPickerDialog, type LocalVariant } from './VariantPickerDialog';
 import { useToast } from './Toast';
 import type { Shift } from './shifts';
 import {
@@ -37,34 +38,62 @@ interface LocalProduct {
   barcode: string | null;
   sell_price: number;
   tax_rate: number;
-  max_discount_percent: number;
+  max_discount_amount: number;
   stock_on_hand: number;
+  variant_count: number;
 }
 
 interface LocalTenant {
   name: string;
   receipt_header: string | null;
   receipt_footer: string | null;
+  shifts_required: number;
 }
 
 interface CartLine {
   product: LocalProduct;
+  // null = the bare product (no variants). A product with variants is
+  // never sold as itself - see addToCart, which forces a variant pick
+  // first, matching web/Android's identical rule.
+  variant: LocalVariant | null;
   quantity: number;
   // A flat currency amount off this line's subtotal (not a percentage) -
-  // cashiers think in "how many shillings off", not percentages. The
-  // product's own max_discount_percent is still what a manager configures
-  // (scales sensibly regardless of price/quantity) - maxDiscountAmount
-  // below converts that cap into the equivalent shilling ceiling for
-  // whatever's actually in the cart right now.
+  // cashiers think in "how many shillings off", not percentages.
+  // max_discount_amount below is that same flat per-unit cap already
+  // configured on the product; maxDiscountAmountForLine just scales it by
+  // quantity for whatever's actually in the cart right now.
   discountAmount: number;
+}
+
+/** Composite key for per-(product, variant) cart/stock lookups - a bare product still needs a stable key distinct from any of its own variants. */
+function stockKey(productId: string, variantId?: string | null): string {
+  return `${productId}::${variantId ?? ''}`;
+}
+
+function lineKey(line: Pick<CartLine, 'product' | 'variant'>): string {
+  return stockKey(line.product.id, line.variant?.id ?? null);
+}
+
+/** A variant's own price only when it explicitly sets one - most variants share the parent's price. */
+function lineUnitPrice(line: Pick<CartLine, 'product' | 'variant'>): number {
+  return line.variant?.sell_price ?? line.product.sell_price;
+}
+
+function lineDisplayLabel(line: Pick<CartLine, 'product' | 'variant'>): string {
+  return line.variant ? `${line.product.name} — ${line.variant.label}` : line.product.name;
+}
+
+function lineStock(line: Pick<CartLine, 'product' | 'variant'>): number {
+  return line.variant ? line.variant.stock_on_hand : line.product.stock_on_hand;
 }
 
 function lineDiscountAmount(line: CartLine): number {
   return line.discountAmount;
 }
 
+/** max_discount_amount is a per-unit currency cap - the line's ceiling scales with quantity. */
 function maxDiscountAmountForLine(line: Pick<CartLine, 'quantity' | 'product'>): number {
-  return (line.quantity * line.product.sell_price * line.product.max_discount_percent) / 100;
+  return line.quantity * line.product.max_discount_amount;
 }
 
 interface TillProps {
@@ -122,6 +151,7 @@ export function Till({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LocalProduct[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [variantPickerProduct, setVariantPickerProduct] = useState<LocalProduct | null>(null);
   const [tenderType, setTenderType] = useState<(typeof TENDER_OPTIONS)[number]['value']>('cash');
   const [selectedCustomer, setSelectedCustomer] = useState<LocalCustomer | null>(null);
   const [completing, setCompleting] = useState(false);
@@ -131,6 +161,9 @@ export function Till({
   const [activeCashier, setActiveCashier] = useState({ id: user.id, phone: user.phone ?? null, name: user.name ?? null });
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
   const [tenant, setTenant] = useState<LocalTenant | null>(null);
+  // Fail-safe default: required until the tenant row has actually synced
+  // down, matching this field's own server-side defaultValue: true.
+  const shiftsRequired = tenant?.shifts_required !== 0;
   const [stores, setStores] = useState<LocalStore[]>([]);
   const [heldSalesOpen, setHeldSalesOpen] = useState(false);
   const [voidPanelOpen, setVoidPanelOpen] = useState(false);
@@ -159,7 +192,7 @@ export function Till({
   useEffect(() => {
     if (tenantId == null) return;
     const db = getDb();
-    db.getAll<LocalTenant>('SELECT name, receipt_header, receipt_footer FROM tenants WHERE id = ?', [
+    db.getAll<LocalTenant>('SELECT name, receipt_header, receipt_footer, shifts_required FROM tenants WHERE id = ?', [
       String(tenantId),
     ]).then((rows) => setTenant(rows[0] ?? null));
   }, [tenantId]);
@@ -248,9 +281,10 @@ export function Till({
     // side) - summed here per product/store in the same query so search
     // results can both display it and gate against overselling.
     db.getAll<LocalProduct>(
-      `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, p.tax_rate, p.max_discount_percent,
+      `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, p.tax_rate, p.max_discount_amount,
               COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
-                        WHERE sm.product_id = p.id AND sm.store_id = ?), 0) AS stock_on_hand
+                        WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS stock_on_hand,
+              (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
        FROM products p
        WHERE p.tenant_id = ? AND (p.sku LIKE ? OR p.barcode = ? OR p.name LIKE ?)
        ORDER BY p.name LIMIT 20`,
@@ -347,7 +381,7 @@ export function Till({
     () =>
       cart.map((line) => ({
         quantity: line.quantity,
-        unitPrice: line.product.sell_price,
+        unitPrice: lineUnitPrice(line),
         discount: lineDiscountAmount(line),
         taxRate: line.product.tax_rate,
       })),
@@ -358,35 +392,50 @@ export function Till({
   // The till only knows about stock it has already searched for in this
   // session (product.stock_on_hand is a snapshot from the search query, not
   // re-queried live) - good enough to stop a cashier ringing up more of one
-  // item than the shelf has, without a DB round-trip on every +/- click.
+  // item than the shelf has, without a DB round-trip on every +/- click. A
+  // product with variants is never sold as its bare self - see web/Android's
+  // identical rule - so this opens the picker instead of adding directly.
   function addToCart(product: LocalProduct) {
-    const existing = cart.find((l) => l.product.id === product.id);
+    if (product.variant_count > 0) {
+      setVariantPickerProduct(product);
+      return;
+    }
+    addLineToCart(product, null);
+  }
+
+  function addLineToCart(product: LocalProduct, variant: LocalVariant | null) {
+    const key = stockKey(product.id, variant?.id ?? null);
+    const existing = cart.find((l) => lineKey(l) === key);
+    const stock = variant ? variant.stock_on_hand : product.stock_on_hand;
     const nextQuantity = (existing?.quantity ?? 0) + 1;
-    if (nextQuantity > product.stock_on_hand) {
-      showToast(`Only ${product.stock_on_hand} ${product.name} left in stock`, 'error');
+    if (nextQuantity > stock) {
+      showToast(`Only ${stock} ${product.name} left in stock`, 'error');
       return;
     }
     setCart((prev) => {
       if (existing) {
-        return prev.map((l) => (l.product.id === product.id ? { ...l, quantity: l.quantity + 1 } : l));
+        return prev.map((l) => (lineKey(l) === key ? { ...l, quantity: l.quantity + 1 } : l));
       }
-      return [...prev, { product, quantity: 1, discountAmount: 0 }];
+      return [...prev, { product, variant, quantity: 1, discountAmount: 0 }];
     });
     setQuery('');
     setResults([]);
+    setVariantPickerProduct(null);
   }
 
-  function updateQuantity(productId: string, quantity: number) {
-    const line = cart.find((l) => l.product.id === productId);
-    if (line && quantity > line.quantity && quantity > line.product.stock_on_hand) {
-      showToast(`Only ${line.product.stock_on_hand} ${line.product.name} left in stock`, 'error');
+  function updateQuantity(key: string, quantity: number) {
+    const line = cart.find((l) => lineKey(l) === key);
+    if (!line) return;
+    const stock = lineStock(line);
+    if (quantity > line.quantity && quantity > stock) {
+      showToast(`Only ${stock} ${line.product.name} left in stock`, 'error');
       return;
     }
     setCart((prev) =>
       quantity <= 0
-        ? prev.filter((l) => l.product.id !== productId)
+        ? prev.filter((l) => lineKey(l) !== key)
         : prev.map((l) => {
-            if (l.product.id !== productId) return l;
+            if (lineKey(l) !== key) return l;
             // A quantity decrease can shrink the discount ceiling below
             // whatever flat amount was already entered - re-clamp so the
             // cart never ends up implying a bigger discount % than the
@@ -397,20 +446,20 @@ export function Till({
     );
   }
 
-  function updateDiscountAmount(productId: string, rawValue: number) {
-    const line = cart.find((l) => l.product.id === productId);
+  function updateDiscountAmount(key: string, rawValue: number) {
+    const line = cart.find((l) => lineKey(l) === key);
     if (!line) return;
     const max = maxDiscountAmountForLine(line);
     const clamped = Math.min(Math.max(rawValue, 0), max);
     if (rawValue > max) {
       showToast(`Max discount for ${line.product.name} is ${max.toFixed(2)}`, 'error');
     }
-    setCart((prev) => prev.map((l) => (l.product.id === productId ? { ...l, discountAmount: clamped } : l)));
+    setCart((prev) => prev.map((l) => (lineKey(l) === key ? { ...l, discountAmount: clamped } : l)));
   }
 
   async function completeSale() {
     if (cart.length === 0 || storeId == null) return;
-    if (activeShift == null) {
+    if (shiftsRequired && activeShift == null) {
       showToast('Open a shift before completing a sale', 'error');
       return;
     }
@@ -421,9 +470,9 @@ export function Till({
     // Final authoritative check right before committing - a line's snapshot
     // stock could be stale if it sat in the cart a while (another till
     // selling the same product, a manual stock adjustment, etc.).
-    const oversold = cart.find((line) => line.quantity > line.product.stock_on_hand);
+    const oversold = cart.find((line) => line.quantity > lineStock(line));
     if (oversold) {
-      showToast(`Only ${oversold.product.stock_on_hand} ${oversold.product.name} left in stock`, 'error');
+      showToast(`Only ${lineStock(oversold)} ${lineDisplayLabel(oversold)} left in stock`, 'error');
       return;
     }
     setCompleting(true);
@@ -472,7 +521,7 @@ export function Till({
           const line = cart[i];
           await tx.execute(
             `INSERT INTO orders_line_items (id, _parent_id, _order, product_id, variant, quantity, unit_price, discount)
-             VALUES (?, ?, ?, ?, NULL, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             // Number(line.product.id): products.id is a PowerSync-implicit
             // TEXT primary key locally, but this column mirrors Postgres's
             // real INTEGER foreign key (schema.ts declares product_id as
@@ -486,8 +535,9 @@ export function Till({
               orderId,
               i,
               Number(line.product.id),
+              line.variant?.id ?? null,
               line.quantity,
-              line.product.sell_price,
+              lineUnitPrice(line),
               lineDiscountAmount(line),
             ],
           );
@@ -507,10 +557,10 @@ export function Till({
         storeName: tenant?.name ?? 'Fundi',
         orderId,
         lines: cart.map((line) => ({
-          name: line.product.name,
+          name: lineDisplayLabel(line),
           quantity: line.quantity,
-          unitPrice: line.product.sell_price,
-          lineTotal: line.quantity * line.product.sell_price - lineDiscountAmount(line),
+          unitPrice: lineUnitPrice(line),
+          lineTotal: line.quantity * lineUnitPrice(line) - lineDiscountAmount(line),
         })),
         taxTotal: totals.taxTotal,
         total: totals.total,
@@ -675,7 +725,13 @@ export function Till({
           ) : results.length > 0 ? (
             <div className="search-results-grid">
               {results.map((product) => {
-                const outOfStock = product.stock_on_hand <= 0;
+                const hasVariants = product.variant_count > 0;
+                // A variant-having product's own bare stock_on_hand is
+                // meaningless (its stock lives per-variant instead, per the
+                // AND sm.variant IS NULL filter above) - never disable the
+                // card on that basis; out-of-stock variants are disabled
+                // individually inside the picker.
+                const outOfStock = !hasVariants && product.stock_on_hand <= 0;
                 return (
                   <button
                     key={product.id}
@@ -683,13 +739,18 @@ export function Till({
                     disabled={outOfStock}
                     onClick={() => addToCart(product)}
                   >
-                    <span className="product-card-name">{product.name}</span>
+                    <span className="product-card-name">
+                      {product.name}
+                      {hasVariants ? <span className="product-card-meta"> · {product.variant_count} options</span> : null}
+                    </span>
                     <span className="product-card-meta">{product.sku}</span>
                     <span className="product-card-row">
                       <span className="product-card-price">{product.sell_price.toFixed(2)}</span>
-                      <span className={`product-card-stock ${outOfStock ? 'is-out' : ''}`}>
-                        {outOfStock ? 'Out of stock' : `${product.stock_on_hand} in stock`}
-                      </span>
+                      {!hasVariants && (
+                        <span className={`product-card-stock ${outOfStock ? 'is-out' : ''}`}>
+                          {outOfStock ? 'Out of stock' : `${product.stock_on_hand} in stock`}
+                        </span>
+                      )}
                     </span>
                   </button>
                 );
@@ -724,26 +785,26 @@ export function Till({
           ) : (
             <div className="cart-list">
               {cart.map((line) => (
-                <div key={line.product.id} className="cart-line">
+                <div key={lineKey(line)} className="cart-line">
                   <div className="cart-line-main">
                     <div className="cart-line-info">
-                      <p className="cart-line-name">{line.product.name}</p>
-                      <p className="cart-line-price">{line.product.sell_price.toFixed(2)} each</p>
+                      <p className="cart-line-name">{lineDisplayLabel(line)}</p>
+                      <p className="cart-line-price">{lineUnitPrice(line).toFixed(2)} each</p>
                     </div>
                     <div className="qty-stepper">
-                      <button onClick={() => updateQuantity(line.product.id, line.quantity - 1)} aria-label="Decrease quantity">
+                      <button onClick={() => updateQuantity(lineKey(line), line.quantity - 1)} aria-label="Decrease quantity">
                         <MinusIcon />
                       </button>
                       <span>{line.quantity}</span>
-                      <button onClick={() => updateQuantity(line.product.id, line.quantity + 1)} aria-label="Increase quantity">
+                      <button onClick={() => updateQuantity(lineKey(line), line.quantity + 1)} aria-label="Increase quantity">
                         <PlusIcon />
                       </button>
                     </div>
                     <span className="cart-line-total">
-                      {(line.quantity * line.product.sell_price - lineDiscountAmount(line)).toFixed(2)}
+                      {(line.quantity * lineUnitPrice(line) - lineDiscountAmount(line)).toFixed(2)}
                     </span>
                   </div>
-                  {line.product.max_discount_percent > 0 && (
+                  {line.product.max_discount_amount > 0 && (
                     <label className="cart-line-discount">
                       Discount
                       <input
@@ -757,7 +818,7 @@ export function Till({
                         // yet - otherwise a real "0" sits in the box and has
                         // to be selected/deleted before typing a value.
                         value={line.discountAmount === 0 ? '' : line.discountAmount}
-                        onChange={(e) => updateDiscountAmount(line.product.id, Number(e.currentTarget.value) || 0)}
+                        onChange={(e) => updateDiscountAmount(lineKey(line), Number(e.currentTarget.value) || 0)}
                       />
                       <span>(max {maxDiscountAmountForLine(line).toFixed(2)})</span>
                     </label>
@@ -812,14 +873,14 @@ export function Till({
                 disabled={
                   cart.length === 0 ||
                   completing ||
-                  activeShift == null ||
+                  (shiftsRequired && activeShift == null) ||
                   (tenderType === 'credit' && !selectedCustomer)
                 }
                 onClick={completeSale}
               >
                 {completing
                   ? 'Completing...'
-                  : activeShift == null
+                  : shiftsRequired && activeShift == null
                     ? 'Open a shift to sell'
                     : tenderType === 'credit' && !selectedCustomer
                       ? 'Select a customer'
@@ -856,6 +917,15 @@ export function Till({
           </ul>
         )}
       </Drawer>
+
+      {storeId != null && (
+        <VariantPickerDialog
+          product={variantPickerProduct}
+          storeId={storeId}
+          onSelect={(variant) => variantPickerProduct && addLineToCart(variantPickerProduct, variant)}
+          onClose={() => setVariantPickerProduct(null)}
+        />
+      )}
 
       <Drawer open={voidPanelOpen} onClose={() => setVoidPanelOpen(false)} title="Void or refund a sale">
         {storeId != null && <VoidOrderPanel storeId={storeId} payloadToken={payloadToken} />}

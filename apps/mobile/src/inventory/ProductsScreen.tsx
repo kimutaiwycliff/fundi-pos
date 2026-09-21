@@ -110,6 +110,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   // field on every save, same as web's dialog - no partial-row PATCH).
   const [workingVariants, setWorkingVariants] = useState<WorkingVariant[]>([]);
   const [savingVariants, setSavingVariants] = useState(false);
+  const [workingVariantQuery, setWorkingVariantQuery] = useState('');
 
   // relatedProducts is a Payload relationship field with no local
   // PowerSync stream (see sync-config.yaml - relationship join tables
@@ -138,6 +139,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   const [newImage, setNewImage] = useState<{ id: number; url: string } | null>(null);
   const [uploadingNewImage, setUploadingNewImage] = useState(false);
   const [newVariants, setNewVariants] = useState<WorkingVariant[]>([]);
+  const [newVariantQuery, setNewVariantQuery] = useState('');
   const [savingNew, setSavingNew] = useState(false);
 
   // Reactive: PowerSync's useQuery re-runs this automatically whenever
@@ -163,6 +165,27 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
     const fuse = new Fuse(products, { threshold: 0.4, ignoreLocation: true, keys: ['name', 'sku', 'barcode', 'category'] });
     return fuse.search(trimmed).map((r) => r.item);
   }, [query, products]);
+
+  // Same fuzzy-search treatment as the product list above, applied to a
+  // single product's own variants once there are enough to need it (a
+  // paint product can carry 40+ color/size rows) - index-paired so a
+  // filtered row still updates the right entry in workingVariants.
+  const visibleWorkingVariants = useMemo(() => {
+    const indexed = workingVariants.map((v, index) => ({ v, index }));
+    const trimmed = workingVariantQuery.trim();
+    if (!trimmed) return indexed;
+    const fuse = new Fuse(indexed, { threshold: 0.4, ignoreLocation: true, keys: ['v.label', 'v.sku', 'v.barcode'] });
+    return fuse.search(trimmed).map((r) => r.item);
+  }, [workingVariantQuery, workingVariants]);
+
+  // Same treatment for the create-from-scratch flow's own variant list.
+  const visibleNewVariants = useMemo(() => {
+    const indexed = newVariants.map((v, index) => ({ v, index }));
+    const trimmed = newVariantQuery.trim();
+    if (!trimmed) return indexed;
+    const fuse = new Fuse(indexed, { threshold: 0.4, ignoreLocation: true, keys: ['v.label', 'v.sku', 'v.barcode'] });
+    return fuse.search(trimmed).map((r) => r.item);
+  }, [newVariantQuery, newVariants]);
 
   function openProduct(product: LocalProductRow) {
     setSelected(product);
@@ -705,7 +728,20 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                 {workingVariants.length === 0 ? (
                   <Text className="text-xs text-muted-foreground">No variants - this product is sold as-is.</Text>
                 ) : (
-                  workingVariants.map((v, index) => {
+                  <>
+                  {workingVariants.length > 6 ? (
+                    <TextInput
+                      className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                      placeholder="Search variants by name, SKU, or barcode..."
+                      placeholderTextColor={placeholderColor}
+                      value={workingVariantQuery}
+                      onChangeText={setWorkingVariantQuery}
+                    />
+                  ) : null}
+                  {visibleWorkingVariants.length === 0 ? (
+                    <Text className="text-xs text-muted-foreground">No variants match &quot;{workingVariantQuery.trim()}&quot;.</Text>
+                  ) : (
+                  visibleWorkingVariants.map(({ v, index }) => {
                     const vStock = v.id ? stock.find((s) => s.variant_id === v.id)?.quantity : undefined;
                     return (
                       <View key={v.id ?? `new-${index}`} className="gap-2 border-b border-border/50 pb-3 pt-1">
@@ -776,6 +812,8 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                       </View>
                     );
                   })
+                  )}
+                  </>
                 )}
                 <Pressable
                   android_ripple={{ color: '#ffffff40' }}
@@ -946,7 +984,20 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
               {newVariants.length === 0 ? (
                 <Text className="text-xs text-muted-foreground">No variants - this product will be sold as-is.</Text>
               ) : (
-                newVariants.map((v, index) => (
+                <>
+                {newVariants.length > 6 ? (
+                  <TextInput
+                    className="rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                    placeholder="Search variants by name, SKU, or barcode..."
+                    placeholderTextColor={placeholderColor}
+                    value={newVariantQuery}
+                    onChangeText={setNewVariantQuery}
+                  />
+                ) : null}
+                {visibleNewVariants.length === 0 ? (
+                  <Text className="text-xs text-muted-foreground">No variants match &quot;{newVariantQuery.trim()}&quot;.</Text>
+                ) : (
+                visibleNewVariants.map(({ v, index }) => (
                   <View key={`new-${index}`} className="gap-2 border-b border-border/50 pb-3 pt-1">
                     <View className="flex-row items-center gap-2">
                       <Pressable onPress={() => pickNewVariantImage(index)}>
@@ -1005,6 +1056,8 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                     </View>
                   </View>
                 ))
+                )}
+                </>
               )}
             </View>
 

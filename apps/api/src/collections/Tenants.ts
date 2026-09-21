@@ -89,6 +89,18 @@ export const Tenants: CollectionConfig = {
       type: 'textarea',
       admin: { description: 'Printed at the bottom of every receipt (e.g. "Thank you for your business!", return policy).' },
     },
+    {
+      // Shift-gating itself (blocking Sell/checkout without an open shift)
+      // is purely client-side UX, duplicated identically across web/
+      // mobile/desktop - this is the one server-held source of truth all
+      // three read to decide whether to enforce it. Defaults true so every
+      // existing tenant keeps today's behavior unchanged until an owner
+      // explicitly opts out.
+      name: 'shiftsRequired',
+      type: 'checkbox',
+      defaultValue: true,
+      admin: { description: 'Require staff to open a shift before they can complete a sale. Owners can always turn this off for their whole business.' },
+    },
   ],
   hooks: {
     beforeChange: [

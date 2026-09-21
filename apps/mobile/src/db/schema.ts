@@ -32,6 +32,7 @@ import { column, Schema, Table } from '@powersync/common';
 const tenants = new Table({
   name: column.text,
   receipt_header: column.text,
+  shifts_required: column.integer,
   receipt_footer: column.text,
   updated_at: column.text,
   created_at: column.text,

@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Check, ChevronsUpDown, ImageIcon, X } from 'lucide-react';
+import { Check, ChevronsUpDown, ImageIcon, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -46,6 +46,8 @@ import {
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { stockKey } from '@/lib/stock-key';
+import { fuzzySearch } from '@/lib/fuzzy-search';
+import { EmptyState } from '@/components/empty-state';
 import type { Product, StockLevel, Variant } from './page';
 
 type Store = { id: number; name: string };
@@ -265,6 +267,11 @@ export function ProductDialog({
       imageUrl: v.image != null ? (mediaUrlById[v.image] ?? null) : null,
     })),
   );
+  const [variantQuery, setVariantQuery] = useState('');
+  const indexedVariants = variants.map((v, index) => ({ v, index }));
+  const visibleVariants = variantQuery.trim()
+    ? fuzzySearch(indexedVariants, ['v.label', 'v.sku', 'v.barcode'], variantQuery)
+    : indexedVariants;
   const [relatedProducts, setRelatedProducts] = useState<number[]>(product?.relatedProducts ?? []);
 
   const savedVariants = variants.filter((v): v is Variant & { id: string } => Boolean(v.id));
@@ -534,7 +541,22 @@ export function ProductDialog({
               </p>
             ) : (
               <div className="flex flex-col gap-2">
-                {variants.map((variant, index) => (
+                {variants.length > 6 ? (
+                  <div className="relative">
+                    <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search variants by name, SKU, or barcode..."
+                      value={variantQuery}
+                      onChange={(e) => setVariantQuery(e.target.value)}
+                      className="pl-8"
+                    />
+                  </div>
+                ) : null}
+                <div className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+                  {visibleVariants.length === 0 ? (
+                    <EmptyState icon={Search} title={`No variants match "${variantQuery.trim()}"`} description="Try a different name or SKU." />
+                  ) : (
+                    visibleVariants.map(({ v: variant, index }) => (
                   <div key={index} className="flex flex-col gap-2 rounded-lg border p-3">
                     <div className="flex items-center gap-2">
                       <Input
@@ -587,7 +609,8 @@ export function ProductDialog({
                       ) : null}
                     </div>
                   </div>
-                ))}
+                )))}
+                </div>
               </div>
             )}
           </div>

@@ -251,7 +251,7 @@ export function SellClient({
 
   async function completeSale() {
     if (cart.length === 0 || activeStoreId == null || terminalId == null) return;
-    if (activeShift == null) {
+    if (tenant.shiftsRequired && activeShift == null) {
       toast.error('Open a shift before completing a sale');
       return;
     }
@@ -336,10 +336,13 @@ export function SellClient({
   }
 
   const checkoutDisabled =
-    cart.length === 0 || completing || activeShift == null || (tenderType === 'credit' && !selectedCustomer);
+    cart.length === 0 ||
+    completing ||
+    (tenant.shiftsRequired && activeShift == null) ||
+    (tenderType === 'credit' && !selectedCustomer);
   const checkoutLabel = completing
     ? 'Completing...'
-    : activeShift == null
+    : tenant.shiftsRequired && activeShift == null
       ? 'Open a shift to sell'
       : tenderType === 'credit' && !selectedCustomer
         ? 'Select a customer'

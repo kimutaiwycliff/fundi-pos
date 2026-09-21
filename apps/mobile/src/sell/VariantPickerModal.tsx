@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Modal, View, Text, Pressable, FlatList, Image } from 'react-native';
+import { Modal, View, Text, TextInput, Pressable, FlatList, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getDb } from '../db/database';
+import { useMutedPlaceholderColor } from '../lib/theme';
 import type { LocalProduct, LocalVariant } from './types';
 
 // Opens whenever a variant-having product is picked (see SellScreen's
@@ -22,10 +24,20 @@ export function VariantPickerModal({
   onClose: () => void;
 }) {
   const [variants, setVariants] = useState<LocalVariant[]>([]);
+  const [query, setQuery] = useState('');
+  const placeholderColor = useMutedPlaceholderColor();
+
+  const results = useMemo(() => {
+    const trimmed = query.trim();
+    if (!trimmed) return variants;
+    const fuse = new Fuse(variants, { threshold: 0.4, ignoreLocation: true, keys: ['label', 'sku', 'barcode'] });
+    return fuse.search(trimmed).map((r) => r.item);
+  }, [query, variants]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQuery('');
     if (!product) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVariants([]);
       return;
     }
@@ -54,15 +66,31 @@ export function VariantPickerModal({
       <Pressable android_ripple={{}} className="flex-1 justify-end bg-black/40" onPress={onClose}>
         <Pressable android_ripple={{}} className="max-h-[70%] rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
           <Text className="mb-3 text-lg font-semibold text-foreground">{product?.name} — choose an option</Text>
+          {variants.length > 6 ? (
+            <TextInput
+              className="mb-2 rounded-lg border border-border bg-card px-3 py-2 text-foreground"
+              placeholder="Search by name, SKU, or barcode..."
+              placeholderTextColor={placeholderColor}
+              value={query}
+              onChangeText={setQuery}
+            />
+          ) : null}
           <FlatList
             // Concrete pixel cap, not unconstrained: this list sits inside a
             // max-height-capped, content-sized Pressable (not a flex:1
             // screen), the same layout shape that left SalesScreen's
             // receipt line items measuring to zero height and rendering
             // nothing - see that fix's own note for the full explanation.
-            style={{ maxHeight: 420 }}
-            data={variants}
+            // Bumped from 420 to 460 to keep a similar visible row count
+            // now that the search bar above eats into the sheet's header.
+            style={{ maxHeight: 460 }}
+            data={results}
             keyExtractor={(v) => v.id}
+            ListEmptyComponent={
+              query.trim() ? (
+                <Text className="mt-4 text-center text-sm text-muted-foreground">No options match &quot;{query.trim()}&quot;.</Text>
+              ) : null
+            }
             renderItem={({ item }) => {
               const outOfStock = item.stock_on_hand <= 0;
               const price = item.sell_price ?? product?.sell_price ?? 0;

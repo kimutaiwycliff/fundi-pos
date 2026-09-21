@@ -28,6 +28,7 @@ const tenants = new Table({
   name: column.text,
   receipt_header: column.text,
   receipt_footer: column.text,
+  shifts_required: column.integer,
   updated_at: column.text,
   created_at: column.text,
 });
@@ -39,15 +40,39 @@ const products = new Table(
     barcode: column.text,
     name: column.text,
     category: column.text,
+    is_active: column.integer,
     cost_price: column.real,
     sell_price: column.real,
     tax_rate: column.real,
-    max_discount_percent: column.real,
+    max_discount_amount: column.real,
+    reorder_point: column.real,
     is_bundle: column.integer,
+    image_id: column.integer,
     updated_at: column.text,
     created_at: column.text,
   },
   { indexes: { tenant: ['tenant_id'] } },
+);
+
+// Ported from apps/mobile/src/db/schema.ts - this table didn't exist here
+// at all previously (a known, documented gap - see mobile's own schema.ts
+// header comment), leaving desktop with no local variant data to build a
+// sell-time picker against. The server-side sync bucket already serves
+// this identical stream to mobile, so this is purely a client-side
+// schema/UI gap being closed, not a backend change.
+const products_variants = new Table(
+  {
+    _parent_id: column.integer,
+    _order: column.integer,
+    label: column.text,
+    sku: column.text,
+    barcode: column.text,
+    sell_price: column.real,
+    cost_price: column.real,
+    image_id: column.integer,
+    tenant_id: column.integer,
+  },
+  { indexes: { parent: ['_parent_id'] } },
 );
 
 const stores = new Table(
@@ -177,6 +202,7 @@ const orders_line_items = new Table(
 export const AppSchema = new Schema({
   tenants,
   products,
+  products_variants,
   stores,
   users,
   customers,

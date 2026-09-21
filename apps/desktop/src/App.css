@@ -1126,6 +1126,57 @@ label {
 }
 
 /* ---------------------------------------------------------------------
+   VariantPickerDialog
+   --------------------------------------------------------------------- */
+.variant-picker-dialog {
+  width: min(480px, calc(100% - 40px));
+  max-height: min(600px, calc(100% - 40px));
+  background: var(--paper);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: drawer-in 0.15s ease-out;
+}
+.variant-picker-dialog h2 {
+  font-size: 1.05rem;
+}
+.variant-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+.variant-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--border, #e5ded9);
+  padding: 10px 14px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.variant-picker-row:hover:not(:disabled) {
+  background: var(--paper-soft, #f6f1ec);
+}
+.variant-picker-row:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.variant-picker-row-name {
+  font-weight: 600;
+}
+.variant-picker-row-meta {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+/* ---------------------------------------------------------------------
    BranchSwitcher
    --------------------------------------------------------------------- */
 .branch-tag {

@@ -34,6 +34,7 @@ export type TenantReceiptInfo = {
   name: string;
   receiptHeader: string | null;
   receiptFooter: string | null;
+  shiftsRequired: boolean;
 };
 
 export interface StockLevel {
