@@ -20,8 +20,9 @@ import { AuditLogScreen } from '../admin/AuditLogScreen';
 import { ReportsScreen } from '../admin/ReportsScreen';
 import { OverviewScreen } from '../overview/OverviewScreen';
 import { RestockHomeScreen } from '../restock/RestockHomeScreen';
+import { QuotationsHomeScreen } from '../quotes/QuotationsHomeScreen';
 
-type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers' | 'security' | 'reports' | 'inventory' | 'restock';
+type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers' | 'security' | 'reports' | 'inventory' | 'restock' | 'quotations';
 
 // Back-office admin (Phase 5) is intentionally tucked under More, not its
 // own tabs - this is deliberately last per the plan: none of it happens on
@@ -106,6 +107,9 @@ function MoreScreen({
           <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('stores')}>
             <Text className="text-foreground">Stores</Text>
           </Pressable>
+          <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('quotations')}>
+            <Text className="text-foreground">Quotations</Text>
+          </Pressable>
           {user.role === 'owner' ? (
             <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('settings')}>
               <Text className="text-foreground">Settings</Text>
@@ -141,6 +145,7 @@ function MoreScreen({
           {section === 'reports' ? <ReportsScreen user={user} payloadToken={payloadToken} /> : null}
           {section === 'inventory' ? <RealInventoryScreen user={user} terminalId={terminalId} storeId={storeId} /> : null}
           {section === 'restock' ? <RestockHomeScreen user={user} storeId={storeId} payloadToken={payloadToken} /> : null}
+          {section === 'quotations' ? <QuotationsHomeScreen user={user} payloadToken={payloadToken} storeId={storeId} /> : null}
           {section === 'security' ? (
             <View className="flex-1 px-6 pt-4">
               {biometricAvailable ? (
