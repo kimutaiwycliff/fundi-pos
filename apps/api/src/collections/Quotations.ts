@@ -15,7 +15,7 @@ import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 // server-validated against the catalog."
 export const Quotations: CollectionConfig = {
   slug: 'quotations',
-  admin: { useAsTitle: 'id' },
+  admin: { useAsTitle: 'name' },
   access: {
     read: managerOrOwner,
     create: managerOrOwner,
@@ -25,6 +25,13 @@ export const Quotations: CollectionConfig = {
   fields: [
     { name: 'tenant', type: 'relationship', relationTo: 'tenants', required: true, index: true },
     { name: 'store', type: 'relationship', relationTo: 'stores' },
+    // Computed in beforeChange below from customerName + the creation
+    // date ("Jane Doe - 21 Sep 2026") - server-side, not left to each of
+    // the three client builders to get right independently. Falls back
+    // to "Walk-in" when no customer name was given. useAsTitle above
+    // points here instead of the bare numeric id every display site
+    // used to show ("Quotation #7").
+    { name: 'name', type: 'text', admin: { readOnly: true } },
     { name: 'customerName', type: 'text' },
     { name: 'customerPhone', type: 'text', admin: { description: 'e.g. 0712345678 - used to send the quotation via WhatsApp.' } },
     { name: 'notes', type: 'textarea', admin: { description: 'Optional - e.g. validity period, terms. Printed at the bottom of the PDF.' } },
@@ -55,7 +62,7 @@ export const Quotations: CollectionConfig = {
   hooks: {
     beforeChange: [
       enforceOwnTenant({ requireOwnStore: true }),
-      ({ data, req, operation }) => {
+      ({ data, req, operation, originalDoc }) => {
         if (Array.isArray(data.lineItems)) {
           data.total = data.lineItems.reduce(
             (sum: number, line: Record<string, unknown>) => sum + Number(line.quantity) * Number(line.unitPrice),
@@ -65,6 +72,19 @@ export const Quotations: CollectionConfig = {
         if (operation === 'create' && req.user) {
           data.createdBy = req.user.id;
         }
+        // Recomputed on every save (not just create) so editing the
+        // customer name later keeps the label accurate - always anchored
+        // to the ORIGINAL creation date, not the edit date, via
+        // originalDoc.createdAt when one exists.
+        const createdAt = operation === 'create' ? new Date() : new Date(originalDoc?.createdAt ?? Date.now());
+        const formattedDate = createdAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+        // A partial update that doesn't touch customerName at all (e.g.
+        // only editing notes) must not be treated as "customerName is now
+        // blank" - fall back to the existing doc's value in that case,
+        // only an explicit '' actually means "clear it."
+        const customerNameRaw = data.customerName !== undefined ? data.customerName : originalDoc?.customerName;
+        const customerName = typeof customerNameRaw === 'string' ? customerNameRaw.trim() : '';
+        data.name = `${customerName || 'Walk-in'} - ${formattedDate}`;
         return data;
       },
       // Same normalization Customers.ts/Users.ts already do - optional

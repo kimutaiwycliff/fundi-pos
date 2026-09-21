@@ -1,12 +1,21 @@
 import { redirect } from 'next/navigation';
 import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
 import { SendQuotationButtons } from '@/components/invoice/send-quotation-buttons';
 
 interface QuotationDetail {
   id: number;
+  name: string | null;
   customerName: string | null;
   customerPhone: string | null;
   notes: string | null;
@@ -41,7 +50,7 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Quotation #{quotation.id}</h1>
+        <h1 className="text-2xl font-semibold">{quotation.name || `Quotation #${quotation.id}`}</h1>
         <p className="text-sm text-muted-foreground">
           {quotation.customerName || 'Walk-in customer'}
           {quotation.customerPhone ? ` · ${quotation.customerPhone}` : ''} ·{' '}
@@ -49,27 +58,27 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-left text-muted-foreground">
-            <tr>
-              <th className="p-3 font-medium">Item</th>
-              <th className="p-3 font-medium">Qty</th>
-              <th className="p-3 font-medium">Unit price</th>
-              <th className="p-3 font-medium">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Item</TableHead>
+              <TableHead>Qty</TableHead>
+              <TableHead>Unit price</TableHead>
+              <TableHead>Amount</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {quotation.lineItems.map((line, i) => (
-              <tr key={i} className="border-t">
-                <td className="p-3">{line.label}</td>
-                <td className="p-3">{line.quantity}</td>
-                <td className="p-3">{line.unitPrice.toFixed(2)}</td>
-                <td className="p-3">{(line.quantity * line.unitPrice).toFixed(2)}</td>
-              </tr>
+              <TableRow key={i}>
+                <TableCell>{line.label}</TableCell>
+                <TableCell>{line.quantity}</TableCell>
+                <TableCell>{line.unitPrice.toFixed(2)}</TableCell>
+                <TableCell>{(line.quantity * line.unitPrice).toFixed(2)}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       <p className="text-right text-lg font-semibold">Total: {quotation.total.toFixed(2)}</p>

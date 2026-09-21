@@ -17,6 +17,7 @@ export interface QuotationLineItem {
 
 export interface QuotationListItem {
   id: number;
+  name: string | null;
   store: { id: number; name: string } | number | null;
   customerName: string;
   customerPhone: string | null;

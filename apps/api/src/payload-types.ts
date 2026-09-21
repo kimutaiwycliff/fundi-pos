@@ -535,6 +535,7 @@ export interface Quotation {
   id: number;
   tenant: number | Tenant;
   store?: (number | null) | Store;
+  name?: string | null;
   customerName?: string | null;
   /**
    * e.g. 0712345678 - used to send the quotation via WhatsApp.
@@ -1168,6 +1169,7 @@ export interface PurchaseOrdersSelect<T extends boolean = true> {
 export interface QuotationsSelect<T extends boolean = true> {
   tenant?: T;
   store?: T;
+  name?: T;
   customerName?: T;
   customerPhone?: T;
   notes?: T;

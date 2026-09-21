@@ -21,8 +21,14 @@ export async function sendQuotationPdfViaWhatsApp({
     throw new Error(errorMessageFrom(body, 'Failed to generate quotation PDF'));
   }
 
+  // The API route already computes a slugified filename from the
+  // quotation's own name ("CustomerName - Date") into Content-Disposition -
+  // read it back rather than re-deriving the slug here too.
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const fileName = disposition.match(/filename="([^"]+)"/)?.[1] ?? `quotation-${quotationId}.pdf`;
+
   const blob = await response.blob();
-  const file = new File([blob], `quotation-${quotationId}.pdf`, { type: 'application/pdf' });
+  const file = new File([blob], fileName, { type: 'application/pdf' });
 
   if (navigator.canShare?.({ files: [file] })) {
     try {
@@ -39,7 +45,7 @@ export async function sendQuotationPdfViaWhatsApp({
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `quotation-${quotationId}.pdf`;
+  link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
 

@@ -53,10 +53,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     />,
   );
 
+  // quotation.name is already computed server-side by the collection's
+  // own beforeChange hook ("CustomerName - Date") - slugified here into a
+  // filename far more useful once actually downloaded than the bare
+  // numeric id used to be.
+  const slug =
+    (typeof quotation.name === 'string' ? quotation.name : '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || `quotation-${id}`;
+
   return new Response(new Uint8Array(pdfBuffer), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="quotation-${id}.pdf"`,
+      'Content-Disposition': `inline; filename="${slug}.pdf"`,
     },
   });
 }

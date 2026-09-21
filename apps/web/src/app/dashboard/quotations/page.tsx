@@ -1,11 +1,20 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
 
 type QuotationListItem = {
   id: number;
+  name: string | null;
   customerName: string | null;
   total: number;
   createdAt: string;
@@ -25,7 +34,7 @@ export default async function QuotationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Quotations</h1>
         <Button asChild>
           <Link href="/dashboard/quotations/new">New quotation</Link>
@@ -35,35 +44,35 @@ export default async function QuotationsPage() {
       {quotations.length === 0 ? (
         <p className="text-sm text-muted-foreground">No quotations yet. Create one to get started.</p>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-left text-muted-foreground">
-              <tr>
-                <th className="p-3 font-medium">Customer</th>
-                <th className="p-3 font-medium">Total</th>
-                <th className="p-3 font-medium">Created</th>
-                <th className="p-3 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Customer</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {quotations.map((q) => (
-                <tr key={q.id} className="border-t hover:bg-muted/30">
-                  <td className="p-3">
+                <TableRow key={q.id}>
+                  <TableCell>
                     <Link href={`/dashboard/quotations/${q.id}`} className="hover:underline">
-                      {q.customerName || `Quotation #${q.id}`}
+                      {q.name || q.customerName || `Quotation #${q.id}`}
                     </Link>
-                  </td>
-                  <td className="p-3">{q.total.toFixed(2)}</td>
-                  <td className="p-3 text-muted-foreground">{new Date(q.createdAt).toLocaleDateString()}</td>
-                  <td className="p-3 text-right">
+                  </TableCell>
+                  <TableCell>{q.total.toFixed(2)}</TableCell>
+                  <TableCell className="text-muted-foreground">{new Date(q.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-right">
                     <Button asChild variant="ghost" size="sm">
                       <Link href={`/dashboard/quotations/${q.id}`}>View</Link>
                     </Button>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>

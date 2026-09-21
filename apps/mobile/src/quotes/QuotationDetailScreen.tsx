@@ -28,6 +28,7 @@ export function QuotationDetailScreen({ payloadToken, quotationId, onBack }: { p
   const { refreshing, onRefresh } = usePullToRefresh(load);
 
   async function handleShareWhatsApp() {
+    if (!quotation) return;
     setSharing(true);
     try {
       const canShare = await Sharing.isAvailableAsync();
@@ -35,7 +36,12 @@ export function QuotationDetailScreen({ payloadToken, quotationId, onBack }: { p
         showAlert('Sharing is not available on this device');
         return;
       }
-      const destination = new File(Paths.cache, `quotation-${quotationId}.pdf`);
+      const slug =
+        (quotation.name ?? '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '') || `quotation-${quotationId}`;
+      const destination = new File(Paths.cache, `${slug}.pdf`);
       const file = await File.downloadFileAsync(`${API_BASE_URL}/api/quotations/${quotationId}/quotation-pdf`, destination, {
         headers: { Authorization: `JWT ${payloadToken}` },
         idempotent: true,
@@ -67,7 +73,7 @@ export function QuotationDetailScreen({ payloadToken, quotationId, onBack }: { p
           <Pressable onPress={onBack}>
             <Text className="text-sm text-muted-foreground">← Back</Text>
           </Pressable>
-          <Text className="text-lg font-semibold text-foreground">Quotation #{quotation.id}</Text>
+          <Text className="text-lg font-semibold text-foreground">{quotation.name || `Quotation #${quotation.id}`}</Text>
           <Text className="text-sm text-foreground">{quotation.customerName}</Text>
           {quotation.customerPhone ? <Text className="text-xs text-muted-foreground">{quotation.customerPhone}</Text> : null}
           <Text className="text-xs text-muted-foreground">{quotation.createdAt ? new Date(quotation.createdAt).toLocaleString() : ''}</Text>

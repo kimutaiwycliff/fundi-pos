@@ -33,7 +33,7 @@ export function QuotationListScreen({ payloadToken, onOpen, onNew }: { payloadTo
       renderItem={({ item: q }) => (
         <Pressable onPress={() => onOpen(q.id)} className="mb-2 rounded-lg border border-border bg-card p-3">
           <View className="flex-row items-center justify-between">
-            <Text className="text-foreground">{q.customerName || `Quotation #${q.id}`}</Text>
+            <Text className="text-foreground">{q.name || q.customerName || `Quotation #${q.id}`}</Text>
             <Text className="font-semibold text-foreground">{q.total.toFixed(2)}</Text>
           </View>
           <Text className="text-xs text-muted-foreground">
