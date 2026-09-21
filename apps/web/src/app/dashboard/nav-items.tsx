@@ -7,6 +7,7 @@ import {
   ArrowLeftRight,
   BarChart3,
   Boxes,
+  FileText,
   LayoutDashboard,
   Package,
   ScrollText,
@@ -31,6 +32,7 @@ const ICONS: Record<string, LucideIcon> = {
   '/dashboard/stores': Store,
   '/dashboard/staff': UserCog,
   '/dashboard/audit-log': ScrollText,
+  '/dashboard/quotations': FileText,
   '/dashboard/settings': SettingsIcon,
 };
 

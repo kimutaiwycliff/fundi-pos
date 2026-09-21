@@ -54,6 +54,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const navItems = [
     ...NAV_ITEMS,
     ...(me.role === 'manager' || me.role === 'owner' ? [{ href: '/dashboard/audit-log', label: 'Audit Log' }] : []),
+    ...(me.role === 'manager' || me.role === 'owner' ? [{ href: '/dashboard/quotations', label: 'Quotations' }] : []),
     ...(me.role === 'owner' ? [{ href: '/dashboard/settings', label: 'Settings' }] : []),
   ];
 
