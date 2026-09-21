@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { getDb } from './database';
+import { useState } from 'react';
+import { useWatchedQuery } from './useWatchedQuery';
 import { authorizeOrderStatusChange, findManagerAndCheckPinLocally } from './pin';
 
 interface RecentOrder {
@@ -21,26 +21,20 @@ interface VoidOrderPanelProps {
 // connectivity (Option A - see apps/api's authorize-status route, which
 // re-verifies the PIN server-side as the actual authority).
 export function VoidOrderPanel({ storeId, payloadToken }: VoidOrderPanelProps) {
-  const [orders, setOrders] = useState<RecentOrder[]>([]);
   const [targetOrderId, setTargetOrderId] = useState<string | null>(null);
   const [managerPhone, setManagerPhone] = useState('');
   const [pin, setPin] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function refresh() {
-    const db = getDb();
-    const rows = await db.getAll<RecentOrder>(
-      `SELECT id, total, tender_type, status, created_at FROM orders
-       WHERE store_id = ? AND status = 'completed' ORDER BY created_at DESC LIMIT 10`,
-      [storeId],
-    );
-    setOrders(rows);
-  }
-
-  useEffect(() => {
-    refresh();
-  }, [storeId]);
+  // Reactive (useWatchedQuery, not a one-shot db.getAll): picks up a sale
+  // rung up moments ago, or this store's own void landing back locally,
+  // without needing this panel to remount.
+  const { data: orders } = useWatchedQuery<RecentOrder>(
+    `SELECT id, total, tender_type, status, created_at FROM orders
+     WHERE store_id = ? AND status = 'completed' ORDER BY created_at DESC LIMIT 10`,
+    [storeId],
+  );
 
   async function handleVoid(orderId: string, event: React.FormEvent) {
     event.preventDefault();
@@ -62,7 +56,6 @@ export function VoidOrderPanel({ storeId, payloadToken }: VoidOrderPanelProps) {
         setTargetOrderId(null);
         setManagerPhone('');
         setPin('');
-        await refresh();
       }
     } catch (err) {
       setStatus(`Void failed: ${err instanceof Error ? err.message : String(err)}`);

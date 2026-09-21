@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
-import { getDb } from './database';
+import { useWatchedQuery } from './useWatchedQuery';
 import { SearchIcon } from './icons';
 
 export interface LocalVariant {
@@ -36,33 +36,31 @@ export function VariantPickerDialog({
   onSelect: (variant: LocalVariant) => void;
   onClose: () => void;
 }) {
-  const [variants, setVariants] = useState<LocalVariant[]>([]);
   const [query, setQuery] = useState('');
 
+  // Clears the in-dialog search box whenever a different product opens (or
+  // the dialog closes) - a UI-only reset, kept separate from the data query
+  // below since it has nothing to do with what's fetched.
   useEffect(() => {
     setQuery('');
-    if (!product) {
-      setVariants([]);
-      return;
-    }
-    let active = true;
-    getDb()
-      .getAll<LocalVariant>(
-        `SELECT pv.id, pv.label, pv.sku, pv.barcode, pv.sell_price, pv.cost_price,
-                COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
-                          WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS stock_on_hand
-         FROM products_variants pv
-         WHERE pv._parent_id = ?
-         ORDER BY pv._order`,
-        [storeId, product.id],
-      )
-      .then((rows) => {
-        if (active) setVariants(rows);
-      });
-    return () => {
-      active = false;
-    };
-  }, [product, storeId]);
+  }, [product]);
+
+  // Reactive (useWatchedQuery, not a one-shot db.getAll): re-runs on its
+  // own whenever products_variants/stock_movements change locally, so a
+  // stock count on screen never goes stale mid-pick the way a one-shot
+  // snapshot would - same overselling-relevant risk as Till.tsx's own
+  // product search. `product?.id ?? null` (rather than skipping the query
+  // when the dialog is closed) reproduces the old "no product -> no
+  // variants" behavior in SQL, since a hook can't be called conditionally.
+  const { data: variants } = useWatchedQuery<LocalVariant>(
+    `SELECT pv.id, pv.label, pv.sku, pv.barcode, pv.sell_price, pv.cost_price,
+            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
+                      WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS stock_on_hand
+     FROM products_variants pv
+     WHERE pv._parent_id = ?
+     ORDER BY pv._order`,
+    [storeId, product?.id ?? null],
+  );
 
   const results = useMemo(() => {
     const trimmed = query.trim();

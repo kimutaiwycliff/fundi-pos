@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
 import { getDb } from './database';
+import { useWatchedQuery } from './useWatchedQuery';
 import { type PayloadUser } from './auth';
 import { VoidOrderPanel } from './VoidOrderPanel';
 import { ShiftPanel } from './ShiftPanel';
@@ -48,6 +49,7 @@ interface LocalTenant {
   receipt_header: string | null;
   receipt_footer: string | null;
   shifts_required: number;
+  enforce_discount_caps: number;
 }
 
 interface CartLine {
@@ -94,6 +96,25 @@ function lineDiscountAmount(line: CartLine): number {
 /** max_discount_amount is a per-unit currency cap - the line's ceiling scales with quantity. */
 function maxDiscountAmountForLine(line: Pick<CartLine, 'quantity' | 'product'>): number {
   return line.quantity * line.product.max_discount_amount;
+}
+
+/**
+ * The discount ceiling actually in force for this line right now.
+ *
+ * When `capsActive` (i.e. this cashier isn't an owner AND the tenant's
+ * enforce_discount_caps toggle is on - see the two call sites below),
+ * that's the product's own configured max_discount_amount cap, unchanged
+ * from before. Otherwise the cap is bypassed entirely (owners always see
+ * the cost/margin they're discounting away, and a tenant that's turned the
+ * toggle off has decided staff should too) and the only remaining bound is
+ * a basic sanity check: a discount can never exceed - and so can never
+ * make negative - the line's own subtotal. Mirrors apps/api's identical
+ * `isOwner || !enforceCaps` bypass in Orders.ts's beforeChange hook (the
+ * actual server-side authority - this is only the till's own UX-level
+ * mirror of it).
+ */
+function effectiveDiscountCapForLine(line: Pick<CartLine, 'quantity' | 'product' | 'variant'>, capsActive: boolean): number {
+  return capsActive ? maxDiscountAmountForLine(line) : line.quantity * lineUnitPrice(line);
 }
 
 interface TillProps {
@@ -149,7 +170,7 @@ export function Till({
   switchingStore,
 }: TillProps) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<LocalProduct[]>([]);
+  const trimmedQuery = query.trim();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [variantPickerProduct, setVariantPickerProduct] = useState<LocalProduct | null>(null);
   const [tenderType, setTenderType] = useState<(typeof TENDER_OPTIONS)[number]['value']>('cash');
@@ -158,12 +179,18 @@ export function Till({
   const [pendingSyncCount, setPendingSyncCount] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [todayStats, setTodayStats] = useState({ salesTotal: 0, unpaidCreditCount: 0, unpaidCreditTotal: 0 });
-  const [activeCashier, setActiveCashier] = useState({ id: user.id, phone: user.phone ?? null, name: user.name ?? null });
+  const [activeCashier, setActiveCashier] = useState({ id: user.id, phone: user.phone ?? null, name: user.name ?? null, role: user.role });
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
   const [tenant, setTenant] = useState<LocalTenant | null>(null);
   // Fail-safe default: required until the tenant row has actually synced
   // down, matching this field's own server-side defaultValue: true.
   const shiftsRequired = tenant?.shifts_required !== 0;
+  // Same fail-safe direction as shiftsRequired above, matching this field's
+  // own server-side defaultValue: true and apps/api's Orders.ts's identical
+  // `tenant.enforceDiscountCaps !== false` check. Owners always bypass the
+  // cap regardless of the toggle - see effectiveDiscountCapForLine.
+  const enforceDiscountCaps = tenant?.enforce_discount_caps !== 0;
+  const discountCapsActive = enforceDiscountCaps && activeCashier.role !== 'owner';
   const [stores, setStores] = useState<LocalStore[]>([]);
   const [heldSalesOpen, setHeldSalesOpen] = useState(false);
   const [voidPanelOpen, setVoidPanelOpen] = useState(false);
@@ -192,9 +219,10 @@ export function Till({
   useEffect(() => {
     if (tenantId == null) return;
     const db = getDb();
-    db.getAll<LocalTenant>('SELECT name, receipt_header, receipt_footer, shifts_required FROM tenants WHERE id = ?', [
-      String(tenantId),
-    ]).then((rows) => setTenant(rows[0] ?? null));
+    db.getAll<LocalTenant>(
+      'SELECT name, receipt_header, receipt_footer, shifts_required, enforce_discount_caps FROM tenants WHERE id = ?',
+      [String(tenantId)],
+    ).then((rows) => setTenant(rows[0] ?? null));
   }, [tenantId]);
 
   // stores is tenant-wide (not store-scoped) per sync-config.yaml, so this
@@ -246,7 +274,6 @@ export function Till({
     setCart([]);
     setSelectedCustomer(null);
     setQuery('');
-    setResults([]);
   }, [storeId]);
 
   async function handleHoldSale() {
@@ -268,34 +295,33 @@ export function Till({
   // needed") - they type into whatever has focus and end with Enter, so a
   // focused search box that submits on Enter already handles scans with no
   // special-case code.
-  useEffect(() => {
-    let active = true;
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setResults([]);
-      return;
-    }
-    const db = getDb();
-    // stock_on_hand is derived, never stored (the ledger is the only source
-    // of truth - see stock-adjustment-dialog.tsx's own comment on the web
-    // side) - summed here per product/store in the same query so search
-    // results can both display it and gate against overselling.
-    db.getAll<LocalProduct>(
-      `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, p.tax_rate, p.max_discount_amount,
-              COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
-                        WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS stock_on_hand,
-              (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
-       FROM products p
-       WHERE p.tenant_id = ? AND (p.sku LIKE ? OR p.barcode = ? OR p.name LIKE ?)
-       ORDER BY p.name LIMIT 20`,
-      [storeId ?? null, tenantId, `%${trimmed}%`, trimmed, `%${trimmed}%`],
-    ).then((rows) => {
-      if (active) setResults(rows);
-    });
-    return () => {
-      active = false;
-    };
-  }, [query, tenantId, storeId]);
+  //
+  // Reactive (useWatchedQuery, not a one-shot db.getAll): re-runs on its
+  // own whenever products/products_variants/stock_movements change
+  // locally, not just when the search text changes - so a stock count on
+  // screen never goes stale mid-search the way a one-shot snapshot would
+  // (another till selling the last unit of something already showing here,
+  // a manual stock adjustment landing, etc.). stock_on_hand is derived,
+  // never stored (the ledger is the only source of truth - see
+  // stock-adjustment-dialog.tsx's own comment on the web side) - summed
+  // here per product/store in the same query so search results can both
+  // display it and gate against overselling.
+  //
+  // `AND ? != ''` (bound to trimmedQuery itself) reproduces the old
+  // early-return-when-empty behavior in SQL, since a hook can't
+  // conditionally skip running its query (hooks can't be called
+  // conditionally) - an empty search term now naturally matches zero rows
+  // here instead of every product.
+  const { data: results } = useWatchedQuery<LocalProduct>(
+    `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, p.tax_rate, p.max_discount_amount,
+            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
+                      WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS stock_on_hand,
+            (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
+     FROM products p
+     WHERE p.tenant_id = ? AND ? != '' AND (p.sku LIKE ? OR p.barcode = ? OR p.name LIKE ?)
+     ORDER BY p.name LIMIT 20`,
+    [storeId ?? null, tenantId, trimmedQuery, `%${trimmedQuery}%`, trimmedQuery, `%${trimmedQuery}%`],
+  );
 
   // navigator.onLine (+ the browser's online/offline events) instead of
   // PowerSync's own status.connected: that reflects the sync protocol's
@@ -419,7 +445,6 @@ export function Till({
       return [...prev, { product, variant, quantity: 1, discountAmount: 0 }];
     });
     setQuery('');
-    setResults([]);
     setVariantPickerProduct(null);
   }
 
@@ -440,7 +465,7 @@ export function Till({
             // whatever flat amount was already entered - re-clamp so the
             // cart never ends up implying a bigger discount % than the
             // product actually allows.
-            const max = maxDiscountAmountForLine({ quantity, product: l.product });
+            const max = effectiveDiscountCapForLine({ quantity, product: l.product, variant: l.variant }, discountCapsActive);
             return { ...l, quantity, discountAmount: Math.min(l.discountAmount, max) };
           }),
     );
@@ -449,7 +474,7 @@ export function Till({
   function updateDiscountAmount(key: string, rawValue: number) {
     const line = cart.find((l) => lineKey(l) === key);
     if (!line) return;
-    const max = maxDiscountAmountForLine(line);
+    const max = effectiveDiscountCapForLine(line, discountCapsActive);
     const clamped = Math.min(Math.max(rawValue, 0), max);
     if (rawValue > max) {
       showToast(`Max discount for ${line.product.name} is ${max.toFixed(2)}`, 'error');
@@ -580,8 +605,6 @@ export function Till({
       setCompleting(false);
     }
   }
-
-  const trimmedQuery = query.trim();
 
   return (
     <div className="till-shell">
@@ -811,7 +834,7 @@ export function Till({
                         type="number"
                         inputMode="decimal"
                         min={0}
-                        max={maxDiscountAmountForLine(line)}
+                        max={effectiveDiscountCapForLine(line, discountCapsActive)}
                         step={0.01}
                         placeholder="0.00"
                         // '' instead of a literal 0 when there's no discount
@@ -820,7 +843,7 @@ export function Till({
                         value={line.discountAmount === 0 ? '' : line.discountAmount}
                         onChange={(e) => updateDiscountAmount(lineKey(line), Number(e.currentTarget.value) || 0)}
                       />
-                      <span>(max {maxDiscountAmountForLine(line).toFixed(2)})</span>
+                      <span>(max {effectiveDiscountCapForLine(line, discountCapsActive).toFixed(2)})</span>
                     </label>
                   )}
                 </div>

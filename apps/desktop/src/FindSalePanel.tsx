@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { getDb } from './database';
+import { useWatchedQuery } from './useWatchedQuery';
 import { authorizeSettlement, findManagerAndCheckPinLocally } from './pin';
 import { printReceipt } from './printer';
 import { useToast } from './Toast';
@@ -45,32 +46,26 @@ const UNPAID_NOTICE = 'UNPAID - PAY LATER';
 // same offline-first reasoning as everything else at the till.
 export function FindSalePanel({ storeId, payloadToken, tenant }: FindSalePanelProps) {
   const [query, setQuery] = useState('');
-  const [orders, setOrders] = useState<LocalOrderRow[]>([]);
   const [settlingId, setSettlingId] = useState<string | null>(null);
   const [managerPhone, setManagerPhone] = useState('');
   const [managerPin, setManagerPin] = useState('');
   const [busy, setBusy] = useState(false);
   const showToast = useToast();
 
-  async function refresh() {
-    const db = getDb();
-    const trimmed = query.trim();
-    const rows = await db.getAll<LocalOrderRow>(
-      `SELECT o.id, o.total, o.tax_total, o.discount_total, o.tender_type, o.payment_status, o.status,
-              o.created_at, o.settled_at, c.name AS customer_name
-       FROM orders o
-       LEFT JOIN customers c ON c.id = o.customer_id
-       WHERE o.store_id = ? AND (? = '' OR o.id LIKE ? OR c.name LIKE ?)
-       ORDER BY o.created_at DESC LIMIT 30`,
-      [storeId, trimmed, `${trimmed}%`, `%${trimmed}%`],
-    );
-    setOrders(rows);
-  }
-
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, storeId]);
+  const trimmed = query.trim();
+  // Reactive (useWatchedQuery, not a one-shot db.getAll): updates live as
+  // orders change locally - a sale rung up moments ago, or a settlement
+  // synced back down after authorizeSettlement below lands server-side -
+  // not just on a fresh keystroke like the old one-shot query did.
+  const { data: orders } = useWatchedQuery<LocalOrderRow>(
+    `SELECT o.id, o.total, o.tax_total, o.discount_total, o.tender_type, o.payment_status, o.status,
+            o.created_at, o.settled_at, c.name AS customer_name
+     FROM orders o
+     LEFT JOIN customers c ON c.id = o.customer_id
+     WHERE o.store_id = ? AND (? = '' OR o.id LIKE ? OR c.name LIKE ?)
+     ORDER BY o.created_at DESC LIMIT 30`,
+    [storeId, trimmed, `${trimmed}%`, `%${trimmed}%`],
+  );
 
   async function handleReprint(order: LocalOrderRow) {
     const db = getDb();
@@ -124,7 +119,6 @@ export function FindSalePanel({ storeId, payloadToken, tenant }: FindSalePanelPr
         setSettlingId(null);
         setManagerPhone('');
         setManagerPin('');
-        await refresh();
       }
     } finally {
       setBusy(false);

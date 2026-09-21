@@ -1,8 +1,27 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { fetchProductCatalog, fetchStockLevels, recordStockMovement, type PickableProduct, type StockLevel } from './inventory';
+import { useEffect, useMemo, useState } from 'react';
+import { fetchProductCatalog, recordStockMovement, type PickableProduct } from './inventory';
+import { useWatchedQuery } from './useWatchedQuery';
 import type { PayloadUser } from './auth';
 
 const NO_VARIANT = '__base__';
+
+// Was fetched from the tenant-wide /api/reports/stock-levels endpoint
+// web/mobile also use - now a local reactive query instead (see the
+// useWatchedQuery call below), mirroring apps/mobile/src/inventory/
+// InventoryScreen.tsx's already-local equivalent (minus its media/image
+// join - desktop's schema.ts has no media table, and this screen has never
+// rendered product images). Field names/shape kept identical to what this
+// screen already rendered, so only *where* the data comes from changed.
+interface StockLevel {
+  store: number;
+  product: number;
+  variant: string | null;
+  productName: string;
+  variantLabel: string | null;
+  quantity: number;
+  reorderPoint: number;
+  lowStock: boolean;
+}
 
 const TYPES = [
   { value: 'restock', label: 'Restock (received new stock)' },
@@ -18,7 +37,7 @@ const TYPES = [
 export function Inventory({ user, storeId, payloadToken }: { user: PayloadUser; storeId: number | null; payloadToken: string }) {
   // Matches StockMovements.ts's own access.create - owner and manager only.
   const canManage = user.role === 'owner' || user.role === 'manager';
-  const [levels, setLevels] = useState<StockLevel[]>([]);
+  const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
   const [catalog, setCatalog] = useState<PickableProduct[]>([]);
   const [filter, setFilter] = useState('');
 
@@ -30,19 +49,52 @@ export function Inventory({ user, storeId, payloadToken }: { user: PayloadUser; 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshLevels = useCallback(() => {
-    if (storeId == null) {
-      setLevels([]);
-      return;
-    }
-    fetchStockLevels(payloadToken, storeId).then((rows) =>
-      setLevels([...rows].sort((a, b) => Number(b.lowStock) - Number(a.lowStock))),
-    );
-  }, [payloadToken, storeId]);
-
-  useEffect(() => {
-    refreshLevels();
-  }, [refreshLevels]);
+  // Reactive (useWatchedQuery, not a REST call): re-runs on its own
+  // whenever products/products_variants/stock_movements change locally -
+  // this screen's own manual adjustments below (once they sync back down),
+  // another till's sales, a restock landing from sync, etc. - without
+  // needing a remount or a manual refresh call to catch up. Bare products
+  // (no variants) unioned with one row per variant for products that have
+  // them - a variant-having product never shows a bare-self row, matching
+  // web's identical "tracked separately" rule. storeId ?? -1 (rather than
+  // skipping the query) since hooks can't be called conditionally - a -1
+  // store id naturally matches zero rows, the same empty-state result the
+  // old storeId == null early-return-before-fetching produced. p.is_active
+  // = 1 both gives desktop live/local inventory for the first time and
+  // independently fixes the archive-visibility bug at the source (on top
+  // of the separate REST-endpoint fix already made server-side this
+  // session, and the fetchProductCatalog fix above/in inventory.ts).
+  const { data: rawLevels } = useWatchedQuery<Omit<StockLevel, 'lowStock'>>(
+    `SELECT ? AS store, CAST(p.id AS INTEGER) AS product, NULL AS variant, p.name AS productName, NULL AS variantLabel,
+            p.reorder_point AS reorderPoint,
+            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
+                      WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS quantity
+     FROM products p
+     WHERE p.tenant_id = ? AND p.is_active = 1
+       AND NOT EXISTS (SELECT 1 FROM products_variants pv WHERE pv._parent_id = p.id)
+     UNION ALL
+     SELECT ? AS store, CAST(p.id AS INTEGER) AS product, pv.id AS variant, p.name AS productName, pv.label AS variantLabel,
+            p.reorder_point AS reorderPoint,
+            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
+                      WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS quantity
+     FROM products_variants pv
+     JOIN products p ON p.id = pv._parent_id
+     WHERE p.tenant_id = ? AND p.is_active = 1
+     ORDER BY productName`,
+    [storeId ?? -1, storeId ?? -1, tenantId, storeId ?? -1, storeId ?? -1, tenantId],
+  );
+  // lowStock kept as its own client-side computed field (quantity <=
+  // reorderPoint, same threshold /api/reports/stock-levels used) rather
+  // than folded into the SQL above, and the low-stock-first sort applied
+  // here - matches this screen's own previous behavior exactly, just fed
+  // by local rows instead of a REST response.
+  const levels = useMemo<StockLevel[]>(
+    () =>
+      rawLevels
+        .map((l) => ({ ...l, lowStock: l.quantity <= l.reorderPoint }))
+        .sort((a, b) => Number(b.lowStock) - Number(a.lowStock)),
+    [rawLevels],
+  );
 
   useEffect(() => {
     fetchProductCatalog(payloadToken).then(setCatalog);
@@ -94,7 +146,11 @@ export function Inventory({ user, storeId, payloadToken }: { user: PayloadUser; 
     setVariantId(NO_VARIANT);
     setQuantity('');
     setType('restock');
-    refreshLevels();
+    // No manual refresh call needed - levels above is now a reactive local
+    // query and will update on its own once this movement syncs back down
+    // (it's still a REST write - see fetchProductCatalog's comment above -
+    // so, unlike a same-till local write, there's a brief sync round-trip
+    // before it's reflected here rather than an instant read-your-write).
   }
 
   if (storeId == null) {

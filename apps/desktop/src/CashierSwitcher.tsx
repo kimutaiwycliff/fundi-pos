@@ -5,6 +5,7 @@ interface ActiveCashier {
   id: number;
   phone: string | null;
   name: string | null;
+  role: string;
 }
 
 interface CashierSwitcherProps {
@@ -37,7 +38,7 @@ export function CashierSwitcher({ active, onSwitch, canSwitch, onBlocked }: Cash
       setError('Incorrect phone number or PIN.');
       return;
     }
-    onSwitch({ id: result.userId, phone, name: result.name });
+    onSwitch({ id: result.userId, phone, name: result.name, role: result.role });
     setSwitching(false);
     setPhone('');
     setPin('');

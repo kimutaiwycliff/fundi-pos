@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { normalizeKenyanPhone } from '@hardware-pos/business-logic';
-import { getDb } from './database';
+import { useWatchedQuery } from './useWatchedQuery';
 import { API_BASE_URL, apiFetch } from './auth';
 import { useToast } from './Toast';
 
@@ -28,30 +28,21 @@ interface CustomerPickerProps {
 // customers/products/etc. table changes rather than uploading them).
 export function CustomerPicker({ tenantId, payloadToken, value, onChange }: CustomerPickerProps) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<LocalCustomer[]>([]);
   const [creating, setCreating] = useState(false);
   const [newPhone, setNewPhone] = useState('');
   const [saving, setSaving] = useState(false);
   const showToast = useToast();
 
-  useEffect(() => {
-    let active = true;
-    const trimmed = query.trim();
-    if (!trimmed) {
-      setResults([]);
-      return;
-    }
-    const db = getDb();
-    db.getAll<LocalCustomer>(
-      `SELECT id, name, phone FROM customers WHERE tenant_id = ? AND (name LIKE ? OR phone LIKE ?) ORDER BY name LIMIT 10`,
-      [tenantId, `%${trimmed}%`, `%${trimmed}%`],
-    ).then((rows) => {
-      if (active) setResults(rows);
-    });
-    return () => {
-      active = false;
-    };
-  }, [query, tenantId]);
+  const trimmed = query.trim();
+  // Reactive (useWatchedQuery, not a one-shot db.getAll): a customer added
+  // moments ago via handleCreate below (once it syncs back down) shows up
+  // here without needing another keystroke. `AND ? != ''` reproduces the
+  // old early-return-when-empty behavior in SQL, since a hook can't be
+  // called conditionally.
+  const { data: results } = useWatchedQuery<LocalCustomer>(
+    `SELECT id, name, phone FROM customers WHERE tenant_id = ? AND ? != '' AND (name LIKE ? OR phone LIKE ?) ORDER BY name LIMIT 10`,
+    [tenantId, trimmed, `%${trimmed}%`, `%${trimmed}%`],
+  );
 
   async function handleCreate() {
     if (!query.trim()) return;
@@ -78,7 +69,6 @@ export function CustomerPicker({ tenantId, payloadToken, value, onChange }: Cust
       setCreating(false);
       setQuery('');
       setNewPhone('');
-      setResults([]);
     } catch (err) {
       showToast(`Failed to add customer: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
