@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { View, Text, TextInput, Pressable, FlatList, Image, RefreshControl } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Image, RefreshControl, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useQuery } from '@powersync/react';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import type { PayloadUser } from '../lib/auth';
@@ -117,6 +118,7 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
         ) : null}
       </View>
 
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       {tab === 'levels' ? (
         <View className="border-b border-border p-3">
           <TextInput
@@ -197,6 +199,7 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
           refreshFlagged?.();
         }}
       />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

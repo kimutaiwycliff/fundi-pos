@@ -5,8 +5,9 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Modal, Linking, RefreshControl } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Modal, Linking, RefreshControl, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
 import { showAlert } from '../components/AppNotice';
@@ -284,6 +285,7 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-background">
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <View className="gap-2 border-b border-border p-3">
         <TextInput
           className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
@@ -476,6 +478,7 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
 
       <PaymentModal order={paymentOrder} user={user} payloadToken={payloadToken} onClose={() => setPaymentOrder(null)} onRecorded={refresh} />
       <VoidRefundModal order={voidOrder} payloadToken={payloadToken} onClose={() => setVoidOrder(null)} onDone={refresh} />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

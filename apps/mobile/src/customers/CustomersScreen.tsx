@@ -3,8 +3,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Modal, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Modal, ScrollView, RefreshControl, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { getDb } from '../db/database';
 import type { PayloadUser } from '../lib/auth';
 import { PaymentModal, type LocalOrder } from './PaymentModal';
@@ -129,6 +130,7 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
   }
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
     <View className="flex-1 bg-background">
       <View className="border-b border-border p-3">
         <TextInput
@@ -244,5 +246,6 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
         }}
       />
     </View>
+    </KeyboardAvoidingView>
   );
 }

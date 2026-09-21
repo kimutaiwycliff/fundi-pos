@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@powersync/react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Modal, View, Text, TextInput, Pressable, FlatList, Image } from 'react-native';
+import { Modal, View, Text, TextInput, Pressable, FlatList, Image, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import type { LocalProduct, LocalVariant } from './types';
@@ -58,6 +59,7 @@ export function VariantPickerModal({
 
   return (
     <Modal visible={product != null} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <Pressable android_ripple={{}} className="flex-1 justify-end bg-black/40" onPress={onClose}>
         <Pressable android_ripple={{}} className="max-h-[70%] rounded-t-2xl bg-background p-4" onPress={(e) => e.stopPropagation()}>
           <Text className="mb-3 text-lg font-semibold text-foreground">{product?.name} — choose an option</Text>
@@ -123,6 +125,7 @@ export function VariantPickerModal({
           />
         </Pressable>
       </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

@@ -129,7 +129,7 @@ function MoreScreen({
       </Pressable>
 
       <Modal visible={section != null} animationType="slide" onRequestClose={() => setSection(null)}>
-        <SafeAreaView edges={['top']} className="flex-1 bg-background">
+        <SafeAreaView edges={['top', 'bottom']} className="flex-1 bg-background">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
             <Text className="text-lg font-semibold capitalize text-foreground">{section === 'audit' ? 'Audit log' : section}</Text>

@@ -3,9 +3,10 @@ import { useQuery } from '@powersync/react';
 import Fuse from 'fuse.js';
 import * as ImagePicker from 'expo-image-picker';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { View, Text, TextInput, Pressable, FlatList, Image, Modal, Switch, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Image, Modal, Switch, ScrollView, RefreshControl, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { getDb } from '../db/database';
 import { API_BASE_URL, OFFLINE_MESSAGE } from '../lib/auth';
@@ -678,7 +679,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
       />
 
       <Modal visible={selected != null} animationType="slide" onRequestClose={closeModal}>
-        <SafeAreaView edges={['top']} className="flex-1 bg-background">
+        <SafeAreaView edges={['top', 'bottom']} className="flex-1 bg-background">
           <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
             <Text className="text-lg font-semibold text-foreground" numberOfLines={1}>
               {selected?.name}
@@ -688,6 +689,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
             </Pressable>
           </View>
           {selected ? (
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
             <ScrollView contentContainerClassName="gap-4 p-4">
               <View className="flex-row items-center gap-3 rounded-lg border border-border bg-card p-3">
                 {selected.image_url ? (
@@ -941,18 +943,20 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                 )}
               </View>
             </ScrollView>
+            </KeyboardAvoidingView>
           ) : null}
         </SafeAreaView>
       </Modal>
 
       <Modal visible={creating} animationType="slide" onRequestClose={closeCreate}>
-        <SafeAreaView edges={['top']} className="flex-1 bg-background">
+        <SafeAreaView edges={['top', 'bottom']} className="flex-1 bg-background">
           <View className="flex-row items-center justify-between border-b border-border px-4 pb-3">
             <Text className="text-lg font-semibold text-foreground">New product</Text>
             <Pressable android_ripple={{}} onPress={closeCreate}>
               <Text className="text-muted-foreground">Close</Text>
             </Pressable>
           </View>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <ScrollView contentContainerClassName="gap-4 p-4">
             <View className="flex-row items-center gap-3 rounded-lg border border-border bg-card p-3">
               {newImage ? (
@@ -1174,6 +1178,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
               <Text className="font-medium text-primary-foreground">{savingNew ? 'Creating...' : 'Create product'}</Text>
             </Pressable>
           </ScrollView>
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
     </SafeAreaView>

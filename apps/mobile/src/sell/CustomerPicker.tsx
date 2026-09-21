@@ -3,7 +3,8 @@ import { useQuery } from '@powersync/react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { API_BASE_URL, apiFetch } from '../lib/auth';
 import { showAlert } from '../components/AppNotice';
 
@@ -96,7 +97,16 @@ export function CustomerPicker({
 
   const trimmed = query.trim();
 
+  // No `style={{ flex: 1 }}` here (unlike this app's other KeyboardAvoidingView
+  // usages) - this component is nested inside SellScreen's absolutely-
+  // positioned, content-sized cart sheet with no flex:1 ancestor in between,
+  // the exact "maxHeight-bound, not flex-bound" shape SalesScreen's own
+  // receipt FlatList note already warns can measure to zero height. Leaving
+  // the style unset keeps this hugging its content exactly as the plain
+  // View it replaces did, while still letting the keyboard push the
+  // create-customer fields below into view.
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <View className="gap-2">
       <TextInput
         className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
@@ -159,5 +169,6 @@ export function CustomerPicker({
         </View>
       ) : null}
     </View>
+    </KeyboardAvoidingView>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, ScrollView } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { API_BASE_URL, OFFLINE_MESSAGE } from '../lib/auth';
 
 interface Tenant {
@@ -69,6 +70,7 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
   }
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
     <ScrollView className="flex-1 bg-background" contentContainerClassName="gap-3 p-4" keyboardShouldPersistTaps="handled">
       <Text className="text-sm text-muted-foreground">Business name</Text>
       <TextInput className="rounded-lg border border-border bg-card px-3 py-2 text-foreground" value={name} onChangeText={setName} />
@@ -100,5 +102,6 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
         <Text className="font-medium text-primary-foreground">{busy ? 'Saving...' : 'Save settings'}</Text>
       </Pressable>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
