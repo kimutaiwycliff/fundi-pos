@@ -58,7 +58,16 @@ export function CartPanel({
                   >
                     <Minus />
                   </Button>
-                  <span className="w-6 text-center text-sm font-medium">{line.quantity}</span>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step={1}
+                    value={line.quantity}
+                    onChange={(e) => onUpdateQuantity(line.product.id, line.variantId, Number(e.target.value) || 0)}
+                    className="h-9 w-16 text-center"
+                    aria-label="Quantity"
+                  />
                   <Button
                     type="button"
                     variant="outline"
