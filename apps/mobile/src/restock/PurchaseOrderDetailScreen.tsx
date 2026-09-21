@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, FlatList, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, RefreshControl, Alert } from 'react-native';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import type { PayloadUser } from '../lib/auth';
+import { usePullToRefresh } from '../lib/usePullToRefresh';
 import { fetchPurchaseOrder, deletePurchaseOrder, receivePurchaseOrder, type PurchaseOrderDetail } from './purchaseOrders';
 import { buildRestockListHtml } from './restockListHtml';
 
@@ -46,6 +47,12 @@ export function PurchaseOrderDetailScreen({
   };
 
   useEffect(load, [payloadToken, poId]);
+
+  // REST-backed (not PowerSync/local), so pull-to-refresh re-runs the same
+  // plain fetch rather than a reactive query - this screen previously had
+  // no refresh mechanism at all. Called unconditionally, before the `!po`
+  // early return below, since hooks can't be called conditionally.
+  const { refreshing, onRefresh } = usePullToRefresh(load);
 
   if (!po) {
     return (
@@ -125,6 +132,7 @@ export function PurchaseOrderDetailScreen({
       className="flex-1 bg-background px-4 pt-3"
       data={po.lineItems}
       keyExtractor={(_, i) => String(i)}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#df5102" />}
       ListHeaderComponent={
         <View className="gap-2 pb-3">
           <Pressable onPress={onBack}>

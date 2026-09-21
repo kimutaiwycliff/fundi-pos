@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@powersync/react';
 import Fuse from 'fuse.js';
 import { View, Text, TextInput, Pressable, FlatList, Alert, Platform } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { getDb } from '../db/database';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import type { PayloadUser } from '../lib/auth';
 import { fetchSuppliers, createSupplier, createPurchaseOrder, type RestockSuggestion, type Supplier } from './purchaseOrders';
@@ -42,103 +42,101 @@ export function RestockScreen({ user, storeId, payloadToken }: { user: PayloadUs
   // Matches Products.ts's own costPrice field access - owner and manager.
   const canSeeCost = user.role === 'owner' || user.role === 'manager';
 
-  const [suggestions, setSuggestions] = useState<RestockSuggestion[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierId, setSupplierId] = useState<number | null>(null);
   const [newSupplierName, setNewSupplierName] = useState('');
-  const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [query, setQuery] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // Local, offline, and now reactive (PowerSync's useQuery re-runs on its
+  // own as stock_movements/orders/products change locally) - this screen
+  // previously read all of this via one-shot getDb().getAll() calls with no
+  // refresh mechanism at all, so a restock suggestion could silently go
+  // stale (e.g. after a sale just dropped a product below its reorder
+  // point) until the screen was fully remounted. storeId ?? -1 lets the
+  // hooks run unconditionally while still matching zero rows when no
+  // branch is selected, same convention as SellScreen's own catalog query.
+  const { data: lowStockRows } = useQuery<{ product_id: number; product_name: string; cost_price: number; quantity: number; reorder_point: number }>(
+    `SELECT p.id AS product_id, p.name AS product_name, p.cost_price AS cost_price, p.reorder_point AS reorder_point,
+            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS quantity
+     FROM products p
+     WHERE p.tenant_id = ? AND p.is_active = 1
+       AND NOT EXISTS (SELECT 1 FROM products_variants pv WHERE pv._parent_id = p.id)`,
+    [storeId ?? -1, tenantId],
+  );
+
+  const { data: fastMoverRows } = useQuery<{ product_id: number; sold: number }>(
+    `SELECT oli.product_id, SUM(oli.quantity) AS sold
+     FROM orders_line_items oli
+     JOIN orders o ON o.id = oli._parent_id
+     WHERE o.store_id = ? AND o.created_at >= datetime('now', '-30 days')
+     GROUP BY oli.product_id
+     ORDER BY sold DESC
+     LIMIT 15`,
+    [storeId ?? -1],
+  );
+
+  const { data: catalog } = useQuery<CatalogProduct>(
+    `SELECT id, name, sku, cost_price FROM products WHERE tenant_id = ? AND is_active = 1 ORDER BY name LIMIT 5000`,
+    [tenantId],
+  );
+
+  // Combines the two reactive queries above the same way the original
+  // one-shot effect did: low-stock first, then fast movers not already
+  // covered by a low-stock suggestion - looked up against the already-
+  // loaded active catalog (a Map, normalized to Number(p.id) since
+  // products.id is a PowerSync-implicit TEXT primary key locally - see
+  // ProductsScreen.tsx's own note on this - rather than a second query with
+  // a dynamic IN(...) clause sized off fastMoverRows.length, which useQuery
+  // has no established pattern for elsewhere in this app). One real
+  // behavior change from the old id-IN-clause lookup: a fast mover whose
+  // product has since been deactivated won't resolve a catalog match here
+  // (falls back to the same `#id`/cost-0 placeholder as a since-deleted
+  // product did before) - arguably more correct for a restock suggestion.
+  const suggestions = useMemo<RestockSuggestion[]>(() => {
+    const lowStock = lowStockRows
+      .filter((r) => r.reorder_point > 0 && r.quantity <= r.reorder_point)
+      .map((r) => ({
+        productId: r.product_id,
+        variant: null,
+        productName: r.product_name,
+        variantLabel: null,
+        costPrice: canSeeCost ? r.cost_price : null,
+        sellPrice: 0,
+        reason: 'low-stock' as const,
+      }));
+    const existingKeys = new Set(lowStock.map((s) => lineKey(s.productId, s.variant)));
+    const catalogById = new Map(catalog.map((p) => [Number(p.id), p]));
+    const fastMovers = fastMoverRows
+      .filter((r) => !existingKeys.has(lineKey(r.product_id, null)))
+      .map((r) => {
+        const p = catalogById.get(r.product_id);
+        return {
+          productId: r.product_id,
+          variant: null,
+          productName: p?.name ?? `#${r.product_id}`,
+          variantLabel: null,
+          costPrice: canSeeCost ? (p?.cost_price ?? 0) : null,
+          sellPrice: 0,
+          reason: 'fast-moving' as const,
+        };
+      });
+    return [...lowStock, ...fastMovers];
+  }, [lowStockRows, fastMoverRows, catalog, canSeeCost]);
+
+  // Suppliers stay a plain one-shot REST fetch (not PowerSync/local) -
+  // matches the header comment above on restocking being deliberately
+  // online-only.
   useEffect(() => {
-    if (storeId == null) return;
     let active = true;
-
-    // Local, offline: low-stock (reorder point) unioned with fast-movers
-    // (quantity sold in the last 30 days), same shape as the web/API
-    // suggestions endpoint but computed from the on-device replica.
-    getDb()
-      .getAll<{ product_id: number; product_name: string; cost_price: number; quantity: number; reorder_point: number }>(
-        `SELECT p.id AS product_id, p.name AS product_name, p.cost_price AS cost_price, p.reorder_point AS reorder_point,
-                COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS quantity
-         FROM products p
-         WHERE p.tenant_id = ? AND p.is_active = 1
-           AND NOT EXISTS (SELECT 1 FROM products_variants pv WHERE pv._parent_id = p.id)`,
-        [storeId, tenantId],
-      )
-      .then((rows) => {
-        if (!active) return;
-        const lowStock = rows
-          .filter((r) => r.reorder_point > 0 && r.quantity <= r.reorder_point)
-          .map((r) => ({
-            productId: r.product_id,
-            variant: null,
-            productName: r.product_name,
-            variantLabel: null,
-            costPrice: canSeeCost ? r.cost_price : null,
-            sellPrice: 0,
-            reason: 'low-stock' as const,
-          }));
-        setSuggestions(lowStock);
-      });
-
-    getDb()
-      .getAll<{ product_id: number; sold: number }>(
-        `SELECT oli.product_id, SUM(oli.quantity) AS sold
-         FROM orders_line_items oli
-         JOIN orders o ON o.id = oli._parent_id
-         WHERE o.store_id = ? AND o.created_at >= datetime('now', '-30 days')
-         GROUP BY oli.product_id
-         ORDER BY sold DESC
-         LIMIT 15`,
-        [storeId],
-      )
-      .then((rows) => {
-        if (!active || rows.length === 0) return;
-        getDb()
-          .getAll<{ id: number; name: string; cost_price: number }>(
-            `SELECT id, name, cost_price FROM products WHERE id IN (${rows.map(() => '?').join(',')})`,
-            rows.map((r) => r.product_id),
-          )
-          .then((products) => {
-            if (!active) return;
-            const byId = new Map(products.map((p) => [p.id, p]));
-            setSuggestions((prev) => {
-              const existingKeys = new Set(prev.map((s) => lineKey(s.productId, s.variant)));
-              const fastMovers = rows
-                .filter((r) => !existingKeys.has(lineKey(r.product_id, null)))
-                .map((r) => {
-                  const p = byId.get(r.product_id);
-                  return {
-                    productId: r.product_id,
-                    variant: null,
-                    productName: p?.name ?? `#${r.product_id}`,
-                    variantLabel: null,
-                    costPrice: canSeeCost ? (p?.cost_price ?? 0) : null,
-                    sellPrice: 0,
-                    reason: 'fast-moving' as const,
-                  };
-                });
-              return [...prev, ...fastMovers];
-            });
-          });
-      });
-
-    getDb()
-      .getAll<CatalogProduct>(`SELECT id, name, sku, cost_price FROM products WHERE tenant_id = ? AND is_active = 1 ORDER BY name LIMIT 5000`, [tenantId])
-      .then((rows) => {
-        if (active) setCatalog(rows);
-      });
-
     fetchSuppliers(payloadToken).then((rows) => {
       if (active) setSuppliers(rows);
     });
-
     return () => {
       active = false;
     };
-  }, [storeId, tenantId, payloadToken, canSeeCost]);
+  }, [payloadToken]);
 
   const searchResults = useMemo(() => {
     const trimmed = query.trim();

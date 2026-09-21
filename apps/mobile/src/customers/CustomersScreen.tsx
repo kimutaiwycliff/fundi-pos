@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
@@ -79,10 +80,15 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
       .then(setCandidates);
   }, [storeId, tenantId]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    refreshCustomers();
-  }, [refreshCustomers]);
+  // Refetches on every tab focus (not just mount) - this screen stays
+  // mounted across tab switches, so its data could otherwise go stale
+  // while on a different tab until manually pulled down. Same pattern
+  // already proven in OverviewScreen.tsx.
+  useFocusEffect(
+    useCallback(() => {
+      refreshCustomers();
+    }, [refreshCustomers]),
+  );
 
   const { refreshing, onRefresh } = usePullToRefresh(refreshCustomers);
 

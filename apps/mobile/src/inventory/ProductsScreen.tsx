@@ -111,6 +111,15 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   const [workingVariants, setWorkingVariants] = useState<WorkingVariant[]>([]);
   const [savingVariants, setSavingVariants] = useState(false);
   const [workingVariantQuery, setWorkingVariantQuery] = useState('');
+  // Per-variant collapse state - a large variant list (40+ rows) is still a
+  // lot of scrolling even filtered, since each visible card was previously
+  // always fully expanded. Only the indices in this set render their detail
+  // fields; everything else shows just a summary row. Newly-added variants
+  // are inserted here immediately (see addVariant) so filling one in needs
+  // no extra tap, and an active search query treats every visible result as
+  // expanded regardless of actual membership (see visibleWorkingVariants'
+  // render below).
+  const [expandedWorkingVariants, setExpandedWorkingVariants] = useState<Set<number>>(new Set());
 
   // relatedProducts is a Payload relationship field with no local
   // PowerSync stream (see sync-config.yaml - relationship join tables
@@ -141,6 +150,9 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   const [newVariants, setNewVariants] = useState<WorkingVariant[]>([]);
   const [newVariantQuery, setNewVariantQuery] = useState('');
   const [savingNew, setSavingNew] = useState(false);
+  // Same collapse treatment as workingVariants above, for the create-from-
+  // scratch flow's own variant list.
+  const [expandedNewVariants, setExpandedNewVariants] = useState<Set<number>>(new Set());
 
   // Reactive: PowerSync's useQuery re-runs this automatically whenever
   // `products`, `products_variants`, or `media` change locally - including
@@ -240,6 +252,8 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   function closeModal() {
     setSelected(null);
     setWorkingVariants([]);
+    setExpandedWorkingVariants(new Set());
+    setWorkingVariantQuery('');
     setStock([]);
     setRelatedIds([]);
   }
@@ -382,12 +396,33 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
     setWorkingVariants((prev) => prev.map((v, i) => (i === index ? { ...v, imageId: uploaded.id, imageUrl: uploaded.url } : v)));
   }
 
+  function toggleWorkingVariantExpanded(index: number) {
+    setExpandedWorkingVariants((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
   function addVariant() {
-    setWorkingVariants((prev) => [...prev, { id: null, label: '', sku: '', barcode: '', sellPrice: '', costPrice: '', imageId: null, imageUrl: null }]);
+    setWorkingVariants((prev) => {
+      const nextIndex = prev.length;
+      setExpandedWorkingVariants((expanded) => new Set(expanded).add(nextIndex));
+      return [...prev, { id: null, label: '', sku: '', barcode: '', sellPrice: '', costPrice: '', imageId: null, imageUrl: null }];
+    });
   }
 
   function removeVariant(index: number) {
     setWorkingVariants((prev) => prev.filter((_, i) => i !== index));
+    setExpandedWorkingVariants((prev) => {
+      const next = new Set<number>();
+      prev.forEach((i) => {
+        if (i < index) next.add(i);
+        else if (i > index) next.add(i - 1);
+      });
+      return next;
+    });
   }
 
   async function saveVariants() {
@@ -471,6 +506,8 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
     setNewReorderPoint('');
     setNewImage(null);
     setNewVariants([]);
+    setExpandedNewVariants(new Set());
+    setNewVariantQuery('');
     setCreating(true);
   }
 
@@ -488,12 +525,33 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
     }
   }
 
+  function toggleNewVariantExpanded(index: number) {
+    setExpandedNewVariants((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
   function addNewVariant() {
-    setNewVariants((prev) => [...prev, { id: null, label: '', sku: '', barcode: '', sellPrice: '', costPrice: '', imageId: null, imageUrl: null }]);
+    setNewVariants((prev) => {
+      const nextIndex = prev.length;
+      setExpandedNewVariants((expanded) => new Set(expanded).add(nextIndex));
+      return [...prev, { id: null, label: '', sku: '', barcode: '', sellPrice: '', costPrice: '', imageId: null, imageUrl: null }];
+    });
   }
 
   function removeNewVariant(index: number) {
     setNewVariants((prev) => prev.filter((_, i) => i !== index));
+    setExpandedNewVariants((prev) => {
+      const next = new Set<number>();
+      prev.forEach((i) => {
+        if (i < index) next.add(i);
+        else if (i > index) next.add(i - 1);
+      });
+      return next;
+    });
   }
 
   function updateNewVariantField(index: number, field: 'label' | 'sku' | 'barcode' | 'sellPrice' | 'costPrice', value: string) {
@@ -743,72 +801,95 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                   ) : (
                   visibleWorkingVariants.map(({ v, index }) => {
                     const vStock = v.id ? stock.find((s) => s.variant_id === v.id)?.quantity : undefined;
+                    // While searching, every visible (filtered) result reads
+                    // as expanded regardless of the set's actual membership -
+                    // search should feel immediate, not require an extra tap
+                    // per result.
+                    const isExpanded = workingVariantQuery.trim() !== '' || expandedWorkingVariants.has(index);
                     return (
                       <View key={v.id ?? `new-${index}`} className="gap-2 border-b border-border/50 pb-3 pt-1">
-                        <View className="flex-row items-center gap-2">
-                          <Pressable onPress={() => pickVariantImage(index)}>
-                            {v.imageUrl ? (
-                              <Image source={{ uri: v.imageUrl }} className="h-10 w-10 rounded-md bg-muted" resizeMode="cover" />
-                            ) : (
-                              <View className="h-10 w-10 items-center justify-center rounded-md border border-dashed border-border">
-                                <Ionicons name="image-outline" size={14} color="#71717a" />
-                              </View>
-                            )}
-                          </Pressable>
-                          <TextInput
-                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                            placeholder="Label (e.g. Red / L)"
-                            placeholderTextColor={placeholderColor}
-                            editable={canManage}
-                            value={v.label}
-                            onChangeText={(t) => updateVariantField(index, 'label', t)}
-                          />
-                          {canManage ? (
-                            <Pressable android_ripple={{}} onPress={() => removeVariant(index)}>
-                              <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                            </Pressable>
-                          ) : null}
-                        </View>
-                        <View className="flex-row gap-2">
-                          <TextInput
-                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                            placeholder="SKU"
-                            placeholderTextColor={placeholderColor}
-                            editable={canManage}
-                            value={v.sku}
-                            onChangeText={(t) => updateVariantField(index, 'sku', t)}
-                          />
-                          <TextInput
-                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                            placeholder="Barcode"
-                            placeholderTextColor={placeholderColor}
-                            editable={canManage}
-                            value={v.barcode}
-                            onChangeText={(t) => updateVariantField(index, 'barcode', t)}
-                          />
-                        </View>
-                        <View className="flex-row gap-2">
-                          <TextInput
-                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                            placeholder="Sell price (blank = inherit)"
-                            placeholderTextColor={placeholderColor}
-                            keyboardType="decimal-pad"
-                            editable={canManage}
-                            value={v.sellPrice}
-                            onChangeText={(t) => updateVariantField(index, 'sellPrice', t)}
-                          />
-                          {canManage ? (
-                            <TextInput
-                              className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                              placeholder="Cost price (blank = inherit)"
-                              placeholderTextColor={placeholderColor}
-                              keyboardType="decimal-pad"
-                              value={v.costPrice}
-                              onChangeText={(t) => updateVariantField(index, 'costPrice', t)}
-                            />
-                          ) : null}
-                        </View>
-                        {storeId != null && vStock != null ? <Text className="text-xs text-muted-foreground">{vStock} in stock</Text> : null}
+                        <Pressable android_ripple={{}} className="flex-row items-center gap-2" onPress={() => toggleWorkingVariantExpanded(index)}>
+                          {v.imageUrl ? (
+                            <Image source={{ uri: v.imageUrl }} className="h-10 w-10 rounded-md bg-muted" resizeMode="cover" />
+                          ) : (
+                            <View className="h-10 w-10 items-center justify-center rounded-md border border-dashed border-border">
+                              <Ionicons name="image-outline" size={14} color="#71717a" />
+                            </View>
+                          )}
+                          <Text className="flex-1 text-sm text-foreground" numberOfLines={1}>
+                            {v.label || 'Untitled variant'}
+                          </Text>
+                          {v.sellPrice ? <Text className="text-sm text-muted-foreground">{v.sellPrice}</Text> : null}
+                          <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={16} color="#71717a" />
+                        </Pressable>
+                        {isExpanded ? (
+                          <>
+                            <View className="flex-row items-center gap-2">
+                              <Pressable onPress={() => pickVariantImage(index)}>
+                                {v.imageUrl ? (
+                                  <Image source={{ uri: v.imageUrl }} className="h-10 w-10 rounded-md bg-muted" resizeMode="cover" />
+                                ) : (
+                                  <View className="h-10 w-10 items-center justify-center rounded-md border border-dashed border-border">
+                                    <Ionicons name="image-outline" size={14} color="#71717a" />
+                                  </View>
+                                )}
+                              </Pressable>
+                              <TextInput
+                                className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                                placeholder="Label (e.g. Red / L)"
+                                placeholderTextColor={placeholderColor}
+                                editable={canManage}
+                                value={v.label}
+                                onChangeText={(t) => updateVariantField(index, 'label', t)}
+                              />
+                              {canManage ? (
+                                <Pressable android_ripple={{}} onPress={() => removeVariant(index)}>
+                                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                                </Pressable>
+                              ) : null}
+                            </View>
+                            <View className="flex-row gap-2">
+                              <TextInput
+                                className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                                placeholder="SKU"
+                                placeholderTextColor={placeholderColor}
+                                editable={canManage}
+                                value={v.sku}
+                                onChangeText={(t) => updateVariantField(index, 'sku', t)}
+                              />
+                              <TextInput
+                                className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                                placeholder="Barcode"
+                                placeholderTextColor={placeholderColor}
+                                editable={canManage}
+                                value={v.barcode}
+                                onChangeText={(t) => updateVariantField(index, 'barcode', t)}
+                              />
+                            </View>
+                            <View className="flex-row gap-2">
+                              <TextInput
+                                className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                                placeholder="Sell price (blank = inherit)"
+                                placeholderTextColor={placeholderColor}
+                                keyboardType="decimal-pad"
+                                editable={canManage}
+                                value={v.sellPrice}
+                                onChangeText={(t) => updateVariantField(index, 'sellPrice', t)}
+                              />
+                              {canManage ? (
+                                <TextInput
+                                  className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                                  placeholder="Cost price (blank = inherit)"
+                                  placeholderTextColor={placeholderColor}
+                                  keyboardType="decimal-pad"
+                                  value={v.costPrice}
+                                  onChangeText={(t) => updateVariantField(index, 'costPrice', t)}
+                                />
+                              ) : null}
+                            </View>
+                            {storeId != null && vStock != null ? <Text className="text-xs text-muted-foreground">{vStock} in stock</Text> : null}
+                          </>
+                        ) : null}
                       </View>
                     );
                   })
@@ -997,65 +1078,88 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
                 {visibleNewVariants.length === 0 ? (
                   <Text className="text-xs text-muted-foreground">No variants match &quot;{newVariantQuery.trim()}&quot;.</Text>
                 ) : (
-                visibleNewVariants.map(({ v, index }) => (
+                visibleNewVariants.map(({ v, index }) => {
+                  // Same "search implies expanded" rule as the edit flow's
+                  // own visibleWorkingVariants rendering above.
+                  const isExpanded = newVariantQuery.trim() !== '' || expandedNewVariants.has(index);
+                  return (
                   <View key={`new-${index}`} className="gap-2 border-b border-border/50 pb-3 pt-1">
-                    <View className="flex-row items-center gap-2">
-                      <Pressable onPress={() => pickNewVariantImage(index)}>
-                        {v.imageUrl ? (
-                          <Image source={{ uri: v.imageUrl }} className="h-10 w-10 rounded-md bg-muted" resizeMode="cover" />
-                        ) : (
-                          <View className="h-10 w-10 items-center justify-center rounded-md border border-dashed border-border">
-                            <Ionicons name="image-outline" size={14} color="#71717a" />
-                          </View>
-                        )}
-                      </Pressable>
-                      <TextInput
-                        className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                        placeholder="Label (e.g. Red / L)"
-                        placeholderTextColor={placeholderColor}
-                        value={v.label}
-                        onChangeText={(t) => updateNewVariantField(index, 'label', t)}
-                      />
-                      <Pressable android_ripple={{}} onPress={() => removeNewVariant(index)}>
-                        <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                      </Pressable>
-                    </View>
-                    <View className="flex-row gap-2">
-                      <TextInput
-                        className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                        placeholder="SKU (optional)"
-                        placeholderTextColor={placeholderColor}
-                        value={v.sku}
-                        onChangeText={(t) => updateNewVariantField(index, 'sku', t)}
-                      />
-                      <TextInput
-                        className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                        placeholder="Barcode (optional)"
-                        placeholderTextColor={placeholderColor}
-                        value={v.barcode}
-                        onChangeText={(t) => updateNewVariantField(index, 'barcode', t)}
-                      />
-                    </View>
-                    <View className="flex-row gap-2">
-                      <TextInput
-                        className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                        placeholder="Sell price (blank = inherit)"
-                        placeholderTextColor={placeholderColor}
-                        keyboardType="decimal-pad"
-                        value={v.sellPrice}
-                        onChangeText={(t) => updateNewVariantField(index, 'sellPrice', t)}
-                      />
-                      <TextInput
-                        className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                        placeholder="Cost price (blank = inherit)"
-                        placeholderTextColor={placeholderColor}
-                        keyboardType="decimal-pad"
-                        value={v.costPrice}
-                        onChangeText={(t) => updateNewVariantField(index, 'costPrice', t)}
-                      />
-                    </View>
+                    <Pressable android_ripple={{}} className="flex-row items-center gap-2" onPress={() => toggleNewVariantExpanded(index)}>
+                      {v.imageUrl ? (
+                        <Image source={{ uri: v.imageUrl }} className="h-10 w-10 rounded-md bg-muted" resizeMode="cover" />
+                      ) : (
+                        <View className="h-10 w-10 items-center justify-center rounded-md border border-dashed border-border">
+                          <Ionicons name="image-outline" size={14} color="#71717a" />
+                        </View>
+                      )}
+                      <Text className="flex-1 text-sm text-foreground" numberOfLines={1}>
+                        {v.label || 'Untitled variant'}
+                      </Text>
+                      {v.sellPrice ? <Text className="text-sm text-muted-foreground">{v.sellPrice}</Text> : null}
+                      <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={16} color="#71717a" />
+                    </Pressable>
+                    {isExpanded ? (
+                      <>
+                        <View className="flex-row items-center gap-2">
+                          <Pressable onPress={() => pickNewVariantImage(index)}>
+                            {v.imageUrl ? (
+                              <Image source={{ uri: v.imageUrl }} className="h-10 w-10 rounded-md bg-muted" resizeMode="cover" />
+                            ) : (
+                              <View className="h-10 w-10 items-center justify-center rounded-md border border-dashed border-border">
+                                <Ionicons name="image-outline" size={14} color="#71717a" />
+                              </View>
+                            )}
+                          </Pressable>
+                          <TextInput
+                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                            placeholder="Label (e.g. Red / L)"
+                            placeholderTextColor={placeholderColor}
+                            value={v.label}
+                            onChangeText={(t) => updateNewVariantField(index, 'label', t)}
+                          />
+                          <Pressable android_ripple={{}} onPress={() => removeNewVariant(index)}>
+                            <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                          </Pressable>
+                        </View>
+                        <View className="flex-row gap-2">
+                          <TextInput
+                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                            placeholder="SKU (optional)"
+                            placeholderTextColor={placeholderColor}
+                            value={v.sku}
+                            onChangeText={(t) => updateNewVariantField(index, 'sku', t)}
+                          />
+                          <TextInput
+                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                            placeholder="Barcode (optional)"
+                            placeholderTextColor={placeholderColor}
+                            value={v.barcode}
+                            onChangeText={(t) => updateNewVariantField(index, 'barcode', t)}
+                          />
+                        </View>
+                        <View className="flex-row gap-2">
+                          <TextInput
+                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                            placeholder="Sell price (blank = inherit)"
+                            placeholderTextColor={placeholderColor}
+                            keyboardType="decimal-pad"
+                            value={v.sellPrice}
+                            onChangeText={(t) => updateNewVariantField(index, 'sellPrice', t)}
+                          />
+                          <TextInput
+                            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                            placeholder="Cost price (blank = inherit)"
+                            placeholderTextColor={placeholderColor}
+                            keyboardType="decimal-pad"
+                            value={v.costPrice}
+                            onChangeText={(t) => updateNewVariantField(index, 'costPrice', t)}
+                          />
+                        </View>
+                      </>
+                    ) : null}
                   </View>
-                ))
+                  );
+                })
                 )}
                 </>
               )}

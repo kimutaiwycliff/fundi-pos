@@ -174,11 +174,33 @@ export function SellScreen({
   // Owner-controlled, tenant-wide - defaults to required (matches this
   // field's own server-side defaultValue: true) whenever the row hasn't
   // synced down yet, so a device that's never seen this tenant row keeps
-  // today's behavior rather than silently skipping the gate.
-  const { data: tenantRows } = useQuery<{ shifts_required: number }>('SELECT shifts_required FROM tenants WHERE id = ?', [
-    tenantId,
-  ]);
+  // today's behavior rather than silently skipping the gate. Same
+  // unsynced-row-defaults-true convention applies to enforce_discount_caps
+  // (server default is also true - see Tenants.ts/Orders.ts).
+  const { data: tenantRows } = useQuery<{ shifts_required: number; enforce_discount_caps: number }>(
+    'SELECT shifts_required, enforce_discount_caps FROM tenants WHERE id = ?',
+    [tenantId],
+  );
   const shiftsRequired = tenantRows[0]?.shifts_required !== 0;
+  const enforceDiscountCaps = tenantRows[0]?.enforce_discount_caps !== 0;
+  // Owners always bypass the per-product discount cap regardless of the
+  // toggle; everyone else bypasses it only when the tenant has turned
+  // enforcement off entirely (matches Orders.ts's own
+  // `!isOwner && enforceCaps` server-side gate).
+  const isOwner = user.role === 'owner';
+  const discountCapBypassed = isOwner || !enforceDiscountCaps;
+
+  // The per-product cap (maxDiscountAmountForLine) only applies while the
+  // cap is actually being enforced for this cashier. Bypassed, the only
+  // limit left is a basic sanity bound - a discount can't exceed the line's
+  // own subtotal (i.e. can't push the line negative) - deliberately not
+  // tied to the product's configured cap at all.
+  function maxDiscountForLine(line: Pick<CartLine, 'product' | 'variant'>, quantity: number): number {
+    if (discountCapBypassed) {
+      return quantity * lineUnitPrice(line);
+    }
+    return maxDiscountAmountForLine({ quantity, product: line.product });
+  }
 
   // Idle-state default is this store's recently sold products, not the
   // whole catalog - matches the web Sell page's own "search-first" flow
@@ -346,16 +368,20 @@ export function SellScreen({
         ? prev.filter((l) => lineKey(l) !== key)
         : prev.map((l) => {
             if (lineKey(l) !== key) return l;
-            const max = maxDiscountAmountForLine({ quantity, product: l.product });
+            const max = maxDiscountForLine(l, quantity);
             return { ...l, quantity, discountAmount: Math.min(l.discountAmount, max) };
           }),
     );
   }
 
   function updateDiscountAmount(line: CartLine, rawValue: number) {
-    const max = maxDiscountAmountForLine(line);
+    const max = maxDiscountForLine(line, line.quantity);
     const clamped = Math.min(Math.max(rawValue, 0), max);
-    if (rawValue > max) {
+    // The "too high" hint is tied to the product's own configured cap - it
+    // doesn't apply once that cap is bypassed (owner, or the toggle off),
+    // even though the sanity-bound clamp above still silently protects
+    // against a negative line.
+    if (!discountCapBypassed && rawValue > max) {
       showAlert('Discount too high', `Max discount for ${lineDisplayLabel(line)} is ${max.toFixed(2)}`);
     }
     const key = lineKey(line);
@@ -619,7 +645,7 @@ export function SellScreen({
                 data={cart}
                 keyExtractor={(l) => lineKey(l)}
                 renderItem={({ item }) => {
-                  const max = maxDiscountAmountForLine(item);
+                  const max = maxDiscountForLine(item, item.quantity);
                   const price = lineUnitPrice(item);
                   return (
                     <Animated.View entering={FadeInDown.duration(180)} className="rounded-lg border border-border p-3">
@@ -650,7 +676,7 @@ export function SellScreen({
                             value={item.discountAmount === 0 ? '' : String(item.discountAmount)}
                             onChangeText={(text) => updateDiscountAmount(item, Number(text) || 0)}
                           />
-                          <Text className="text-xs text-muted-foreground">(max {max.toFixed(2)})</Text>
+                          {!discountCapBypassed ? <Text className="text-xs text-muted-foreground">(max {max.toFixed(2)})</Text> : null}
                         </View>
                       ) : null}
                     </Animated.View>

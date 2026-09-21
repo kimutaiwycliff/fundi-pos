@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@powersync/react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
@@ -51,9 +52,7 @@ export function StockAdjustmentModal({
 }) {
   const placeholderColor = useMutedPlaceholderColor();
   const [productQuery, setProductQuery] = useState('');
-  const [catalog, setCatalog] = useState<PickableProduct[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<PickableProduct | null>(null);
-  const [variants, setVariants] = useState<PickableVariant[]>([]);
   const [selectedVariant, setSelectedVariant] = useState<PickableVariant | null>(null);
   const [type, setType] = useState<(typeof TYPES)[number]['value']>('restock');
   const [quantity, setQuantity] = useState('');
@@ -65,27 +64,21 @@ export function StockAdjustmentModal({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setProductQuery('');
     setSelectedProduct(null);
-    setVariants([]);
     setSelectedVariant(null);
     setType('restock');
     setQuantity('');
     setError(null);
   }, [visible]);
 
-  // Whole tenant's active-product list loaded once, not per keystroke, so
-  // search can fuzzy-match client-side - same pattern as SellScreen's
-  // product search.
-  useEffect(() => {
-    let active = true;
-    getDb()
-      .getAll<PickableProduct>(`SELECT id, name, sku FROM products WHERE tenant_id = ? AND is_active = 1 ORDER BY name LIMIT 5000`, [tenantId])
-      .then((rows) => {
-        if (active) setCatalog(rows);
-      });
-    return () => {
-      active = false;
-    };
-  }, [tenantId]);
+  // Whole tenant's active-product list, kept live via PowerSync's reactive
+  // useQuery (re-runs on its own as products change locally) rather than a
+  // one-shot load - same pattern as ProductsScreen/InventoryScreen. Search
+  // still fuzzy-matches client-side, same reason as SellScreen's product
+  // search.
+  const { data: catalog } = useQuery<PickableProduct>(
+    `SELECT id, name, sku FROM products WHERE tenant_id = ? AND is_active = 1 ORDER BY name LIMIT 5000`,
+    [tenantId],
+  );
 
   const productResults = useMemo(() => {
     const trimmed = productQuery.trim();
@@ -94,22 +87,14 @@ export function StockAdjustmentModal({
     return fuse.search(trimmed).slice(0, 10).map((r) => r.item);
   }, [productQuery, catalog]);
 
-  useEffect(() => {
-    if (!selectedProduct) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setVariants([]);
-      return;
-    }
-    let active = true;
-    getDb()
-      .getAll<PickableVariant>(`SELECT id, label FROM products_variants WHERE _parent_id = ? ORDER BY _order`, [selectedProduct.id])
-      .then((rows) => {
-        if (active) setVariants(rows);
-      });
-    return () => {
-      active = false;
-    };
-  }, [selectedProduct]);
+  // Reactive for the same reason as the catalog query above. selectedProduct?.id
+  // ?? '' keeps the hook call unconditional (PowerSync's useQuery can't be
+  // called conditionally) while still matching zero rows before a product
+  // is picked.
+  const { data: variants } = useQuery<PickableVariant>(
+    `SELECT id, label FROM products_variants WHERE _parent_id = ? ORDER BY _order`,
+    [selectedProduct?.id ?? ''],
+  );
 
   async function handleSubmit() {
     if (!selectedProduct) {

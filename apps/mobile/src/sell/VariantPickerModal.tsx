@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@powersync/react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Modal, View, Text, TextInput, Pressable, FlatList, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getDb } from '../db/database';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import type { LocalProduct, LocalVariant } from './types';
 
@@ -23,9 +23,26 @@ export function VariantPickerModal({
   onSelect: (variant: LocalVariant) => void;
   onClose: () => void;
 }) {
-  const [variants, setVariants] = useState<LocalVariant[]>([]);
   const [query, setQuery] = useState('');
   const placeholderColor = useMutedPlaceholderColor();
+
+  // Reactive - a stale stock_on_hand snapshot here directly risks
+  // overselling a variant (this modal is the last stop before addToCart's
+  // own stock check). product?.id ?? '' keeps the hook call unconditional
+  // (PowerSync's useQuery can't be called conditionally) while still
+  // matching zero rows whenever the modal is closed (product == null),
+  // same "safe non-matching sentinel" convention as SellScreen's own
+  // storeId ?? -1.
+  const { data: variants } = useQuery<LocalVariant>(
+    `SELECT pv.id, pv.label, pv.sku, pv.barcode, pv.sell_price, m.url AS image_url,
+            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
+                      WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS stock_on_hand
+     FROM products_variants pv
+     LEFT JOIN media m ON m.id = pv.image_id
+     WHERE pv._parent_id = ?
+     ORDER BY pv._order`,
+    [storeId, product?.id ?? ''],
+  );
 
   const results = useMemo(() => {
     const trimmed = query.trim();
@@ -37,29 +54,7 @@ export function VariantPickerModal({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setQuery('');
-    if (!product) {
-      setVariants([]);
-      return;
-    }
-    let active = true;
-    getDb()
-      .getAll<LocalVariant>(
-        `SELECT pv.id, pv.label, pv.sku, pv.barcode, pv.sell_price, m.url AS image_url,
-                COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
-                          WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS stock_on_hand
-         FROM products_variants pv
-         LEFT JOIN media m ON m.id = pv.image_id
-         WHERE pv._parent_id = ?
-         ORDER BY pv._order`,
-        [storeId, product.id],
-      )
-      .then((rows) => {
-        if (active) setVariants(rows);
-      });
-    return () => {
-      active = false;
-    };
-  }, [product, storeId]);
+  }, [product]);
 
   return (
     <Modal visible={product != null} animationType="slide" transparent onRequestClose={onClose}>

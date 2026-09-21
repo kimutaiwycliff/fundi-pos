@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import Fuse from 'fuse.js';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -143,10 +144,15 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
       .then(setCandidates);
   }, [storeId]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    refresh();
-  }, [refresh]);
+  // Refetches on every tab focus (not just mount) - this screen stays
+  // mounted across tab switches, so its data could otherwise go stale
+  // while on a different tab until manually pulled down. Same pattern
+  // already proven in OverviewScreen.tsx.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
 
   const { refreshing, onRefresh } = usePullToRefresh(refresh);
 

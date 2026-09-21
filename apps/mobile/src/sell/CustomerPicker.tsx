@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@powersync/react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList } from 'react-native';
-import { getDb } from '../db/database';
 import { API_BASE_URL, apiFetch } from '../lib/auth';
 import { showAlert } from '../components/AppNotice';
 
@@ -32,26 +32,20 @@ export function CustomerPicker({
 }) {
   const placeholderColor = useMutedPlaceholderColor();
   const [query, setQuery] = useState('');
-  const [catalog, setCatalog] = useState<LocalCustomer[]>([]);
   const [creating, setCreating] = useState(false);
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Whole tenant's customer list loaded once, not per keystroke, so search
-  // can fuzzy-match client-side - same pattern as SellScreen's product
-  // search (see its own note on why, ported from apps/web's fuzzySearch).
-  useEffect(() => {
-    let active = true;
-    getDb()
-      .getAll<LocalCustomer>(`SELECT id, name, phone, email FROM customers WHERE tenant_id = ? ORDER BY name LIMIT 2000`, [tenantId])
-      .then((rows) => {
-        if (active) setCatalog(rows);
-      });
-    return () => {
-      active = false;
-    };
-  }, [tenantId]);
+  // Whole tenant's customer list, kept live via PowerSync's reactive
+  // useQuery (re-runs on its own as customers change locally) rather than a
+  // one-shot load. Search still fuzzy-matches client-side, same pattern as
+  // SellScreen's product search (see its own note on why, ported from
+  // apps/web's fuzzySearch).
+  const { data: catalog } = useQuery<LocalCustomer>(
+    `SELECT id, name, phone, email FROM customers WHERE tenant_id = ? ORDER BY name LIMIT 2000`,
+    [tenantId],
+  );
 
   const results = useMemo(() => {
     const trimmed = query.trim();
