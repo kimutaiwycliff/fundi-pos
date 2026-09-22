@@ -248,25 +248,35 @@ export const Orders: CollectionConfig = {
           quantity: number;
         }>;
 
-        for (const line of lineItems) {
-          await req.payload.create({
-            collection: 'stock-movements',
-            data: {
-              id: crypto.randomUUID(),
-              tenant: Number(toID(doc.tenant)),
-              store: Number(toID(doc.store)),
-              product: Number(toID(line.product)),
-              variant: line.variant ?? null,
-              quantityDelta: sign * Math.abs(line.quantity),
-              reason,
-              relatedOrder: String(doc.id),
-              clientTimestamp: new Date().toISOString(),
-              sourceTerminal: doc.terminal,
-            },
-            overrideAccess: true,
-            req,
-          });
-        }
+        // One stock-movement row per line item, independently valid and
+        // never dependent on another line's outcome - now that this runs
+        // synchronously on every checkout on every platform (not just as an
+        // offline-queue drain target), a sequential await-per-line here
+        // serialized N round-trips onto every checkout's response time.
+        // Promise.all issues them concurrently; the hook still rejects (and
+        // the request still surfaces an error) if any one line fails, same
+        // as the sequential version ultimately did.
+        await Promise.all(
+          lineItems.map((line) =>
+            req.payload.create({
+              collection: 'stock-movements',
+              data: {
+                id: crypto.randomUUID(),
+                tenant: Number(toID(doc.tenant)),
+                store: Number(toID(doc.store)),
+                product: Number(toID(line.product)),
+                variant: line.variant ?? null,
+                quantityDelta: sign * Math.abs(line.quantity),
+                reason,
+                relatedOrder: String(doc.id),
+                clientTimestamp: new Date().toISOString(),
+                sourceTerminal: doc.terminal,
+              },
+              overrideAccess: true,
+              req,
+            }),
+          ),
+        );
 
         return doc;
       },

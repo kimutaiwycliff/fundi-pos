@@ -17,6 +17,7 @@ import * as migration_20260921_102609_add_tenant_shifts_required from './2026092
 import * as migration_20260921_131801_add_tenant_enforce_discount_caps from './20260921_131801_add_tenant_enforce_discount_caps';
 import * as migration_20260921_133639_add_quotations from './20260921_133639_add_quotations';
 import * as migration_20260921_210756_add_quotation_name from './20260921_210756_add_quotation_name';
+import * as migration_20260922_105821_add_stock_report_indexes from './20260922_105821_add_stock_report_indexes';
 
 export const migrations = [
   {
@@ -112,6 +113,11 @@ export const migrations = [
   {
     up: migration_20260921_210756_add_quotation_name.up,
     down: migration_20260921_210756_add_quotation_name.down,
-    name: '20260921_210756_add_quotation_name'
+    name: '20260921_210756_add_quotation_name',
+  },
+  {
+    up: migration_20260922_105821_add_stock_report_indexes.up,
+    down: migration_20260922_105821_add_stock_report_indexes.down,
+    name: '20260922_105821_add_stock_report_indexes'
   },
 ];
