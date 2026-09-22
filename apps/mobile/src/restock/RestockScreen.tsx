@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@powersync/react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import Fuse from 'fuse.js';
 import { View, Text, TextInput, Pressable, FlatList, Alert, Platform } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import type { PayloadUser } from '../lib/auth';
+import { API_BASE_URL, type PayloadUser } from '../lib/auth';
+import { fetchCatalog, fetchStockLevels, stockKey, stockByKeyMap, type CatalogProduct as RawCatalogProduct } from '../lib/catalog';
 import { fetchSuppliers, createSupplier, createPurchaseOrder, type RestockSuggestion, type Supplier } from './purchaseOrders';
 import { buildRestockListHtml } from './restockListHtml';
 
@@ -15,6 +16,10 @@ interface CatalogProduct {
   name: string;
   sku: string;
   cost_price: number;
+}
+
+interface RawRecentOrder {
+  lineItems: Array<{ product: { id: number } | number; quantity: number }>;
 }
 
 interface Line {
@@ -31,11 +36,11 @@ function lineKey(productId: number, variant: string | null) {
 }
 
 // Restocking is deliberately online-only (see purchaseOrders.ts's header
-// comment) but the SUGGESTIONS below are computed fully offline from
-// already-synced local tables - same derived-sum stock-levels approach as
-// InventoryScreen, plus a fast-movers query mirroring SellScreen's own
-// "frequently sold" local SQL pattern, so this screen is useful the moment
-// it opens even before any network round trip completes.
+// comment), and now so are the SUGGESTIONS below too - there is no local
+// database left to compute them from offline. Low-stock uses the same
+// catalog+stock-levels REST fetch as InventoryScreen; fast-movers re-derives
+// SellScreen's own "frequently sold" logic from a plain /api/orders fetch
+// instead of a local SQL aggregate.
 export function RestockScreen({ user, storeId, payloadToken }: { user: PayloadUser; storeId: number | null; payloadToken: string }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
   const placeholderColor = useMutedPlaceholderColor();
@@ -49,51 +54,80 @@ export function RestockScreen({ user, storeId, payloadToken }: { user: PayloadUs
   const [lines, setLines] = useState<Line[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // Local, offline, and now reactive (PowerSync's useQuery re-runs on its
-  // own as stock_movements/orders/products change locally) - this screen
-  // previously read all of this via one-shot getDb().getAll() calls with no
-  // refresh mechanism at all, so a restock suggestion could silently go
-  // stale (e.g. after a sale just dropped a product below its reorder
-  // point) until the screen was fully remounted. storeId ?? -1 lets the
-  // hooks run unconditionally while still matching zero rows when no
-  // branch is selected, same convention as SellScreen's own catalog query.
-  const { data: lowStockRows } = useQuery<{ product_id: number; product_name: string; cost_price: number; quantity: number; reorder_point: number }>(
-    `SELECT p.id AS product_id, p.name AS product_name, p.cost_price AS cost_price, p.reorder_point AS reorder_point,
-            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS quantity
-     FROM products p
-     WHERE p.tenant_id = ? AND p.is_active = 1
-       AND NOT EXISTS (SELECT 1 FROM products_variants pv WHERE pv._parent_id = p.id)`,
-    [storeId ?? -1, tenantId],
+  const [rawCatalog, setRawCatalog] = useState<RawCatalogProduct[]>([]);
+  const [stockByKey, setStockByKey] = useState<Map<string, number>>(new Map());
+  const [recentOrders, setRecentOrders] = useState<RawRecentOrder[]>([]);
+
+  // Fetched together and re-fetched on tab-focus - this screen previously
+  // read all of this via one-shot getDb().getAll() calls with no refresh
+  // mechanism at all, so a restock suggestion could silently go stale (e.g.
+  // after a sale just dropped a product below its reorder point) until the
+  // screen was fully remounted; useFocusEffect below fixes that too.
+  const refresh = useCallback(async () => {
+    if (storeId == null) {
+      setRawCatalog([]);
+      setStockByKey(new Map());
+      setRecentOrders([]);
+      return;
+    }
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const [catalog, levels, ordersBody] = await Promise.all([
+      fetchCatalog(payloadToken, tenantId),
+      fetchStockLevels(payloadToken, storeId),
+      fetch(
+        `${API_BASE_URL}/api/orders?where[store][equals]=${storeId}&where[status][equals]=completed&where[createdAt][greater_than_equal]=${cutoff.toISOString()}&sort=-createdAt&limit=1000&depth=0`,
+        { headers: { Authorization: `JWT ${payloadToken}` } },
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ]);
+    setRawCatalog(catalog);
+    setStockByKey(stockByKeyMap(levels));
+    setRecentOrders(ordersBody?.docs ?? []);
+  }, [storeId, payloadToken, tenantId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
   );
 
-  const { data: fastMoverRows } = useQuery<{ product_id: number; sold: number }>(
-    `SELECT oli.product_id, SUM(oli.quantity) AS sold
-     FROM orders_line_items oli
-     JOIN orders o ON o.id = oli._parent_id
-     WHERE o.store_id = ? AND o.created_at >= datetime('now', '-30 days')
-     GROUP BY oli.product_id
-     ORDER BY sold DESC
-     LIMIT 15`,
-    [storeId ?? -1],
+  // Bare (no-variant) active products only - a restock suggestion adds a
+  // single product line with no variant picker, matching the old SQL's own
+  // `NOT EXISTS ... products_variants` exclusion.
+  const lowStockRows = useMemo(
+    () =>
+      rawCatalog
+        .filter((p) => p.variants.length === 0)
+        .map((p) => ({ product_id: p.id, product_name: p.name, cost_price: p.costPrice, reorder_point: p.reorderPoint, quantity: stockByKey.get(stockKey(p.id, null)) ?? 0 })),
+    [rawCatalog, stockByKey],
   );
 
-  const { data: catalog } = useQuery<CatalogProduct>(
-    `SELECT id, name, sku, cost_price FROM products WHERE tenant_id = ? AND is_active = 1 ORDER BY name LIMIT 5000`,
-    [tenantId],
-  );
+  const fastMoverRows = useMemo(() => {
+    const sold = new Map<number, number>();
+    for (const o of recentOrders) {
+      for (const li of o.lineItems ?? []) {
+        const productId = typeof li.product === 'object' ? li.product.id : li.product;
+        sold.set(productId, (sold.get(productId) ?? 0) + li.quantity);
+      }
+    }
+    return [...sold.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+      .map(([product_id, soldQty]) => ({ product_id, sold: soldQty }));
+  }, [recentOrders]);
 
-  // Combines the two reactive queries above the same way the original
-  // one-shot effect did: low-stock first, then fast movers not already
-  // covered by a low-stock suggestion - looked up against the already-
-  // loaded active catalog (a Map, normalized to Number(p.id) since
-  // products.id is a PowerSync-implicit TEXT primary key locally - see
-  // ProductsScreen.tsx's own note on this - rather than a second query with
-  // a dynamic IN(...) clause sized off fastMoverRows.length, which useQuery
-  // has no established pattern for elsewhere in this app). One real
-  // behavior change from the old id-IN-clause lookup: a fast mover whose
-  // product has since been deactivated won't resolve a catalog match here
-  // (falls back to the same `#id`/cost-0 placeholder as a since-deleted
-  // product did before) - arguably more correct for a restock suggestion.
+  const catalog = useMemo<CatalogProduct[]>(() => rawCatalog.map((p) => ({ id: p.id, name: p.name, sku: p.sku, cost_price: p.costPrice })), [rawCatalog]);
+
+  // Combines the two derived lists above the same way the original one-shot
+  // effect did: low-stock first, then fast movers not already covered by a
+  // low-stock suggestion - looked up against the already-fetched active
+  // catalog (a Map) rather than a second network round trip keyed off
+  // fastMoverRows. A fast mover whose product has since been deactivated
+  // won't resolve a catalog match here (falls back to the same `#id`/cost-0
+  // placeholder a since-deleted product would) - arguably more correct for a
+  // restock suggestion.
   const suggestions = useMemo<RestockSuggestion[]>(() => {
     const lowStock = lowStockRows
       .filter((r) => r.reorder_point > 0 && r.quantity <= r.reorder_point)

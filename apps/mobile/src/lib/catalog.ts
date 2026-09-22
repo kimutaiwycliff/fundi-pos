@@ -179,3 +179,57 @@ export function stockByKeyMap(levels: StockLevelRow[]): Map<string, number> {
   }
   return map;
 }
+
+/**
+ * Per-(product,variant) row combining a fetched catalog with fetched stock
+ * levels - field names are deliberately snake_case to match apps/mobile/src/
+ * inventory/types.ts's existing `StockLevel` (structurally identical, so it
+ * works as a drop-in with that file's own `isLowStock`) rather than
+ * introducing a second, differently-shaped stock-row type. Shared by
+ * InventoryScreen (stock-level list) and OverviewScreen (low-stock count) -
+ * both previously ran their own near-identical SQL for this same "bare
+ * products get one row, variant-having products get one row per variant,
+ * never both" union.
+ */
+export interface CatalogStockRow {
+  product_id: string;
+  variant_id: string | null;
+  product_name: string;
+  variant_label: string | null;
+  sku: string;
+  reorder_point: number;
+  quantity: number;
+  image_url: string | null;
+}
+
+export function buildStockRows(catalog: CatalogProduct[], stockByKey: Map<string, number>): CatalogStockRow[] {
+  const rows: CatalogStockRow[] = [];
+  for (const p of catalog) {
+    if (p.variants.length === 0) {
+      rows.push({
+        product_id: String(p.id),
+        variant_id: null,
+        product_name: p.name,
+        variant_label: null,
+        sku: p.sku,
+        reorder_point: p.reorderPoint,
+        quantity: stockByKey.get(stockKey(p.id, null)) ?? 0,
+        image_url: p.imageUrl,
+      });
+    } else {
+      for (const v of p.variants) {
+        rows.push({
+          product_id: String(p.id),
+          variant_id: v.id,
+          product_name: p.name,
+          variant_label: v.label,
+          sku: v.sku,
+          reorder_point: p.reorderPoint,
+          quantity: stockByKey.get(stockKey(p.id, v.id)) ?? 0,
+          image_url: v.imageUrl ?? p.imageUrl,
+        });
+      }
+    }
+  }
+  return rows;
+}

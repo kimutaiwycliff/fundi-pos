@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -6,8 +6,7 @@ import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, ScrollView, RefreshControl, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { getDb } from '../db/database';
-import type { PayloadUser } from '../lib/auth';
+import { API_BASE_URL, type PayloadUser } from '../lib/auth';
 import { PaymentModal, type LocalOrder } from './PaymentModal';
 import { usePullToRefresh } from '../lib/usePullToRefresh';
 
@@ -30,56 +29,80 @@ interface RecentOrder {
   synced_at: string | null;
 }
 
-// synced_at is always set at local insert time (see SellScreen's
-// completeSale) - created_at only arrives once an order syncs up and back
-// down. Falling back to Date.now() when both are somehow null would call an
-// impure function during render, so this renders a dash instead - a
-// genuinely dateless order isn't expected to occur in practice.
+interface RawCustomer {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  loyaltyPoints: number | null;
+}
+
+interface RawOrder {
+  id: string;
+  total: number;
+  tenderType: string;
+  paymentStatus: string;
+  status: string;
+  createdAt: string;
+  customer: { id: number } | number | null;
+}
+
 function orderDateLabel(o: Pick<RecentOrder, 'created_at' | 'synced_at'>): string {
   const iso = o.created_at ?? o.synced_at;
   return iso ? new Date(iso).toLocaleDateString() : '—';
 }
 
+function customerIdOf(o: RawOrder): number | null {
+  if (o.customer == null) return null;
+  return typeof o.customer === 'object' ? o.customer.id : o.customer;
+}
+
 // Phase 2 - credit customer management. Customer list, loyalty points and
-// order/unpaid-credit history all come from the locally-synced tables
-// (offline, same as Sell); only recording a payment requires connectivity -
-// see PaymentModal's own note on why credit-payments isn't part of the
-// synced schema. Unpaid credit is deliberately not date-scoped (a tab is
-// still owed regardless of what period is being viewed), and store-scoped
-// rather than tenant-wide, matching apps/desktop/src/Till.tsx's identical
-// "this store" unpaid-credit stat.
+// order/unpaid-credit history now come from a plain REST fetch of this
+// store's whole order history plus the tenant's whole customer list (this
+// app is online-only - there is no local database left to query), combined
+// client-side the same "fetch everything, filter/aggregate in memory" way
+// SellScreen's own catalog+order-history fetch does; only recording a
+// payment requires its own separate call - see PaymentModal's own note on
+// why credit-payments isn't fetched here. Unpaid credit is deliberately not
+// date-scoped (a tab is still owed regardless of what period is being
+// viewed), and store-scoped rather than tenant-wide, matching
+// apps/desktop/src/Till.tsx's identical "this store" unpaid-credit stat.
 export function CustomersScreen({ user, payloadToken, storeId }: { user: PayloadUser; payloadToken: string; storeId: number | null }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
 
   const placeholderColor = useMutedPlaceholderColor();
   const [query, setQuery] = useState('');
-  const [candidates, setCandidates] = useState<LocalCustomer[]>([]);
+  const [rawCustomers, setRawCustomers] = useState<RawCustomer[]>([]);
+  const [rawOrders, setRawOrders] = useState<RawOrder[]>([]);
   const [detailCustomer, setDetailCustomer] = useState<LocalCustomer | null>(null);
-  const [orders, setOrders] = useState<RecentOrder[]>([]);
   const [paymentOrder, setPaymentOrder] = useState<LocalOrder | null>(null);
 
-  // Whole store's customer list loaded once (unpaid_total/count included),
-  // not per keystroke, so search can fuzzy-match client-side - same reason
-  // as SellScreen's product search. The default (empty-query) view's
-  // "highest unpaid balance first" ordering is preserved by filtering this
-  // already-sorted list below rather than re-sorting by search relevance.
-  const refreshCustomers = useCallback(() => {
+  // Whole tenant's customer list plus this store's whole order history,
+  // fetched together and re-fetched on pull-to-refresh/tab-focus - same
+  // "fetch everything, aggregate/filter in memory" shape as SellScreen's own
+  // catalog+order-history fetch. depth=1 on the orders fetch populates each
+  // order's `customer` relation as {id,...} so unpaid totals/per-customer
+  // history can be grouped client-side without a second round trip per
+  // customer.
+  const refresh = useCallback(async () => {
     if (storeId == null) {
-      setCandidates([]);
+      setRawCustomers([]);
+      setRawOrders([]);
       return;
     }
-    getDb()
-      .getAll<LocalCustomer>(
-        `SELECT c.id, c.name, c.phone, c.email, c.loyalty_points,
-                COALESCE((SELECT SUM(o.total) FROM orders o WHERE o.customer_id = c.id AND o.store_id = ? AND o.status = 'completed' AND o.tender_type = 'credit' AND o.payment_status = 'pending'), 0) AS unpaid_total,
-                COALESCE((SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.id AND o.store_id = ? AND o.status = 'completed' AND o.tender_type = 'credit' AND o.payment_status = 'pending'), 0) AS unpaid_count
-         FROM customers c
-         WHERE c.tenant_id = ?
-         ORDER BY unpaid_total DESC, c.name LIMIT 1000`,
-        [storeId, storeId, tenantId],
-      )
-      .then(setCandidates);
-  }, [storeId, tenantId]);
+    const headers = { Authorization: `JWT ${payloadToken}` };
+    const [customersBody, ordersBody] = await Promise.all([
+      fetch(`${API_BASE_URL}/api/customers?where[tenant][equals]=${tenantId}&sort=name&limit=2000`, { headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch(`${API_BASE_URL}/api/orders?where[store][equals]=${storeId}&sort=-createdAt&limit=5000&depth=1`, { headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ]);
+    setRawCustomers(customersBody?.docs ?? []);
+    setRawOrders(ordersBody?.docs ?? []);
+  }, [storeId, tenantId, payloadToken]);
 
   // Refetches on every tab focus (not just mount) - this screen stays
   // mounted across tab switches, so its data could otherwise go stale
@@ -87,11 +110,34 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
   // already proven in OverviewScreen.tsx.
   useFocusEffect(
     useCallback(() => {
-      refreshCustomers();
-    }, [refreshCustomers]),
+      refresh();
+    }, [refresh]),
   );
 
-  const { refreshing, onRefresh } = usePullToRefresh(refreshCustomers);
+  const { refreshing, onRefresh } = usePullToRefresh(refresh);
+
+  // Unpaid credit is aggregated per customer from the already-fetched order
+  // list (orders already sorted -createdAt) rather than a second query -
+  // "highest unpaid balance first" ordering matches the old SQL's own
+  // `ORDER BY unpaid_total DESC, name`.
+  const candidates = useMemo<LocalCustomer[]>(() => {
+    const unpaidByCustomer = new Map<number, { total: number; count: number }>();
+    for (const o of rawOrders) {
+      if (o.status !== 'completed' || o.tenderType !== 'credit' || o.paymentStatus !== 'pending') continue;
+      const cid = customerIdOf(o);
+      if (cid == null) continue;
+      const entry = unpaidByCustomer.get(cid) ?? { total: 0, count: 0 };
+      entry.total += o.total;
+      entry.count += 1;
+      unpaidByCustomer.set(cid, entry);
+    }
+    return rawCustomers
+      .map((c) => {
+        const unpaid = unpaidByCustomer.get(c.id) ?? { total: 0, count: 0 };
+        return { id: String(c.id), name: c.name, phone: c.phone ?? null, email: c.email ?? null, loyalty_points: c.loyaltyPoints ?? 0, unpaid_total: unpaid.total, unpaid_count: unpaid.count };
+      })
+      .sort((a, b) => b.unpaid_total - a.unpaid_total || a.name.localeCompare(b.name));
+  }, [rawCustomers, rawOrders]);
 
   const customers = useMemo(() => {
     const trimmed = query.trim();
@@ -101,24 +147,20 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
     return candidates.filter((c) => matched.has(c.id)).slice(0, 50);
   }, [query, candidates]);
 
-  const refreshOrders = useCallback(() => {
-    if (!detailCustomer || storeId == null) {
-      setOrders([]);
-      return;
-    }
-    getDb()
-      .getAll<RecentOrder>(
-        `SELECT id, total, tender_type, payment_status, created_at, synced_at FROM orders
-         WHERE customer_id = ? AND store_id = ? ORDER BY COALESCE(created_at, synced_at) DESC LIMIT 20`,
-        [Number(detailCustomer.id), storeId],
-      )
-      .then(setOrders);
-  }, [detailCustomer, storeId]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    refreshOrders();
-  }, [refreshOrders]);
+  // This customer's full order history at this store - filtered from the
+  // already-fetched rawOrders rather than a second per-customer fetch, same
+  // "fetch everything, filter in memory" reasoning as candidates above.
+  // synced_at has no REST equivalent (it was a PowerSync-local insert-time
+  // marker) - always null now, which orderDateLabel already falls back past
+  // since created_at is always present from the server.
+  const orders = useMemo<RecentOrder[]>(() => {
+    if (!detailCustomer) return [];
+    const id = Number(detailCustomer.id);
+    return rawOrders
+      .filter((o) => customerIdOf(o) === id)
+      .slice(0, 20)
+      .map((o) => ({ id: o.id, total: o.total, tender_type: o.tenderType, payment_status: o.paymentStatus, created_at: o.createdAt, synced_at: null }));
+  }, [detailCustomer, rawOrders]);
 
   if (storeId == null) {
     return (
@@ -240,10 +282,7 @@ export function CustomersScreen({ user, payloadToken, storeId }: { user: Payload
         user={user}
         payloadToken={payloadToken}
         onClose={() => setPaymentOrder(null)}
-        onRecorded={() => {
-          refreshOrders();
-          refreshCustomers();
-        }}
+        onRecorded={refresh}
       />
     </View>
     </KeyboardAvoidingView>

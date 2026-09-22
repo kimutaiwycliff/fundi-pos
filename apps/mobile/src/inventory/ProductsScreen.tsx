@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@powersync/react';
+import { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import Fuse from 'fuse.js';
 import * as ImagePicker from 'expo-image-picker';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -8,20 +8,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { getDb } from '../db/database';
 import { API_BASE_URL, OFFLINE_MESSAGE } from '../lib/auth';
 import type { PayloadUser } from '../lib/auth';
+import { fetchCatalog, fetchStockLevels, stockKey, stockByKeyMap, type CatalogProduct } from '../lib/catalog';
 import { showAlert, showToast } from '../components/AppNotice';
 import { usePullToRefresh } from '../lib/usePullToRefresh';
 
 interface LocalProductRow {
-  // Every PowerSync primary key is TEXT locally regardless of the real
-  // Postgres column type (same rule already documented elsewhere in this
-  // app, e.g. db/database.ts's own note on stores.id) - id is a string
-  // here, unlike the plain replicated INTEGER foreign-key columns
-  // (products_variants._parent_id, stock_movements.product_id) that
-  // reference it, which is why those get Number(...)'d before binding
-  // below.
+  // Kept as a string here (Number(...)'d back out wherever a numeric
+  // Payload id is actually needed, e.g. relatedProducts/PATCH targets) -
+  // matches this file's pre-existing local type, not a REST-shape
+  // requirement (CatalogProduct.id is a plain number).
   id: string;
   name: string;
   sku: string | null;
@@ -53,17 +50,6 @@ interface WorkingVariant {
   costPrice: string;
   imageId: number | null;
   imageUrl: string | null;
-}
-
-interface LocalVariantRow {
-  id: string;
-  label: string;
-  sku: string | null;
-  barcode: string | null;
-  sell_price: number | null;
-  cost_price: number | null;
-  image_id: number | null;
-  image_url: string | null;
 }
 
 interface VariantStock {
@@ -155,22 +141,54 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   // scratch flow's own variant list.
   const [expandedNewVariants, setExpandedNewVariants] = useState<Set<number>>(new Set());
 
-  // Reactive: PowerSync's useQuery re-runs this automatically whenever
-  // `products`, `products_variants`, or `media` change locally - including
-  // rows that just landed via a background sync - so a product created
-  // elsewhere (web, or this same device) appears here without needing a
-  // remount or a pull-to-refresh.
-  const { data: products, refresh } = useQuery<LocalProductRow>(
-    `SELECT p.id, p.name, p.sku, p.barcode, p.category, p.cost_price, p.sell_price, p.tax_rate, p.reorder_point, p.is_active, p.image_id, m.url AS image_url,
-            (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
-     FROM products p
-     LEFT JOIN media m ON m.id = p.image_id
-     WHERE p.tenant_id = ?
-     ORDER BY p.name LIMIT 5000`,
-    [tenantId],
+  const [rawCatalog, setRawCatalog] = useState<CatalogProduct[]>([]);
+  const [stockByKey, setStockByKey] = useState<Map<string, number>>(new Map());
+
+  // Whole tenant catalog (every product regardless of active status - this
+  // screen is where a product gets toggled active/inactive, so unlike
+  // Sell/Restock it must NOT filter is_active out) plus this store's stock
+  // levels, fetched together and re-fetched on pull-to-refresh/tab-focus -
+  // same "fetch everything" shape as SellScreen's own catalog fetch. Unlike
+  // the old reactive PowerSync useQuery, a row here only updates after an
+  // explicit refresh - every mutation below (price/active/image/variants/
+  // create) calls refresh() itself on success so the list doesn't go stale.
+  const refresh = useCallback(async () => {
+    const [catalog, levels] = await Promise.all([
+      fetchCatalog(payloadToken, tenantId, { activeOnly: false }),
+      storeId != null ? fetchStockLevels(payloadToken, storeId) : Promise.resolve([]),
+    ]);
+    setRawCatalog(catalog);
+    setStockByKey(stockByKeyMap(levels));
+  }, [payloadToken, tenantId, storeId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
   );
 
-  const { refreshing, onRefresh } = usePullToRefresh(refresh!);
+  const { refreshing, onRefresh } = usePullToRefresh(refresh);
+
+  const catalogById = useMemo(() => new Map(rawCatalog.map((p) => [String(p.id), p])), [rawCatalog]);
+  const products = useMemo<LocalProductRow[]>(
+    () =>
+      rawCatalog.map((p) => ({
+        id: String(p.id),
+        name: p.name,
+        sku: p.sku || null,
+        barcode: p.barcode,
+        category: p.category,
+        cost_price: p.costPrice,
+        sell_price: p.sellPrice,
+        tax_rate: p.taxRate,
+        reorder_point: p.reorderPoint,
+        is_active: p.isActive ? 1 : 0,
+        image_id: p.imageId,
+        image_url: p.imageUrl,
+        variant_count: p.variants.length,
+      })),
+    [rawCatalog],
+  );
 
   const results = useMemo(() => {
     const trimmed = query.trim();
@@ -204,46 +222,33 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
     setSelected(product);
     setPriceDraft(String(product.sell_price));
     setRelatedQuery('');
-    // _parent_id/product_id are plain replicated INTEGER foreign-key
-    // columns (not primary keys), unlike product.id itself (always TEXT
-    // locally) - converted here so the comparison actually matches.
-    const numericProductId = Number(product.id);
-    getDb()
-      .getAll<LocalVariantRow>(
-        `SELECT pv.id, pv.label, pv.sku, pv.barcode, pv.sell_price, pv.cost_price, pv.image_id, vm.url AS image_url
-         FROM products_variants pv LEFT JOIN media vm ON vm.id = pv.image_id
-         WHERE pv._parent_id = ? ORDER BY pv._order`,
-        [numericProductId],
-      )
-      .then((rows) =>
-        setWorkingVariants(
-          rows.map((v) => ({
-            id: v.id,
-            label: v.label,
-            sku: v.sku ?? '',
-            barcode: v.barcode ?? '',
-            sellPrice: v.sell_price != null ? String(v.sell_price) : '',
-            costPrice: v.cost_price != null ? String(v.cost_price) : '',
-            imageId: v.image_id,
-            imageUrl: v.image_url,
-          })),
-        ),
-      );
-    if (storeId != null) {
-      getDb()
-        .getAll<VariantStock>(
-          `SELECT NULL AS variant_id, COALESCE(SUM(quantity_delta), 0) AS quantity FROM stock_movements WHERE product_id = ? AND store_id = ? AND variant IS NULL
-           UNION ALL
-           SELECT pv.id AS variant_id, COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS quantity
-           FROM products_variants pv WHERE pv._parent_id = ?`,
-          [numericProductId, storeId, storeId, numericProductId],
-        )
-        .then(setStock);
+    // Variants are already embedded in the fetched catalog's own `variants`
+    // array (Payload nests them, no separate query needed).
+    const raw = catalogById.get(product.id);
+    setWorkingVariants(
+      (raw?.variants ?? []).map((v) => ({
+        id: v.id,
+        label: v.label,
+        sku: v.sku,
+        barcode: v.barcode ?? '',
+        sellPrice: v.sellPrice != null ? String(v.sellPrice) : '',
+        costPrice: v.costPrice != null ? String(v.costPrice) : '',
+        imageId: v.imageId,
+        imageUrl: v.imageUrl,
+      })),
+    );
+    if (storeId != null && raw) {
+      const numericProductId = raw.id;
+      setStock([
+        { variant_id: null, quantity: stockByKey.get(stockKey(numericProductId, null)) ?? 0 },
+        ...raw.variants.map((v) => ({ variant_id: v.id, quantity: stockByKey.get(stockKey(numericProductId, v.id)) ?? 0 })),
+      ]);
     } else {
       setStock([]);
     }
-    // relatedProducts isn't synced locally (see the field's own comment
-    // above) - fetched fresh from Payload every time the modal opens.
+    // relatedProducts isn't part of the catalog fetch's own shape (it's a
+    // plain id-array field, already correctly REST-only before this
+    // conversion) - fetched fresh from Payload every time the modal opens.
     fetch(`${API_BASE_URL}/api/products/${product.id}?depth=0`, { headers: { Authorization: `JWT ${payloadToken}` } })
       .then((r) => r.json())
       .then((body) => setRelatedIds(Array.isArray(body?.relatedProducts) ? body.relatedProducts.map(Number) : []))
@@ -260,12 +265,10 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   }
 
   // Writes go straight to Payload over REST, same online-only pattern
-  // StaffScreen.tsx/StockAdjustmentModal.tsx already use - PowerSync's sync
-  // rules are read-only from the client's side, there's no local write path
-  // for a replicated table. `products` (the live useQuery above) picks up
-  // each PATCH's effect on its own once it round-trips back down; `selected`
-  // (the open detail modal's own state) is still patched directly below for
-  // instant in-modal feedback.
+  // StaffScreen.tsx/StockAdjustmentModal.tsx already use. `products` is
+  // refetched via refresh() on success below so the outer list picks up
+  // each change; `selected` (the open detail modal's own state) is also
+  // patched directly for instant in-modal feedback ahead of that refetch.
   async function savePrice() {
     if (!selected) return;
     const nextPrice = Number(priceDraft);
@@ -287,6 +290,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
       }
       setSelected((prev) => (prev ? { ...prev, sell_price: nextPrice } : prev));
       showToast('Sell price updated');
+      refresh();
     } catch {
       showAlert('Failed to save', OFFLINE_MESSAGE);
     } finally {
@@ -308,6 +312,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
         return;
       }
       setSelected((prev) => (prev ? { ...prev, is_active: next ? 1 : 0 } : prev));
+      refresh();
     } catch {
       showAlert('Failed to save', OFFLINE_MESSAGE);
     }
@@ -375,6 +380,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
         return;
       }
       setSelected((prev) => (prev ? { ...prev, image_id: uploaded.id, image_url: uploaded.url } : prev));
+      refresh();
     } catch {
       showAlert('Failed to save', OFFLINE_MESSAGE);
     } finally {
@@ -452,6 +458,7 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
         return;
       }
       showToast('Variants updated');
+      refresh();
     } catch {
       showAlert('Failed to save', OFFLINE_MESSAGE);
     } finally {
@@ -604,11 +611,9 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
         showAlert('Failed to create product', body?.errors?.[0]?.message ?? 'Could not create product');
         return;
       }
-      // `products` is now a live PowerSync query result (see useQuery
-      // above), not local state to patch - it picks up this new row on its
-      // own once the sync stream brings it back down, typically well
-      // within a second on a connected socket (the same connection this
-      // POST itself just depended on to succeed).
+      // `products` is derived from fetched state, not a live query - refresh
+      // explicitly so this new row shows up in the list right away.
+      await refresh();
       showToast('Product created');
       closeCreate();
     } catch {

@@ -127,10 +127,12 @@ export async function refreshTillToken(payloadToken: string): Promise<LoginResul
 /**
  * GET /api/powersync/token - exchanges the Payload session JWT for a
  * short-lived (1hr) RS256 JWT scoped for PowerSync client auth (tenant_id/
- * store_id/role claims, see apps/api/src/lib/powersyncAuth.ts). Called once
- * here up front purely to fail fast with a readable error if login/
- * authorization is broken - the real connector (db/connector.ts) calls this
- * same endpoint itself every time PowerSync asks it for fresh credentials.
+ * store_id/role claims, see apps/api/src/lib/powersyncAuth.ts). Unused by
+ * this app now that PowerSync has been removed client-side (see db/*.ts's
+ * own removal) - kept here, unused, since the server-side PowerSync
+ * infrastructure this endpoint belongs to is explicitly out of scope to
+ * decommission (other devices may still be on an old PowerSync-based build
+ * during the rollout).
  */
 export async function fetchPowerSyncToken(payloadToken: string, storeId?: number | null): Promise<string> {
   const url = storeId != null ? `${API_BASE_URL}/api/powersync/token?storeId=${storeId}` : `${API_BASE_URL}/api/powersync/token`;

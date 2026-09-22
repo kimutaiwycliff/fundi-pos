@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@powersync/react';
+import { useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
@@ -15,11 +14,25 @@ export interface LocalCustomer {
   email: string | null;
 }
 
+interface RawCustomer {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+}
+
+function mapCustomer(c: RawCustomer): LocalCustomer {
+  return { id: String(c.id), name: c.name, phone: c.phone ?? null, email: c.email ?? null };
+}
+
 // Credit ("pay later") sales must be tied to a known customer. Existing
-// customers are searched from the locally-synced `customers` table (offline
-// - matches apps/desktop's till behavior); a brand new customer requires
-// connectivity, same as apps/web/.../sell/customer-picker.tsx's create flow,
-// via Payload's auto-generated REST endpoint for the `customers` collection.
+// customers are searched via a plain REST fetch of the whole tenant's
+// customer list (this app is online-only now - there is no local database
+// to query) - fetched once per mount, fuzzy-matched client-side same as
+// SellScreen's own product search. A brand new customer requires
+// connectivity too, same as apps/web/.../sell/customer-picker.tsx's create
+// flow, via Payload's auto-generated REST endpoint for the `customers`
+// collection.
 export function CustomerPicker({
   payloadToken,
   tenantId,
@@ -38,15 +51,29 @@ export function CustomerPicker({
   const [newEmail, setNewEmail] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Whole tenant's customer list, kept live via PowerSync's reactive
-  // useQuery (re-runs on its own as customers change locally) rather than a
-  // one-shot load. Search still fuzzy-matches client-side, same pattern as
-  // SellScreen's product search (see its own note on why, ported from
-  // apps/web's fuzzySearch).
-  const { data: catalog } = useQuery<LocalCustomer>(
-    `SELECT id, name, phone, email FROM customers WHERE tenant_id = ? ORDER BY name LIMIT 2000`,
-    [tenantId],
-  );
+  const [catalog, setCatalog] = useState<LocalCustomer[]>([]);
+
+  // One-shot fetch of the whole tenant's customer list on mount - re-fetches
+  // whenever this component itself remounts (e.g. the tender toggles back to
+  // credit), which is close enough to "kept fresh" for a picker that's only
+  // open for a few seconds at a time.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE_URL}/api/customers?where[tenant][equals]=${tenantId}&sort=name&limit=2000`, {
+      headers: { Authorization: `JWT ${payloadToken}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (cancelled) return;
+        setCatalog(((body?.docs ?? []) as RawCustomer[]).map(mapCustomer));
+      })
+      .catch(() => {
+        if (!cancelled) setCatalog([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [payloadToken, tenantId]);
 
   const results = useMemo(() => {
     const trimmed = query.trim();

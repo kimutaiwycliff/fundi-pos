@@ -3,10 +3,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { View, Text, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getDb } from '../db/database';
 import { usePullToRefresh } from '../lib/usePullToRefresh';
-import { isLowStock, type StockLevel } from '../inventory/types';
-import type { PayloadUser } from '../lib/auth';
+import { isLowStock } from '../inventory/types';
+import { API_BASE_URL, type PayloadUser } from '../lib/auth';
+import { fetchCatalog, fetchStockLevels, buildStockRows, stockByKeyMap } from '../lib/catalog';
 
 interface TodaySummary {
   total: number;
@@ -33,18 +33,46 @@ interface RecentOrder {
 
 const TENDER_LABELS: Record<string, string> = { cash: 'Cash', mpesa: 'M-Pesa', credit: 'Credit' };
 
+interface RawVariant {
+  id: string;
+  costPrice: number | null;
+}
+
+interface RawLineItemProduct {
+  id: number;
+  costPrice: number;
+  variants?: RawVariant[];
+}
+
+interface RawLineItem {
+  product: RawLineItemProduct | number;
+  variant: string | null;
+  quantity: number;
+  unitPrice: number;
+  discount: number;
+}
+
+interface RawOrder {
+  id: string;
+  total: number;
+  tenderType: string;
+  status: string;
+  customer: { name: string | null } | number | null;
+  createdAt: string;
+  lineItems?: RawLineItem[];
+}
+
 // "Today so far" for this store, mirroring apps/web's dashboard overview
 // (apps/web/src/app/dashboard/page.tsx) but single-store (mobile is always
-// scoped to whichever branch is active) and computed entirely from already-
-// synced local tables - no live call, works offline like everything else in
-// this app. One real approximation vs web: unpaid credit here is the GROSS
-// unpaid order total, not net of partial payments - credit_payments (the
-// installment ledger) isn't synced to mobile at all (see schema.ts), so a
-// customer who's paid down part of a credit sale still shows its full
-// original total here until fully settled. Refreshes on tab focus (not just
-// mount) since this is the one screen a cashier is expected to glance back
-// at after making a sale, unlike the rest of the app's mount-once screens.
-export function OverviewScreen({ user, storeId }: { user: PayloadUser; storeId: number | null }) {
+// scoped to whichever branch is active) and computed entirely from a plain
+// REST fetch of this store's orders - there is no local database left to
+// read from. One real approximation vs web: unpaid credit here is the GROSS
+// unpaid order total, not net of partial payments - credit-payments (the
+// installment ledger) isn't fetched here, same as before. Refreshes on tab
+// focus (not just mount) since this is the one screen a cashier is expected
+// to glance back at after making a sale, unlike the rest of the app's
+// mount-once screens.
+export function OverviewScreen({ user, payloadToken, storeId }: { user: PayloadUser; payloadToken: string; storeId: number | null }) {
   const [today, setToday] = useState<TodaySummary>({ total: 0, count: 0 });
   const [lowStockCount, setLowStockCount] = useState(0);
   const [unpaid, setUnpaid] = useState<UnpaidSummary>({ total: 0, count: 0 });
@@ -52,71 +80,85 @@ export function OverviewScreen({ user, storeId }: { user: PayloadUser; storeId: 
   const [recent, setRecent] = useState<RecentOrder[]>([]);
   const [profit, setProfit] = useState<number | null>(null);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     if (storeId == null) return;
-    const db = getDb();
+    const headers = { Authorization: `JWT ${payloadToken}` };
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const tid = tenantId(user);
 
-    db.getAll<TodaySummary>(
-      `SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS count FROM orders
-       WHERE store_id = ? AND status = 'completed' AND date(COALESCE(created_at, synced_at), 'localtime') = date('now', 'localtime')`,
-      [storeId],
-    ).then((rows) => setToday(rows[0] ?? { total: 0, count: 0 }));
+    // Today's completed orders (default depth, so `lineItems[].product` -
+    // including each product's own `variants` array - is populated for the
+    // owner-only profit calc below) - and this store's whole unpaid-credit
+    // set (not date-scoped, a tab is owed regardless of when it's viewed)
+    // and its 5 most recent completed orders (not date-scoped either, same
+    // as the old SQL) are separate, cheaper fetches.
+    const [todayBody, unpaidBody, recentBody, catalog, levels] = await Promise.all([
+      fetch(
+        `${API_BASE_URL}/api/orders?where[store][equals]=${storeId}&where[status][equals]=completed&where[createdAt][greater_than_equal]=${startOfDay.toISOString()}&limit=2000`,
+        { headers },
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch(
+        `${API_BASE_URL}/api/orders?where[store][equals]=${storeId}&where[status][equals]=completed&where[tenderType][equals]=credit&where[paymentStatus][equals]=pending&limit=2000&depth=0`,
+        { headers },
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch(`${API_BASE_URL}/api/orders?where[store][equals]=${storeId}&where[status][equals]=completed&sort=-createdAt&limit=5&depth=1`, { headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetchCatalog(payloadToken, tid),
+      fetchStockLevels(payloadToken, storeId),
+    ]);
 
-    db.getAll<UnpaidSummary>(
-      `SELECT COALESCE(SUM(total), 0) AS total, COUNT(*) AS count FROM orders
-       WHERE store_id = ? AND status = 'completed' AND tender_type = 'credit' AND payment_status = 'pending'`,
-      [storeId],
-    ).then((rows) => setUnpaid(rows[0] ?? { total: 0, count: 0 }));
+    const todayOrders = (todayBody?.docs ?? []) as RawOrder[];
+    setToday({ total: todayOrders.reduce((sum, o) => sum + o.total, 0), count: todayOrders.length });
 
-    db.getAll<TenderSlice>(
-      `SELECT tender_type, COALESCE(SUM(total), 0) AS total FROM orders
-       WHERE store_id = ? AND status = 'completed' AND date(COALESCE(created_at, synced_at), 'localtime') = date('now', 'localtime')
-       GROUP BY tender_type ORDER BY total DESC`,
-      [storeId],
-    ).then(setTenderMix);
+    const tenderTotals = new Map<string, number>();
+    for (const o of todayOrders) {
+      tenderTotals.set(o.tenderType, (tenderTotals.get(o.tenderType) ?? 0) + o.total);
+    }
+    setTenderMix([...tenderTotals.entries()].map(([tender_type, total]) => ({ tender_type, total })).sort((a, b) => b.total - a.total));
 
-    db.getAll<RecentOrder>(
-      `SELECT o.id, o.total, o.tender_type, c.name AS customer_name, COALESCE(o.created_at, o.synced_at) AS created_at
-       FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
-       WHERE o.store_id = ? AND o.status = 'completed'
-       ORDER BY COALESCE(o.created_at, o.synced_at) DESC LIMIT 5`,
-      [storeId],
-    ).then(setRecent);
+    const unpaidOrders = (unpaidBody?.docs ?? []) as RawOrder[];
+    setUnpaid({ total: unpaidOrders.reduce((sum, o) => sum + o.total, 0), count: unpaidOrders.length });
+
+    const recentDocs = (recentBody?.docs ?? []) as RawOrder[];
+    setRecent(
+      recentDocs.map((o) => ({
+        id: o.id,
+        total: o.total,
+        tender_type: o.tenderType,
+        customer_name: typeof o.customer === 'object' ? (o.customer?.name ?? null) : null,
+        created_at: o.createdAt,
+      })),
+    );
 
     // Bare products (no variants) unioned with variant rows, same "a
     // variant-having product never shows a bare-self row" rule as
-    // InventoryScreen's own levels query.
-    db.getAll<StockLevel>(
-      `SELECT p.id AS product_id, NULL AS variant_id, p.reorder_point AS reorder_point,
-              COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS quantity
-       FROM products p
-       WHERE p.tenant_id = ? AND p.is_active = 1
-         AND NOT EXISTS (SELECT 1 FROM products_variants pv WHERE pv._parent_id = p.id)
-       UNION ALL
-       SELECT p.id AS product_id, pv.id AS variant_id, p.reorder_point AS reorder_point,
-              COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS quantity
-       FROM products_variants pv
-       JOIN products p ON p.id = pv._parent_id
-       WHERE p.tenant_id = ? AND p.is_active = 1`,
-      [storeId, tenantId(user), storeId, tenantId(user)],
-    ).then((rows) => setLowStockCount(rows.filter(isLowStock).length));
+    // InventoryScreen's own stock-level rows (shared via buildStockRows).
+    setLowStockCount(buildStockRows(catalog, stockByKeyMap(levels)).filter(isLowStock).length);
 
     if (user.role === 'owner') {
-      db.getAll<{ profit: number }>(
-        // oli.discount is a flat per-line amount (see SellScreen's cart:
-        // `item.quantity * price - item.discountAmount`), not per-unit -
-        // this previously multiplied it by quantity too, over-subtracting
-        // for any line with quantity > 1 and understating profit.
-        `SELECT COALESCE(SUM(oli.unit_price * oli.quantity - oli.discount - COALESCE(pv.cost_price, p.cost_price, 0) * oli.quantity), 0) AS profit
-         FROM orders_line_items oli
-         JOIN orders o ON o.id = oli._parent_id
-         LEFT JOIN products p ON p.id = oli.product_id
-         LEFT JOIN products_variants pv ON pv.id = oli.variant
-         WHERE o.store_id = ? AND o.status = 'completed' AND date(COALESCE(o.created_at, o.synced_at), 'localtime') = date('now', 'localtime')`,
-        [storeId],
-      ).then((rows) => setProfit(rows[0]?.profit ?? 0));
+      // oli.discount is a flat per-line amount (see SellScreen's cart:
+      // `item.quantity * price - item.discountAmount`), not per-unit - kept
+      // that way here too, matching the original SQL's own fix note.
+      let profitSum = 0;
+      for (const o of todayOrders) {
+        for (const li of o.lineItems ?? []) {
+          const product = typeof li.product === 'object' ? li.product : null;
+          const variant = product && li.variant ? product.variants?.find((v) => v.id === li.variant) : undefined;
+          const cost = variant?.costPrice ?? product?.costPrice ?? 0;
+          profitSum += li.unitPrice * li.quantity - li.discount - cost * li.quantity;
+        }
+      }
+      setProfit(profitSum);
+    } else {
+      setProfit(null);
     }
-  }, [storeId, user]);
+  }, [storeId, payloadToken, user]);
 
   useFocusEffect(
     useCallback(() => {

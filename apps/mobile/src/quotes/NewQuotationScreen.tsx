@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@powersync/react';
+import { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import Fuse from 'fuse.js';
 import { View, Text, TextInput, Pressable, FlatList, Modal, Image, Platform } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -7,22 +7,33 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { showAlert } from '../components/AppNotice';
 import type { PayloadUser } from '../lib/auth';
+import { fetchCatalog, type CatalogProduct } from '../lib/catalog';
+import { QuantityField } from '../components/QuantityField';
 import { createQuotation, type QuotationLineItem } from './quotations';
 import { QuoteVariantPickerModal } from './QuoteVariantPickerModal';
 import { quoteLineLabel, quoteLineUnitPrice, type QuoteProduct, type QuoteVariant } from './types';
+
+function toQuoteProduct(p: CatalogProduct): QuoteProduct {
+  return { id: String(p.id), name: p.name, sku: p.sku, barcode: p.barcode, sell_price: p.sellPrice, variant_count: p.variants.length, image_url: p.imageUrl };
+}
+
+function toQuoteVariants(p: CatalogProduct): QuoteVariant[] {
+  return p.variants.map((v) => ({ id: v.id, label: v.label, sku: v.sku, barcode: v.barcode, sell_price: v.sellPrice, image_url: v.imageUrl }));
+}
 
 function lineKey(l: Pick<QuotationLineItem, 'product' | 'variant'>): string {
   return `${l.product}::${l.variant ?? ''}`;
 }
 
 // Builder screen for a quotation - modeled on SellScreen.tsx's search/add
-// flow (same catalog useQuery + Fuse fuzzy search + requestAdd-style variant
-// gate) but deliberately NOT SellScreen's CartLine/checkout: no discount
-// cap, no stock check of any kind, and unit price is a plain free-text
-// number seeded from sell_price rather than something computed/clamped.
-// Line items live in local state only until "Create quotation" posts them
-// to the server in one shot - there's no local draft persistence (matches
-// this collection's own REST-only, non-PowerSync-synced nature).
+// flow (same REST catalog fetch + Fuse fuzzy search + requestAdd-style
+// variant gate) but deliberately NOT SellScreen's CartLine/checkout: no
+// discount cap, no stock check of any kind, and unit price is a plain
+// free-text number seeded from sell_price rather than something
+// computed/clamped. Line items live in local state only until "Create
+// quotation" posts them to the server in one shot - there's no local draft
+// persistence (matches this collection's own REST-only nature, same as
+// before).
 export function NewQuotationScreen({
   user,
   payloadToken,
@@ -48,19 +59,39 @@ export function NewQuotationScreen({
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // Same reactive catalog query as SellScreen.tsx (tenant-wide, active
-  // products only), minus the per-store stock_on_hand subquery - a
-  // quotation isn't gated by what's currently on the shelf, so storeId
-  // never needs to reach this query at all.
-  const { data: catalog } = useQuery<QuoteProduct>(
-    `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, m.url AS image_url,
-            (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
-     FROM products p
-     LEFT JOIN media m ON m.id = p.image_id
-     WHERE p.tenant_id = ? AND p.is_active = 1
-     ORDER BY p.name LIMIT 5000`,
-    [tenantId],
+  const [rawCatalog, setRawCatalog] = useState<CatalogProduct[]>([]);
+
+  // Same REST catalog fetch as SellScreen.tsx (tenant-wide, active products
+  // only), minus the per-store stock fetch - a quotation isn't gated by
+  // what's currently on the shelf, so storeId never needs to reach this
+  // fetch at all.
+  const refresh = useCallback(async () => {
+    setRawCatalog(await fetchCatalog(payloadToken, tenantId));
+  }, [payloadToken, tenantId]);
+
+  // This screen is a conditionally-mounted view inside QuotationsHomeScreen's
+  // own little state machine, not a react-navigation route of its own - but
+  // it's nested under the "More" tab, so useFocusEffect still fires on mount
+  // (a newly-mounted screen is immediately focused) and again if the user
+  // tabs away and back while still on this view, same convention as every
+  // other converted screen.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
   );
+
+  const catalogById = useMemo(() => new Map(rawCatalog.map((p) => [String(p.id), p])), [rawCatalog]);
+  const catalog = useMemo(() => rawCatalog.map(toQuoteProduct), [rawCatalog]);
+
+  // Variants for whichever product the picker currently has open - looked up
+  // from the already-fetched catalog rather than a separate network round
+  // trip, same pattern as SellScreen's own variantPickerOptions.
+  const variantPickerVariants = useMemo(() => {
+    if (!variantPickerProduct) return [];
+    const raw = catalogById.get(variantPickerProduct.id);
+    return raw ? toQuoteVariants(raw) : [];
+  }, [variantPickerProduct, catalogById]);
 
   // Exact barcode match short-circuits the fuzzy pass, same reasoning as
   // SellScreen's own search (a scanned barcode is exact digits with no room
@@ -201,7 +232,12 @@ export function NewQuotationScreen({
         </View>
       </Pressable>
 
-      <QuoteVariantPickerModal product={variantPickerProduct} onSelect={(variant) => variantPickerProduct && addLine(variantPickerProduct, variant)} onClose={() => setVariantPickerProduct(null)} />
+      <QuoteVariantPickerModal
+        product={variantPickerProduct}
+        variants={variantPickerVariants}
+        onSelect={(variant) => variantPickerProduct && addLine(variantPickerProduct, variant)}
+        onClose={() => setVariantPickerProduct(null)}
+      />
 
       <Modal visible={reviewOpen} animationType="slide" onRequestClose={() => setReviewOpen(false)}>
         <SafeAreaView edges={['top']} className="flex-1 bg-background">
@@ -231,12 +267,7 @@ export function NewQuotationScreen({
                   <Pressable android_ripple={{}} className="h-8 w-8 items-center justify-center rounded-md border border-border" onPress={() => updateQuantity(index, item.quantity - 1)}>
                     <Text className="text-foreground">−</Text>
                   </Pressable>
-                  <TextInput
-                    className="w-12 text-center text-foreground"
-                    keyboardType="number-pad"
-                    value={String(item.quantity)}
-                    onChangeText={(text) => updateQuantity(index, Number(text) || 0)}
-                  />
+                  <QuantityField quantity={item.quantity} onChange={(next) => updateQuantity(index, next)} />
                   <Pressable android_ripple={{}} className="h-8 w-8 items-center justify-center rounded-md border border-border" onPress={() => updateQuantity(index, item.quantity + 1)}>
                     <Text className="text-foreground">+</Text>
                   </Pressable>

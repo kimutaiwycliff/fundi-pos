@@ -1,16 +1,26 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { View, Text, TextInput, Pressable, FlatList, Image, RefreshControl, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { useQuery } from '@powersync/react';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import type { PayloadUser } from '../lib/auth';
+import { API_BASE_URL, type PayloadUser } from '../lib/auth';
+import { fetchCatalog, fetchStockLevels, buildStockRows, stockByKeyMap, type CatalogProduct } from '../lib/catalog';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
-import { isLowStock, type StockLevel } from './types';
+import { isLowStock } from './types';
 import { usePullToRefresh } from '../lib/usePullToRefresh';
+
+interface RawFlaggedMovement {
+  id: string;
+  quantityDelta: number;
+  reason: string;
+  sourceTerminal: string;
+  clientTimestamp: string;
+  product: { name: string } | number;
+}
 
 interface FlaggedMovement {
   id: string;
@@ -21,15 +31,29 @@ interface FlaggedMovement {
   product_name: string;
 }
 
+function mapFlagged(m: RawFlaggedMovement): FlaggedMovement {
+  return {
+    id: m.id,
+    quantity_delta: m.quantityDelta,
+    reason: m.reason,
+    source_terminal: m.sourceTerminal,
+    client_timestamp: m.clientTimestamp,
+    product_name: typeof m.product === 'object' ? m.product.name : `#${m.product}`,
+  };
+}
+
 type Tab = 'levels' | 'exceptions';
 
-// Phase 3 - inventory management. Stock levels and exceptions both come
-// from the locally-synced stock_movements ledger (offline, same derived-sum
-// semantics as apps/desktop and /api/reports/stock-levels - current stock
-// is never a stored count). Stock transfers (a separate two-store, multi-
-// line-item, manager-gated workflow per StockTransfers.ts's access rules)
-// aren't built yet - deferred the same way Phase 1's printing/scanning was.
-export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUser; terminalId: string; storeId: number | null }) {
+// Phase 3 - inventory management. Stock levels come from a plain REST
+// fetch of the catalog + /api/reports/stock-levels (same derived-sum
+// semantics as apps/desktop and apps/web - current stock is never a stored
+// count); exceptions come from Payload's own stock-movements collection,
+// filtered to flaggedForReview - there is no local database left to read
+// either from (this app is online-only now). Stock transfers (a separate
+// two-store, multi-line-item, manager-gated workflow per
+// StockTransfers.ts's access rules) aren't built yet - deferred the same
+// way Phase 1's printing/scanning was.
+export function InventoryScreen({ user, payloadToken, terminalId, storeId }: { user: PayloadUser; payloadToken: string; terminalId: string; storeId: number | null }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
   // Matches StockMovements.ts's own access.create - owner and manager only.
   const canManage = user.role === 'owner' || user.role === 'manager';
@@ -39,35 +63,25 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
   const [adjustOpen, setAdjustOpen] = useState(false);
   const placeholderColor = useMutedPlaceholderColor();
 
-  // Reactive: re-runs on its own whenever products/products_variants/
-  // stock_movements/media change locally (a new product, a new variant, a
-  // stock adjustment landing via sync or via StockAdjustmentModal below),
-  // so this list never needs a remount or a pull-to-refresh to catch up.
-  // storeId ?? -1 (rather than skipping the query) since hooks can't be
-  // called conditionally - a -1 store id naturally matches zero rows,
-  // same empty-state result the old early-return produced.
-  //
-  // Bare products (no variants) unioned with one row per variant for
-  // products that have them - a variant-having product never shows a
-  // bare-self row, matching web's identical "tracked separately" rule.
-  const { data: rawLevels, refresh: refreshLevels } = useQuery<StockLevel>(
-    `SELECT p.id AS product_id, NULL AS variant_id, p.name AS product_name, NULL AS variant_label, p.sku AS sku, p.reorder_point AS reorder_point, pm.url AS image_url,
-            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS quantity
-     FROM products p
-     LEFT JOIN media pm ON pm.id = p.image_id
-     WHERE p.tenant_id = ? AND p.is_active = 1
-       AND NOT EXISTS (SELECT 1 FROM products_variants pv WHERE pv._parent_id = p.id)
-     UNION ALL
-     SELECT p.id AS product_id, pv.id AS variant_id, p.name AS product_name, pv.label AS variant_label, pv.sku AS sku, p.reorder_point AS reorder_point, COALESCE(vm.url, pm.url) AS image_url,
-            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS quantity
-     FROM products_variants pv
-     JOIN products p ON p.id = pv._parent_id
-     LEFT JOIN media pm ON pm.id = p.image_id
-     LEFT JOIN media vm ON vm.id = pv.image_id
-     WHERE p.tenant_id = ? AND p.is_active = 1
-     ORDER BY product_name`,
-    [storeId ?? -1, tenantId, storeId ?? -1, tenantId],
-  );
+  const [rawCatalog, setRawCatalog] = useState<CatalogProduct[]>([]);
+  const [stockByKey, setStockByKey] = useState<Map<string, number>>(new Map());
+  const [flagged, setFlagged] = useState<FlaggedMovement[]>([]);
+
+  // Whole active catalog for this tenant plus this store's stock levels,
+  // fetched together - same "fetch everything, filter in memory" shape as
+  // SellScreen's own catalog fetch. buildStockRows reproduces the old SQL's
+  // union exactly: bare products (no variants) get one row, products WITH
+  // variants get one row per variant, never both.
+  const refreshLevels = useCallback(async () => {
+    const [catalog, levels] = await Promise.all([
+      fetchCatalog(payloadToken, tenantId),
+      storeId != null ? fetchStockLevels(payloadToken, storeId) : Promise.resolve([]),
+    ]);
+    setRawCatalog(catalog);
+    setStockByKey(stockByKeyMap(levels));
+  }, [payloadToken, tenantId, storeId]);
+
+  const rawLevels = useMemo(() => buildStockRows(rawCatalog, stockByKey), [rawCatalog, stockByKey]);
   const levels = useMemo(() => [...rawLevels].sort((a, b) => Number(isLowStock(b)) - Number(isLowStock(a))), [rawLevels]);
 
   const results = useMemo(() => {
@@ -77,17 +91,39 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
     return fuse.search(trimmed).map((r) => r.item);
   }, [query, levels]);
 
-  const { data: flagged, refresh: refreshFlagged } = useQuery<FlaggedMovement>(
-    `SELECT sm.id, sm.quantity_delta, sm.reason, sm.source_terminal, sm.client_timestamp, p.name AS product_name
-     FROM stock_movements sm
-     JOIN products p ON p.id = sm.product_id
-     WHERE sm.store_id = ? AND sm.flagged_for_review = 1
-     ORDER BY sm.client_timestamp DESC LIMIT 100`,
-    [storeId ?? -1],
+  // Exceptions - Payload's own stock-movements collection (default REST),
+  // filtered to rows the server flagged for going negative (see
+  // StockMovements.ts's own afterChange hook, unchanged) - no local ledger
+  // left to read this from anymore.
+  const refreshFlagged = useCallback(async () => {
+    if (storeId == null) {
+      setFlagged([]);
+      return;
+    }
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/stock-movements?where[store][equals]=${storeId}&where[flaggedForReview][equals]=true&sort=-clientTimestamp&limit=100&depth=1`,
+        { headers: { Authorization: `JWT ${payloadToken}` } },
+      );
+      const body = res.ok ? await res.json().catch(() => null) : null;
+      setFlagged(((body?.docs ?? []) as RawFlaggedMovement[]).map(mapFlagged));
+    } catch {
+      setFlagged([]);
+    }
+  }, [storeId, payloadToken]);
+
+  const refresh = useCallback(async () => {
+    await Promise.all([refreshLevels(), refreshFlagged()]);
+  }, [refreshLevels, refreshFlagged]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
   );
 
-  const levelsRefresh = usePullToRefresh(refreshLevels!);
-  const flaggedRefresh = usePullToRefresh(refreshFlagged!);
+  const levelsRefresh = usePullToRefresh(refreshLevels);
+  const flaggedRefresh = usePullToRefresh(refreshFlagged);
 
   if (storeId == null) {
     return (
@@ -190,14 +226,12 @@ export function InventoryScreen({ user, terminalId, storeId }: { user: PayloadUs
 
       <StockAdjustmentModal
         visible={adjustOpen}
+        payloadToken={payloadToken}
         tenantId={tenantId}
         storeId={storeId}
         terminalId={terminalId}
         onClose={() => setAdjustOpen(false)}
-        onRecorded={() => {
-          refreshLevels?.();
-          refreshFlagged?.();
-        }}
+        onRecorded={refresh}
       />
       </KeyboardAvoidingView>
     </SafeAreaView>

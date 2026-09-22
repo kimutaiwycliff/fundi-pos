@@ -8,8 +8,7 @@ import { useMutedPlaceholderColor } from '../lib/theme';
 import { View, Text, TextInput, Pressable, FlatList, Modal, Linking, RefreshControl, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { getDb } from '../db/database';
-import type { PayloadUser } from '../lib/auth';
+import { API_BASE_URL, type PayloadUser } from '../lib/auth';
 import { showAlert } from '../components/AppNotice';
 import { usePullToRefresh } from '../lib/usePullToRefresh';
 import { PaymentModal, type LocalOrder } from '../customers/PaymentModal';
@@ -39,6 +38,41 @@ interface OrderLine {
   quantity: number;
   unit_price: number;
   discount: number;
+}
+
+interface RawOrder {
+  id: string;
+  total: number;
+  taxTotal: number;
+  discountTotal: number;
+  tenderType: string;
+  paymentStatus: string;
+  status: string;
+  createdAt: string;
+  terminalName: string | null;
+  customer: { id: number; name: string | null; phone: string | null; email: string | null } | number | null;
+  cashier: { id: number; name: string | null; email: string | null } | number | null;
+}
+
+function mapOrder(o: RawOrder): OrderRow {
+  const customer = typeof o.customer === 'object' ? o.customer : null;
+  const cashier = typeof o.cashier === 'object' ? o.cashier : null;
+  return {
+    id: o.id,
+    total: o.total,
+    tax_total: o.taxTotal,
+    discount_total: o.discountTotal,
+    tender_type: o.tenderType,
+    payment_status: o.paymentStatus,
+    status: o.status,
+    created_at: o.createdAt,
+    customer_name: customer?.name ?? null,
+    customer_phone: customer?.phone ?? null,
+    customer_email: customer?.email ?? null,
+    cashier_name: cashier?.name ?? null,
+    cashier_email: cashier?.email ?? null,
+    terminal_name: o.terminalName ?? null,
+  };
 }
 
 type StatusFilter = 'all' | 'unpaid' | 'paid' | 'voided' | 'refunded';
@@ -85,11 +119,13 @@ function matchesStatus(order: OrderRow, filter: StatusFilter): boolean {
 // Phase 4 - sales history, reprint (on-screen only - ESC/POS printing is
 // still deferred, same as Phase 1) and void/refund. Reuses PaymentModal
 // from Customers (Phase 2) for settling an unpaid credit sale found here,
-// rather than duplicating that flow. Reads local orders only (this store's
-// own synced history, offline, same as apps/desktop/src/FindSalePanel.tsx);
-// void/refund and settling both still require connectivity, per the plan's
-// Option-A decision. Status/date filters and the widened search (phone,
-// cashier, terminal) mirror apps/web's dashboard/sales page's own filters.
+// rather than duplicating that flow. Reads this store's order history via a
+// plain REST fetch (this app is online-only now - there is no local
+// database left to read from), same "fetch everything, filter/search
+// client-side" shape as apps/web's own dashboard/sales page (status/date
+// filters and the widened search across phone/cashier/terminal mirror that
+// page's filters exactly); void/refund and settling both still require
+// connectivity, per the plan's Option-A decision - no different from before.
 export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser; payloadToken: string; storeId: number | null }) {
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
   const placeholderColor = useMutedPlaceholderColor();
@@ -111,39 +147,35 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
   // synced tenant-wide regardless of which store this till is on (see
   // sync-config.yaml's `tenants` stream).
   useEffect(() => {
-    getDb()
-      .get<{ name: string; receipt_header: string | null; receipt_footer: string | null }>('SELECT name, receipt_header, receipt_footer FROM tenants WHERE id = ?', [tenantId])
-      .then((row) => setTenantInfo({ name: row.name, receiptHeader: row.receipt_header, receiptFooter: row.receipt_footer }))
+    fetch(`${API_BASE_URL}/api/tenants/${tenantId}`, { headers: { Authorization: `JWT ${payloadToken}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((row) => setTenantInfo(row ? { name: row.name, receiptHeader: row.receiptHeader ?? null, receiptFooter: row.receiptFooter ?? null } : null))
       .catch(() => setTenantInfo(null));
-  }, [tenantId]);
+  }, [tenantId, payloadToken]);
 
-  // Recent order history for this store loaded once, not per keystroke, so
+  // Recent order history for this store fetched once (not per keystroke), so
   // search can fuzzy-match client-side - same pattern as SellScreen's
-  // product search. Order id is a real id (not free text a person typed),
-  // so it keeps exact-prefix matching below rather than being fuzzed - a
-  // typo-tolerant match on a 36-char id string would just be noise; the
+  // product search. depth=1 populates each order's customer/cashier
+  // relations directly. Order id is a real id (not free text a person
+  // typed), so it keeps exact-prefix matching below rather than being fuzzed
+  // - a typo-tolerant match on a 36-char id string would just be noise; the
   // free-text fields (customer/cashier name, phone, terminal) are what
   // typos actually happen in.
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     if (storeId == null) {
       setCandidates([]);
       return;
     }
-    getDb()
-      .getAll<OrderRow>(
-        `SELECT o.id, o.total, o.tax_total, o.discount_total, o.tender_type, o.payment_status, o.status,
-                COALESCE(o.created_at, o.synced_at) AS created_at, o.terminal_name,
-                c.name AS customer_name, c.phone AS customer_phone, c.email AS customer_email,
-                u.name AS cashier_name, u.email AS cashier_email
-         FROM orders o
-         LEFT JOIN customers c ON c.id = o.customer_id
-         LEFT JOIN users u ON u.id = o.cashier_id
-         WHERE o.store_id = ?
-         ORDER BY COALESCE(o.created_at, o.synced_at) DESC LIMIT 1000`,
-        [storeId],
-      )
-      .then(setCandidates);
-  }, [storeId]);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/orders?where[store][equals]=${storeId}&sort=-createdAt&limit=1000&depth=1`, {
+        headers: { Authorization: `JWT ${payloadToken}` },
+      });
+      const body = res.ok ? await res.json().catch(() => null) : null;
+      setCandidates(((body?.docs ?? []) as RawOrder[]).map(mapOrder));
+    } catch {
+      setCandidates([]);
+    }
+  }, [storeId, payloadToken]);
 
   // Refetches on every tab focus (not just mount) - this screen stays
   // mounted across tab switches, so its data could otherwise go stale
@@ -182,15 +214,27 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
     return [...idMatches, ...otherMatches.filter((o) => !idMatchIds.has(o.id))].slice(0, 30);
   }, [query, scoped]);
 
-  function fetchOrderLines(orderId: string): Promise<OrderLine[]> {
-    return getDb().getAll<OrderLine>(
-      `SELECT p.name AS product_name, oli.quantity, oli.unit_price, oli.discount
-       FROM orders_line_items oli
-       JOIN products p ON p.id = oli.product_id
-       WHERE oli._parent_id = ?
-       ORDER BY oli._order`,
-      [orderId],
-    );
+  // Fetched per-order, on demand (receipt open / WhatsApp send), rather than
+  // requesting every line item up front in the list fetch above - the list
+  // fetch's own depth=1 only populates the order's direct relations
+  // (customer/cashier), not the nested lineItems[].product relation, so a
+  // default-depth single-order fetch is what actually resolves each line's
+  // product name.
+  async function fetchOrderLines(orderId: string): Promise<OrderLine[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/orders/${orderId}`, { headers: { Authorization: `JWT ${payloadToken}` } });
+      if (!res.ok) return [];
+      const body = await res.json().catch(() => null);
+      const lineItems = (body?.lineItems ?? []) as Array<{ product: { name: string } | number; quantity: number; unitPrice: number; discount: number }>;
+      return lineItems.map((li) => ({
+        product_name: typeof li.product === 'object' ? li.product.name : `#${li.product}`,
+        quantity: li.quantity,
+        unit_price: li.unitPrice,
+        discount: li.discount,
+      }));
+    } catch {
+      return [];
+    }
   }
 
   function openReceipt(order: OrderRow) {

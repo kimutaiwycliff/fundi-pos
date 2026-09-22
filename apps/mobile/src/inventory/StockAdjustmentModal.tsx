@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@powersync/react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { Modal, View, Text, TextInput, Pressable, FlatList, Platform } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { getDb } from '../db/database';
+import { API_BASE_URL, apiFetch } from '../lib/auth';
+import { fetchCatalog, type CatalogProduct } from '../lib/catalog';
 import { uuid } from '../lib/uuid';
 
 interface PickableProduct {
@@ -25,18 +25,19 @@ const TYPES = [
   { value: 'write_off', label: 'Write-off (damaged / lost / expired)' },
 ] as const;
 
-// Every manual stock change is a new stock_movements row, never a direct
+// Every manual stock change is a new stock-movements row, never a direct
 // edit to a count (there is no stored count) - mirrors apps/web/.../
 // inventory/stock-adjustment-dialog.tsx's write shape exactly (same
-// implied-sign convention per type), but as a LOCAL PowerSync insert rather
-// than a REST call: unlike a sale (whose stock_movements rows only ever
-// come from the server's Orders.ts hook, never written by the client - see
-// SellScreen's own note), a manual adjustment's row IS the authoritative
-// write itself on every surface, including web's - so writing it locally
-// here and letting it sync up is a strict offline-capability upgrade over
-// web's online-only REST POST, not a behavior change.
+// implied-sign convention per type), posted via the same idempotent-on-
+// duplicate-id ingestion route (`POST /api/sync/stock-movements`) the old
+// PowerSync connector used to upload this exact table's local writes - see
+// db/connector.ts's own uploadStockMovement (now removed) for the shape
+// this mirrors. A manual adjustment's row IS the authoritative write itself
+// on every surface, same as web's own online-only REST POST - there is no
+// offline queuing here, matching this app's now fully online-only nature.
 export function StockAdjustmentModal({
   visible,
+  payloadToken,
   tenantId,
   storeId,
   terminalId,
@@ -44,6 +45,7 @@ export function StockAdjustmentModal({
   onRecorded,
 }: {
   visible: boolean;
+  payloadToken: string;
   tenantId: number;
   storeId: number;
   terminalId: string;
@@ -59,6 +61,8 @@ export function StockAdjustmentModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [rawCatalog, setRawCatalog] = useState<CatalogProduct[]>([]);
+
   useEffect(() => {
     if (!visible) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -68,17 +72,14 @@ export function StockAdjustmentModal({
     setType('restock');
     setQuantity('');
     setError(null);
-  }, [visible]);
+    fetchCatalog(payloadToken, tenantId).then(setRawCatalog);
+  }, [visible, payloadToken, tenantId]);
 
-  // Whole tenant's active-product list, kept live via PowerSync's reactive
-  // useQuery (re-runs on its own as products change locally) rather than a
-  // one-shot load - same pattern as ProductsScreen/InventoryScreen. Search
-  // still fuzzy-matches client-side, same reason as SellScreen's product
-  // search.
-  const { data: catalog } = useQuery<PickableProduct>(
-    `SELECT id, name, sku FROM products WHERE tenant_id = ? AND is_active = 1 ORDER BY name LIMIT 5000`,
-    [tenantId],
-  );
+  // Whole tenant's active-product list, fetched fresh each time this modal
+  // opens (see the effect above) - same catalog source as
+  // ProductsScreen/InventoryScreen. Search still fuzzy-matches client-side,
+  // same reason as SellScreen's product search.
+  const catalog = useMemo<PickableProduct[]>(() => rawCatalog.map((p) => ({ id: String(p.id), name: p.name, sku: p.sku })), [rawCatalog]);
 
   const productResults = useMemo(() => {
     const trimmed = productQuery.trim();
@@ -87,14 +88,14 @@ export function StockAdjustmentModal({
     return fuse.search(trimmed).slice(0, 10).map((r) => r.item);
   }, [productQuery, catalog]);
 
-  // Reactive for the same reason as the catalog query above. selectedProduct?.id
-  // ?? '' keeps the hook call unconditional (PowerSync's useQuery can't be
-  // called conditionally) while still matching zero rows before a product
-  // is picked.
-  const { data: variants } = useQuery<PickableVariant>(
-    `SELECT id, label FROM products_variants WHERE _parent_id = ? ORDER BY _order`,
-    [selectedProduct?.id ?? ''],
-  );
+  // A picked product's variants are already embedded in the fetched
+  // catalog's own `variants` array (Payload nests them, no separate query
+  // needed) - looked up here rather than re-fetched.
+  const variants = useMemo<PickableVariant[]>(() => {
+    if (!selectedProduct) return [];
+    const raw = rawCatalog.find((p) => String(p.id) === selectedProduct.id);
+    return raw ? raw.variants.map((v) => ({ id: v.id, label: v.label })) : [];
+  }, [selectedProduct, rawCatalog]);
 
   async function handleSubmit() {
     if (!selectedProduct) {
@@ -118,11 +119,26 @@ export function StockAdjustmentModal({
     setBusy(true);
     setError(null);
     try {
-      await getDb().execute(
-        `INSERT INTO stock_movements (id, tenant_id, store_id, product_id, variant, quantity_delta, reason, client_timestamp, source_terminal)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [uuid(), tenantId, storeId, Number(selectedProduct.id), selectedVariant?.id ?? null, quantityDelta, type, new Date().toISOString(), terminalId],
-      );
+      const res = await apiFetch(`${API_BASE_URL}/api/sync/stock-movements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+        body: JSON.stringify({
+          id: uuid(),
+          tenant: tenantId,
+          store: storeId,
+          product: Number(selectedProduct.id),
+          variant: selectedVariant?.id ?? null,
+          quantityDelta,
+          reason: type,
+          clientTimestamp: new Date().toISOString(),
+          sourceTerminal: terminalId,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setError(body?.error ?? body?.errors?.[0]?.message ?? `Could not record movement (HTTP ${res.status})`);
+        return;
+      }
       onRecorded();
       onClose();
     } catch (err) {

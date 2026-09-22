@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@powersync/react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Modal, View, Text, TextInput, Pressable, FlatList, Image } from 'react-native';
@@ -11,34 +10,25 @@ import type { QuoteProduct, QuoteVariant } from './types';
 // that modal disables out-of-stock variants (stock-gating baked into
 // `disabled={outOfStock}`), which doesn't apply to a quotation ("no
 // stock-quantity gating of any kind" per the builder's own requirements).
-// Same reactive query pattern (products_variants on demand, once the modal
-// actually opens), just without the per-store stock_on_hand subquery/join,
-// so every variant of a picked product is always selectable here - and this
-// modal doesn't even need a storeId, since nothing it queries is store-
-// scoped.
+// `variants` is pre-fetched by the caller (NewQuotationScreen's own catalog
+// fetch, mapped to QuoteVariant[]) rather than queried here - there's no
+// local database to query anymore now that catalog data comes from the REST
+// API, and unlike sell/VariantPickerModal.tsx this modal never needed a
+// per-store stock subquery/join anyway, so every variant of a picked
+// product is always selectable here.
 export function QuoteVariantPickerModal({
   product,
+  variants,
   onSelect,
   onClose,
 }: {
   product: QuoteProduct | null;
+  variants: QuoteVariant[];
   onSelect: (variant: QuoteVariant) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState('');
   const placeholderColor = useMutedPlaceholderColor();
-
-  // product?.id ?? '' keeps the hook call unconditional (PowerSync's
-  // useQuery can't be called conditionally) while still matching zero rows
-  // whenever the modal is closed (product == null).
-  const { data: variants } = useQuery<QuoteVariant>(
-    `SELECT pv.id, pv.label, pv.sku, pv.barcode, pv.sell_price, m.url AS image_url
-     FROM products_variants pv
-     LEFT JOIN media m ON m.id = pv.image_id
-     WHERE pv._parent_id = ?
-     ORDER BY pv._order`,
-    [product?.id ?? ''],
-  );
 
   const results = useMemo(() => {
     const trimmed = query.trim();

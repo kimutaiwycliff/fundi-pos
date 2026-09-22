@@ -110,7 +110,7 @@ function MoreScreen({
           {section === 'audit' ? <AuditLogScreen payloadToken={payloadToken} /> : null}
           {section === 'customers' ? <RealCustomersScreen user={user} payloadToken={payloadToken} storeId={storeId} /> : null}
           {section === 'reports' ? <ReportsScreen user={user} payloadToken={payloadToken} /> : null}
-          {section === 'inventory' ? <RealInventoryScreen user={user} terminalId={terminalId} storeId={storeId} /> : null}
+          {section === 'inventory' ? <RealInventoryScreen user={user} payloadToken={payloadToken} terminalId={terminalId} storeId={storeId} /> : null}
           {section === 'restock' ? <RestockHomeScreen user={user} storeId={storeId} payloadToken={payloadToken} /> : null}
           {section === 'quotations' ? <QuotationsHomeScreen user={user} payloadToken={payloadToken} storeId={storeId} /> : null}
         </KeyboardAvoidingView>
@@ -160,7 +160,7 @@ export function RootTabs({
         tabBarStyle: { paddingTop: 8, paddingBottom: 8 + insets.bottom, height: 64 + insets.bottom },
       })}
     >
-      <Tab.Screen name="Overview">{() => <OverviewScreen user={user} storeId={storeId} />}</Tab.Screen>
+      <Tab.Screen name="Overview">{() => <OverviewScreen user={user} payloadToken={payloadToken} storeId={storeId} />}</Tab.Screen>
       <Tab.Screen name="Sell">
         {() => <RealSellScreen user={user} payloadToken={payloadToken} terminalId={terminalId} terminalName={terminalName} storeId={storeId} />}
       </Tab.Screen>
