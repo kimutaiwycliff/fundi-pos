@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
-import { useWatchedQuery } from './useWatchedQuery';
 import { SearchIcon } from './icons';
 
 export interface LocalVariant {
@@ -20,47 +19,31 @@ interface PickerProduct {
 }
 
 // Opens whenever a variant-having product is picked - a product with
-// variants is never sold as its bare self, matching web/Android's
-// identical rule. Queries products_variants on demand rather than joining
-// it into every search result row, since most searches never open this.
-// Same search-box treatment (Fuse config, same keys) as the web/Android
-// pickers this ports the feature from.
+// variants is never sold as its bare self, matching web/Android's identical
+// rule. `variants` is now a pre-fetched prop from the caller (Till.tsx/
+// QuotationsScreen.tsx, both of which already have the full catalog +
+// stock-level fetch in hand via catalog.ts) instead of this dialog querying
+// a local database itself - there's no local database any more. Same
+// search-box treatment (Fuse config, same keys) as the web/Android pickers
+// this ports the feature from.
 export function VariantPickerDialog({
   product,
-  storeId,
+  variants,
   onSelect,
   onClose,
 }: {
   product: PickerProduct | null;
-  storeId: number;
+  variants: LocalVariant[];
   onSelect: (variant: LocalVariant) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState('');
 
   // Clears the in-dialog search box whenever a different product opens (or
-  // the dialog closes) - a UI-only reset, kept separate from the data query
-  // below since it has nothing to do with what's fetched.
+  // the dialog closes) - a UI-only reset, kept separate from the data itself.
   useEffect(() => {
     setQuery('');
   }, [product]);
-
-  // Reactive (useWatchedQuery, not a one-shot db.getAll): re-runs on its
-  // own whenever products_variants/stock_movements change locally, so a
-  // stock count on screen never goes stale mid-pick the way a one-shot
-  // snapshot would - same overselling-relevant risk as Till.tsx's own
-  // product search. `product?.id ?? null` (rather than skipping the query
-  // when the dialog is closed) reproduces the old "no product -> no
-  // variants" behavior in SQL, since a hook can't be called conditionally.
-  const { data: variants } = useWatchedQuery<LocalVariant>(
-    `SELECT pv.id, pv.label, pv.sku, pv.barcode, pv.sell_price, pv.cost_price,
-            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
-                      WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS stock_on_hand
-     FROM products_variants pv
-     WHERE pv._parent_id = ?
-     ORDER BY pv._order`,
-    [storeId, product?.id ?? null],
-  );
 
   const results = useMemo(() => {
     const trimmed = query.trim();

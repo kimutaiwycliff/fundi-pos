@@ -11,18 +11,17 @@
 // Fetch-API-shaped call proxied through a Tauri command.
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 
-// apps/api (Payload) and the PowerSync service. Vite-env-driven so a real
-// distributed build points at the real production domains instead of a
-// dev machine's own localhost - caught live: every installed till was
-// silently trying to reach localhost:3011 on the CASHIER'S OWN computer,
-// since these were plain hardcoded string literals before. `.env.production`
-// (committed, not secret - these are public URLs, same as apps/web's own
-// NEXT_PUBLIC_API_URL) supplies the real values; `vite build` (what
-// `tauri build` runs via beforeBuildCommand) loads it automatically since
-// production is its default mode. Falls back to the original dev ports
-// when no .env.production is picked up (plain `vite dev`/`npm run dev`).
+// apps/api (Payload). Vite-env-driven so a real distributed build points at
+// the real production domain instead of a dev machine's own localhost -
+// caught live: every installed till was silently trying to reach
+// localhost:3011 on the CASHIER'S OWN computer, since this was a plain
+// hardcoded string literal before. `.env.production` (committed, not secret -
+// this is a public URL, same as apps/web's own NEXT_PUBLIC_API_URL) supplies
+// the real value; `vite build` (what `tauri build` runs via
+// beforeBuildCommand) loads it automatically since production is its default
+// mode. Falls back to the original dev port when no .env.production is
+// picked up (plain `vite dev`/`npm run dev`).
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3011';
-export const POWERSYNC_URL = import.meta.env.VITE_POWERSYNC_URL ?? 'http://localhost:8080';
 
 // Shown wherever a caught error's message reaches the screen directly (this
 // file's own throws, and any other module that reuses it) - consistent
@@ -134,34 +133,4 @@ export async function refreshTillToken(payloadToken: string): Promise<LoginResul
   }
 
   return { payloadToken: body.token as string, user: body.user as PayloadUser };
-}
-
-/**
- * GET /api/powersync/token - exchanges the Payload session JWT for a
- * short-lived (1hr) RS256 JWT scoped for PowerSync client auth (tenant_id/
- * store_id/role claims, see apps/api/src/lib/powersyncAuth.ts).
- *
- * Called once here up front purely to fail fast with a readable error if
- * login/authorization is broken. The Rust-side connector (see
- * src-tauri/src/connector.rs) calls this same endpoint itself, every time
- * PowerSync asks it for fresh credentials - which is also how the 1hr
- * expiry is handled: PowerSync re-invokes fetch_credentials() on
- * reconnect/expiry, so the connector just re-fetches a new token then.
- */
-export async function fetchPowerSyncToken(payloadToken: string, storeId?: number | null): Promise<string> {
-  const url = storeId != null ? `${API_BASE_URL}/api/powersync/token?storeId=${storeId}` : `${API_BASE_URL}/api/powersync/token`;
-  const res = await apiFetch(url, {
-    method: 'GET',
-    headers: { Authorization: `JWT ${payloadToken}` },
-  });
-
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(body?.error ?? `PowerSync token fetch failed (HTTP ${res.status})`);
-  }
-  if (!body?.token) {
-    throw new Error('PowerSync token response did not include a token');
-  }
-
-  return body.token as string;
 }

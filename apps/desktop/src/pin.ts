@@ -1,107 +1,52 @@
-import { invoke } from '@tauri-apps/api/core';
-import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
-import { getDb } from './database';
-import { API_BASE_URL, OFFLINE_MESSAGE } from './auth';
+import { normalizeKenyanPhone } from '@hardware-pos/business-logic';
+import { apiFetch, API_BASE_URL, OFFLINE_MESSAGE } from './auth';
 
-interface LocalUserCandidate {
-  id: number;
-  phone: string | null;
-  name: string | null;
-  role: string;
-  pin_hash: string | null;
-}
-
-// phone, not id: findUserAndCheckPinLocally's other identifier option
-// (below). userId is what App.tsx's offline-resume flow uses - it already
-// knows exactly who from the cached session, no identifier gets typed at
-// all there, unlike cashier switching/manager authorization below.
-type Identifier = { phone: string } | { userId: number };
-
-/**
- * Fully-offline PIN check against a specific role subset's pin_hash,
- * already synced down locally (spec Section 6.1: PIN login must be
- * instant, zero network). Shared by the manager-authorization pre-check
- * (findManagerAndCheckPinLocally), fast cashier switching
- * (findStaffAndCheckPinLocally), and offline session resume
- * (checkPinLocallyById) below - same mechanism, different role filter/
- * identifier, so it's factored out once rather than duplicated.
- */
-async function findUserAndCheckPinLocally(
-  identifier: Identifier,
-  pin: string,
-  allowedRoles: string[],
-): Promise<{ userId: number; role: string; name: string | null; valid: boolean } | null> {
-  const db = getDb();
-  // Safe to call unconditionally - init() is idempotent (the PowerSync
-  // plugin's own subscribe() calls it the same way on every invocation).
-  // Needed here specifically for the offline-resume path (App.tsx/
-  // session.ts), which checks a PIN locally before connectPowerSync() -
-  // and therefore db.init() - has necessarily run yet this session.
-  await db.init();
-  const placeholders = allowedRoles.map(() => '?').join(', ');
-  const [whereColumn, whereValue] = 'phone' in identifier ? ['phone', identifier.phone] : ['id', identifier.userId];
-  // status = 'active' excludes a banned staff member from the candidate
-  // pool entirely, the same way a not-found phone would - this is the
-  // offline half of banning someone; the online half (blocking password/
-  // PIN login, and kicking an already-connected till within its token's
-  // ~1hr lifetime) lives server-side in Users.ts and the powersync/token
-  // and pin-login routes. Takes effect here as soon as this till's `users`
-  // bucket has synced since the ban, same latency as everything else synced.
-  const rows = await db.getAll<LocalUserCandidate>(
-    `SELECT id, phone, name, role, pin_hash FROM users WHERE ${whereColumn} = ? AND role IN (${placeholders}) AND status = 'active'`,
-    [whereValue, ...allowedRoles],
-  );
-  const candidate = rows[0];
-  if (!candidate || !candidate.pin_hash) return null;
-
-  const valid = await invoke<boolean>('verify_manager_pin', { pin, storedHash: candidate.pin_hash });
-  return { userId: candidate.id, role: candidate.role, name: candidate.name, valid };
-}
+// This file used to also do fully-offline PIN verification (scrypt against a
+// locally-synced users.pin_hash row, via the Rust-side verify_manager_pin
+// command in src-tauri/src/pin.rs - both now deleted) for three things:
+// offline session resume, fast cashier-switching, and a manager-
+// authorization *pre-check* ahead of a void/refund or credit-settlement. Now
+// that this app is online-only (no local database at all), none of that
+// local verification is possible any more - offline resume is removed
+// outright (see App.tsx), fast cashier-switching now goes through a real
+// loginWithPin call instead (see CashierSwitcher.tsx), and the manager-
+// authorization pre-check below is replaced with a plain REST lookup of the
+// manager's id by phone. This mirrors apps/mobile/src/lib/pin.ts's identical
+// simplification. The lookup below was never the actual authorization
+// anyway (see authorizeOrderStatusChange/authorizeSettlement, which the
+// server always independently re-verifies the PIN against) - only a fast
+// local check for immediate "wrong PIN" feedback before spending a round
+// trip. Losing that early feedback (a wrong PIN now surfaces via the
+// server's own error response instead of instantly) is an accepted, minor
+// consequence of going online-only, not a security change: the server-side
+// re-check this always depended on for the real decision is untouched.
 
 /**
- * NOT the actual authorization for a refund/void - see
- * authorizeOrderStatusChange below, which the server independently
- * re-verifies before committing anything (a tampered client could
- * otherwise fake this local check). This is only the fast local pre-check
- * for immediate UX feedback on a wrong PIN.
+ * Looks up a manager/owner by phone - does NOT verify a PIN at all (there's
+ * nothing local left to check it against). Used ahead of
+ * authorizeOrderStatusChange/authorizeSettlement purely to resolve a phone
+ * number typed at the till into the managerId those calls need; the actual
+ * PIN check happens server-side inside those calls.
  */
-export async function findManagerAndCheckPinLocally(
-  managerPhone: string,
-  pin: string,
-): Promise<{ managerId: number; name: string | null; valid: boolean } | null> {
-  const result = await findUserAndCheckPinLocally({ phone: managerPhone }, pin, ['manager', 'owner']);
-  return result ? { managerId: result.userId, name: result.name, valid: result.valid } : null;
-}
-
-/**
- * Fast cashier switching (spec Section 6.1): any staff member - cashier,
- * manager, or owner - can "clock in" as the active cashier for subsequent
- * sales via PIN alone, without a full logout/login cycle or losing the
- * underlying PowerSync connection (which stays authenticated as whoever
- * did the original login). Identified by phone (the till's fast-login
- * identifier everywhere else), not email - a cashier at the till doesn't
- * necessarily know their own email offhand the way they know their phone.
- */
-export async function findStaffAndCheckPinLocally(
+export async function findManagerByPhone(
+  payloadToken: string,
   phone: string,
-  pin: string,
-): Promise<{ userId: number; role: string; name: string | null; valid: boolean } | null> {
-  return findUserAndCheckPinLocally({ phone }, pin, ['cashier', 'manager', 'owner']);
-}
-
-/**
- * Offline session resume (App.tsx/session.ts) - re-verifies the specific
- * cached user's own PIN on a cold start, not a general "who is this"
- * lookup like the two functions above (which take an identifier someone
- * typed in). No identifier gets typed here at all, so there's no
- * email-vs-phone question to begin with - the userId is already known
- * from the persisted session.
- */
-export async function checkPinLocallyById(
-  userId: number,
-  pin: string,
-): Promise<{ userId: number; role: string; name: string | null; valid: boolean } | null> {
-  return findUserAndCheckPinLocally({ userId }, pin, ['cashier', 'manager', 'owner']);
+): Promise<{ managerId: number; name: string | null } | null> {
+  const normalized = normalizeKenyanPhone(phone);
+  if (!normalized) return null;
+  try {
+    const res = await apiFetch(
+      `${API_BASE_URL}/api/users?where[phone][equals]=${encodeURIComponent(normalized)}&where[role][in]=manager,owner&where[status][equals]=active&limit=1&depth=0`,
+      { headers: { Authorization: `JWT ${payloadToken}` } },
+    );
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    const doc = body?.docs?.[0];
+    if (!doc) return null;
+    return { managerId: doc.id, name: doc.name ?? null };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -118,7 +63,7 @@ export async function authorizeOrderStatusChange(
   pin: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const res = await tauriFetch(`${API_BASE_URL}/api/orders/${orderId}/authorize-status`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/orders/${orderId}/authorize-status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
       body: JSON.stringify({ status, managerId, pin }),
@@ -128,8 +73,8 @@ export async function authorizeOrderStatusChange(
       return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
     }
     return { ok: true };
-  } catch {
-    return { ok: false, error: OFFLINE_MESSAGE };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : OFFLINE_MESSAGE };
   }
 }
 
@@ -146,7 +91,7 @@ export async function authorizeSettlement(
   pin: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const res = await tauriFetch(`${API_BASE_URL}/api/orders/${orderId}/settle`, {
+    const res = await apiFetch(`${API_BASE_URL}/api/orders/${orderId}/settle`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
       body: JSON.stringify({ managerId, pin }),
@@ -156,7 +101,7 @@ export async function authorizeSettlement(
       return { ok: false, error: body?.error ?? `Request failed (HTTP ${res.status})` };
     }
     return { ok: true };
-  } catch {
-    return { ok: false, error: OFFLINE_MESSAGE };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : OFFLINE_MESSAGE };
   }
 }

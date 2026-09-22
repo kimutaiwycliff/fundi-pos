@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { useWatchedQuery } from './useWatchedQuery';
 import type { PayloadUser } from './auth';
 import { useToast } from './Toast';
 import { VariantPickerDialog, type LocalVariant } from './VariantPickerDialog';
+import { fetchCatalog, fetchStockLevels, stockByKeyMap, toLocalVariants, type CatalogProduct } from './catalog';
 import {
   createQuotation,
   downloadQuotationPdf,
@@ -20,6 +20,11 @@ interface LocalProduct {
   barcode: string | null;
   sell_price: number;
   variant_count: number;
+}
+
+/** Maps the REST catalog shape into this screen's own local product type - no stock_on_hand/tax_rate/max_discount_amount here (see this file's own header comment on why a quotation line needs none of those). */
+function toLocalProduct(p: CatalogProduct): LocalProduct {
+  return { id: String(p.id), name: p.name, sku: p.sku, barcode: p.barcode, sell_price: p.sellPrice, variant_count: p.variants.length };
 }
 
 interface BuilderLine {
@@ -162,24 +167,58 @@ function QuotationBuilder({
   const [lines, setLines] = useState<BuilderLine[]>([]);
   const [variantPickerProduct, setVariantPickerProduct] = useState<LocalProduct | null>(null);
   const [saving, setSaving] = useState(false);
+  const [rawCatalog, setRawCatalog] = useState<CatalogProduct[]>([]);
+  const [stockByKey, setStockByKey] = useState<Map<string, number>>(new Map());
 
   const trimmedQuery = query.trim();
 
-  // Same local-search approach as Till.tsx's own product search (reactive
-  // via useWatchedQuery, `AND ? != ''` reproducing the old
-  // early-return-when-empty behavior in SQL since a hook can't be called
-  // conditionally) - trimmed to just what a quotation line needs. No
-  // stock_on_hand/tax_rate/max_discount_amount join: a quotation line has no
-  // stock gating, no tax, and no discount cap (see this app's own header
-  // comment on why), so those columns would just be dead weight here.
-  const { data: results } = useWatchedQuery<LocalProduct>(
-    `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price,
-            (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
-     FROM products p
-     WHERE p.tenant_id = ? AND ? != '' AND (p.sku LIKE ? OR p.barcode = ? OR p.name LIKE ?)
-     ORDER BY p.name LIMIT 20`,
-    [tenantId, trimmedQuery, `%${trimmedQuery}%`, trimmedQuery, `%${trimmedQuery}%`],
-  );
+  // Tenant-wide catalog via the shared catalog.ts REST fetcher - replaces
+  // the local PowerSync-backed products/products_variants query this used
+  // to run. Also pulls this store's stock levels: the shared
+  // VariantPickerDialog this screen opens is stock-aware (it disables an
+  // out-of-stock variant) even here, matching that dialog's existing,
+  // unchanged behavior - a quotation line still can't be built from a
+  // variant with zero stock. Filtered/searched client-side, same idea as
+  // Till.tsx's own product search.
+  useEffect(() => {
+    if (tenantId == null) return;
+    let active = true;
+    fetchCatalog(payloadToken, tenantId)
+      .then((rows) => {
+        if (active) setRawCatalog(rows);
+      })
+      .catch(() => {
+        // Best-effort - a failed catalog load just leaves "Add items" empty.
+      });
+    if (storeId != null) {
+      fetchStockLevels(payloadToken, storeId)
+        .then((levels) => {
+          if (active) setStockByKey(stockByKeyMap(levels));
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      active = false;
+    };
+  }, [payloadToken, tenantId, storeId]);
+
+  const catalog = useMemo(() => rawCatalog.map(toLocalProduct), [rawCatalog]);
+  const variantsByProductId = useMemo(() => {
+    const map = new Map<string, LocalVariant[]>();
+    for (const p of rawCatalog) {
+      map.set(String(p.id), toLocalVariants(p, stockByKey));
+    }
+    return map;
+  }, [rawCatalog, stockByKey]);
+
+  const results = useMemo(() => {
+    if (!trimmedQuery) return [];
+    const q = trimmedQuery.toLowerCase();
+    return catalog
+      .filter((p) => p.barcode === trimmedQuery || p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 20);
+  }, [catalog, trimmedQuery]);
 
   function addProduct(product: LocalProduct) {
     if (product.variant_count > 0) {
@@ -238,7 +277,7 @@ function QuotationBuilder({
           unitPrice: Number(l.unitPrice) || 0,
         })),
       });
-      showToast(`Quotation #${doc.id} created`, 'success');
+      showToast(`${doc.name ?? `Quotation #${doc.id}`} created`, 'success');
       onCreated(doc.id);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Could not save quotation', 'error');
@@ -340,7 +379,7 @@ function QuotationBuilder({
       {storeId != null ? (
         <VariantPickerDialog
           product={variantPickerProduct}
-          storeId={storeId}
+          variants={variantPickerProduct ? (variantsByProductId.get(variantPickerProduct.id) ?? []) : []}
           onSelect={(variant) => variantPickerProduct && addLine(variantPickerProduct, variant)}
           onClose={() => setVariantPickerProduct(null)}
         />
@@ -360,7 +399,8 @@ function QuotationDetailPane({ payloadToken, quotationId, onBack }: { payloadTok
 
   const whatsAppUrl = useMemo(() => {
     if (!quotation) return null;
-    const message = `Hello ${quotation.customerName}, here is your quotation #${quotation.id} - total ${quotation.total.toFixed(2)}. I'll follow up shortly with the PDF.`;
+    const label = quotation.name ?? `#${quotation.id}`;
+    const message = `Hello ${quotation.customerName}, here is your quotation (${label}) - total ${quotation.total.toFixed(2)}. I'll follow up shortly with the PDF.`;
     return `https://wa.me/${toWhatsAppPhone(quotation.customerPhone)}?text=${encodeURIComponent(message)}`;
   }, [quotation]);
 
@@ -368,7 +408,7 @@ function QuotationDetailPane({ payloadToken, quotationId, onBack }: { payloadTok
     if (!quotation) return;
     setDownloading(true);
     try {
-      await downloadQuotationPdf(payloadToken, quotation.id);
+      await downloadQuotationPdf(payloadToken, quotation.id, quotation.name);
       showToast('PDF downloaded', 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Could not download PDF', 'error');
@@ -401,7 +441,7 @@ function QuotationDetailPane({ payloadToken, quotationId, onBack }: { payloadTok
       </button>
 
       <div className="section-card">
-        <h3>Quotation #{quotation.id}</h3>
+        <h3>{quotation.name ?? `Quotation #${quotation.id}`}</h3>
         <p className="section-card-hint">
           {quotation.customerName} · {quotation.customerPhone}
         </p>

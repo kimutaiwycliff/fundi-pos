@@ -17,8 +17,6 @@
   "dependencies": {
     "@hardware-pos/business-logic": "^0.0.0",
     "@hardware-pos/shared-types": "^0.0.0",
-    "@powersync/common": "2.0.0",
-    "@powersync/tauri-plugin": "^0.0.6",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-http": "^2",
     "@tauri-apps/plugin-opener": "^2",

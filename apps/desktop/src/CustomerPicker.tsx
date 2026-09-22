@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { normalizeKenyanPhone } from '@hardware-pos/business-logic';
-import { useWatchedQuery } from './useWatchedQuery';
 import { API_BASE_URL, apiFetch } from './auth';
 import { useToast } from './Toast';
 
@@ -18,31 +17,49 @@ interface CustomerPickerProps {
 }
 
 // Credit ("pay later") sales must be tied to a known customer - otherwise
-// there's no one to collect from. Existing customers come from the
-// already-synced local `customers` table (fully offline); a brand new
-// customer is created with a direct online call to Payload's own REST API
-// (apps/api, not the web app's proxy - the till talks to apps/api directly,
-// same as every other tauriFetch call in this file/module) since the till
-// has no local write/sync path for reference data like this one
-// (src-tauri/src/connector.rs's upload_data_impl explicitly drops any
-// customers/products/etc. table changes rather than uploading them).
-export function CustomerPicker({ tenantId, payloadToken, value, onChange }: CustomerPickerProps) {
+// there's no one to collect from. Customers are fetched in bulk once
+// (mirroring apps/web's own customer picker - GET /api/customers?sort=name&
+// limit=1000, then client-side name/phone filtering, rather than a
+// server round trip per keystroke) instead of the local `customers` table
+// query this used to run against PowerSync's synced data. A brand new
+// customer is still created with a direct online call to Payload's own REST
+// API (apps/api, not the web app's proxy - the till talks to apps/api
+// directly, same as every other apiFetch call in this file/module).
+export function CustomerPicker({ payloadToken, value, onChange }: CustomerPickerProps) {
+  const [customers, setCustomers] = useState<LocalCustomer[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
   const [newPhone, setNewPhone] = useState('');
   const [saving, setSaving] = useState(false);
   const showToast = useToast();
 
-  const trimmed = query.trim();
-  // Reactive (useWatchedQuery, not a one-shot db.getAll): a customer added
-  // moments ago via handleCreate below (once it syncs back down) shows up
-  // here without needing another keystroke. `AND ? != ''` reproduces the
-  // old early-return-when-empty behavior in SQL, since a hook can't be
-  // called conditionally.
-  const { data: results } = useWatchedQuery<LocalCustomer>(
-    `SELECT id, name, phone FROM customers WHERE tenant_id = ? AND ? != '' AND (name LIKE ? OR phone LIKE ?) ORDER BY name LIMIT 10`,
-    [tenantId, trimmed, `%${trimmed}%`, `%${trimmed}%`],
-  );
+  useEffect(() => {
+    let active = true;
+    apiFetch(`${API_BASE_URL}/api/customers?sort=name&limit=1000&depth=0`, {
+      headers: { Authorization: `JWT ${payloadToken}` },
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Could not load customers (HTTP ${res.status})`);
+        const body = await res.json().catch(() => null);
+        const docs = (body?.docs ?? []) as Array<{ id: number | string; name: string; phone: string | null }>;
+        if (active) setCustomers(docs.map((c) => ({ id: String(c.id), name: c.name, phone: c.phone ?? null })));
+      })
+      .catch((err) => {
+        if (active) setLoadError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      active = false;
+    };
+  }, [payloadToken]);
+
+  const trimmed = query.trim().toLowerCase();
+  const results = useMemo(() => {
+    if (!trimmed) return [];
+    return customers
+      .filter((c) => c.name.toLowerCase().includes(trimmed) || c.phone?.toLowerCase().includes(trimmed))
+      .slice(0, 10);
+  }, [customers, trimmed]);
 
   async function handleCreate() {
     if (!query.trim()) return;
@@ -64,7 +81,9 @@ export function CustomerPicker({ tenantId, payloadToken, value, onChange }: Cust
         return;
       }
       const doc = body.doc ?? body;
-      onChange({ id: String(doc.id), name: doc.name, phone: doc.phone ?? null });
+      const created: LocalCustomer = { id: String(doc.id), name: doc.name, phone: doc.phone ?? null };
+      setCustomers((prev) => [...prev, created]);
+      onChange(created);
       showToast('Customer added', 'success');
       setCreating(false);
       setQuery('');
@@ -100,6 +119,7 @@ export function CustomerPicker({ tenantId, payloadToken, value, onChange }: Cust
           setCreating(false);
         }}
       />
+      {loadError ? <p className="pane-empty-state-hint">{loadError}</p> : null}
       {results.length > 0 && (
         <ul className="customer-picker-results">
           {results.map((c) => (

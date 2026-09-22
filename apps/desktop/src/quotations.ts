@@ -16,6 +16,11 @@ export interface QuotationLineItem {
 export interface QuotationListItem {
   id: number;
   store: { id: number; name: string } | number | null;
+  // Server-computed ("CustomerName - Date", falling back to "Walk-in - Date"
+  // with no customer name) - see apps/api/src/collections/Quotations.ts's
+  // beforeChange hook. Null only for a pre-migration row that hasn't been
+  // backfilled yet.
+  name: string | null;
   customerName: string;
   customerPhone: string;
   total: number;
@@ -88,6 +93,21 @@ export async function createQuotation(
 }
 
 /**
+ * Slugifies a quotation's display name into a filename-safe string - the
+ * exact same pattern used on web (apps/api's own quotation-pdf route, which
+ * derives its `Content-Disposition` filename this way) and on mobile
+ * (apps/mobile/src/quotes/QuotationDetailScreen.tsx's handleShareWhatsApp),
+ * so all three platforms name the downloaded/shared file identically.
+ */
+export function slugifyQuotationName(name: string | null, id: number): string {
+  const slug = (name ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || `quotation-${id}`;
+}
+
+/**
  * Fetches the server-rendered PDF (GET .../quotation-pdf, same bearer-token
  * auth as every other call in this file) and triggers the OS's normal save
  * flow via a Blob + temporary `<a download>` click - the desktop app has no
@@ -97,7 +117,7 @@ export async function createQuotation(
  * Response(...)` - see its own dist-js/index.js), so `.blob()` behaves
  * exactly like the browser Fetch API here.
  */
-export async function downloadQuotationPdf(payloadToken: string, id: number): Promise<void> {
+export async function downloadQuotationPdf(payloadToken: string, id: number, name: string | null): Promise<void> {
   const res = await apiFetch(`${API_BASE_URL}/api/quotations/${id}/quotation-pdf`, {
     headers: { Authorization: `JWT ${payloadToken}` },
   });
@@ -109,7 +129,7 @@ export async function downloadQuotationPdf(payloadToken: string, id: number): Pr
   try {
     const link = document.createElement('a');
     link.href = url;
-    link.download = `quotation-${id}.pdf`;
+    link.download = `${slugifyQuotationName(name, id)}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

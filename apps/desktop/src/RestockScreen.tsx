@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getDb } from './database';
+import { fetchCatalog } from './catalog';
 import type { PayloadUser } from './auth';
 import { useToast } from './Toast';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -45,10 +45,10 @@ type View = { tab: 'new' } | { tab: 'lists' } | { tab: 'detail'; id: number };
 // Restocking on desktop, mirroring apps/mobile/src/restock/*: a New/My lists
 // tab switcher (no router needed, same lightweight state-machine style as
 // Till.tsx's own login flow) plus a detail drill-in with draft-only delete
-// and a per-line receive checklist. Product search for new lines is local
-// (desktop already syncs products via PowerSync, same as Till.tsx's own
-// cart search), everything else (suppliers, suggestions, purchase-orders
-// themselves) is online-only via restock.ts, same as every other client.
+// and a per-line receive checklist. Product search for new lines uses the
+// shared catalog.ts REST fetcher (same one Till.tsx's own cart search uses);
+// everything else (suppliers, suggestions, purchase-orders themselves) is
+// online-only via restock.ts, same as every other client.
 export function Restock({ user, storeId, payloadToken }: { user: PayloadUser; storeId: number | null; payloadToken: string }) {
   const [view, setView] = useState<View>({ tab: 'new' });
 
@@ -106,12 +106,18 @@ function NewRestockForm({ user, storeId, payloadToken }: { user: PayloadUser; st
     fetchSuppliers(payloadToken).then((rows) => {
       if (active) setSuppliers(rows);
     });
-    // Base-product-only, same as Till.tsx's own local search - desktop's
-    // local schema.ts has no products_variants table.
-    getDb()
-      .getAll<CatalogProduct>(`SELECT id, name, sku, cost_price FROM products WHERE tenant_id = ? ORDER BY name LIMIT 5000`, [tenantId])
+    // Base-product-only, same as Till.tsx's own product search - via the
+    // shared catalog.ts REST fetcher now (this used to be a local PowerSync
+    // query; desktop's now-deleted local schema had no products_variants
+    // table anyway, so this was always base-product-only).
+    fetchCatalog(payloadToken, tenantId)
       .then((rows) => {
-        if (active) setCatalog(rows);
+        if (active) setCatalog(rows.map((p) => ({ id: String(p.id), name: p.name, sku: p.sku, cost_price: p.costPrice })));
+      })
+      .catch(() => {
+        // Best-effort - the suggestions/suppliers fetches above already
+        // surface their own state; a failed catalog load just leaves the
+        // "Add items" search empty until the next mount/store switch.
       });
     return () => {
       active = false;

@@ -1,54 +1,49 @@
-import { useState } from 'react';
-import { useWatchedQuery } from './useWatchedQuery';
-import { authorizeOrderStatusChange, findManagerAndCheckPinLocally } from './pin';
-
-interface RecentOrder {
-  id: string;
-  total: number;
-  tender_type: string;
-  status: string;
-  created_at: string;
-}
+import { useEffect, useState } from 'react';
+import { fetchOrdersForStore, type OrderRecord } from './orders';
+import { authorizeOrderStatusChange, findManagerByPhone } from './pin';
 
 interface VoidOrderPanelProps {
   storeId: number;
   payloadToken: string;
 }
 
-// spec Section 6.1: "returns/refunds/voids gated behind manager PIN". The
-// PIN check itself is instant and fully offline (findManagerAndCheckPinLocally,
-// against the pin_hash already synced down); committing the void requires
-// connectivity (Option A - see apps/api's authorize-status route, which
-// re-verifies the PIN server-side as the actual authority).
+// spec Section 6.1: "returns/refunds/voids gated behind manager PIN". This
+// app is online-only now - the manager lookup by phone is a plain REST call
+// (pin.ts's findManagerByPhone), and the actual PIN check happens
+// server-side inside authorizeOrderStatusChange (Option A - see apps/api's
+// authorize-status route, which independently re-verifies the PIN as the
+// real authority).
 export function VoidOrderPanel({ storeId, payloadToken }: VoidOrderPanelProps) {
+  const [orders, setOrders] = useState<OrderRecord[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [targetOrderId, setTargetOrderId] = useState<string | null>(null);
   const [managerPhone, setManagerPhone] = useState('');
   const [pin, setPin] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Reactive (useWatchedQuery, not a one-shot db.getAll): picks up a sale
-  // rung up moments ago, or this store's own void landing back locally,
-  // without needing this panel to remount.
-  const { data: orders } = useWatchedQuery<RecentOrder>(
-    `SELECT id, total, tender_type, status, created_at FROM orders
-     WHERE store_id = ? AND status = 'completed' ORDER BY created_at DESC LIMIT 10`,
-    [storeId],
-  );
+  function refresh() {
+    setLoadError(null);
+    fetchOrdersForStore(payloadToken, storeId, { status: 'completed', limit: 10, depth: 0 })
+      .then(setOrders)
+      .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)));
+  }
+
+  useEffect(refresh, [payloadToken, storeId]);
 
   async function handleVoid(orderId: string, event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
     setStatus(null);
     try {
-      const localCheck = await findManagerAndCheckPinLocally(managerPhone, pin);
-      if (!localCheck || !localCheck.valid) {
-        setStatus('Manager PIN incorrect.');
+      const manager = await findManagerByPhone(payloadToken, managerPhone);
+      if (!manager) {
+        setStatus('Manager not found for that phone number.');
         setBusy(false);
         return;
       }
 
-      const result = await authorizeOrderStatusChange(payloadToken, orderId, 'voided', localCheck.managerId, pin);
+      const result = await authorizeOrderStatusChange(payloadToken, orderId, 'voided', manager.managerId, pin);
       if (!result.ok) {
         setStatus(`Void failed: ${result.error}`);
       } else {
@@ -56,12 +51,17 @@ export function VoidOrderPanel({ storeId, payloadToken }: VoidOrderPanelProps) {
         setTargetOrderId(null);
         setManagerPhone('');
         setPin('');
+        refresh();
       }
     } catch (err) {
       setStatus(`Void failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }
+  }
+
+  if (loadError) {
+    return <p className="error-banner">{loadError}</p>;
   }
 
   if (orders.length === 0) return null;
@@ -73,7 +73,7 @@ export function VoidOrderPanel({ storeId, payloadToken }: VoidOrderPanelProps) {
         {orders.map((order) => (
           <li key={order.id}>
             <span>
-              #{order.id.slice(0, 8)} - {order.total.toFixed(2)} ({order.tender_type})
+              #{order.id.slice(0, 8)} - {order.total.toFixed(2)} ({order.tenderType})
             </span>
             {targetOrderId === order.id ? (
               <form onSubmit={(e) => handleVoid(order.id, e)} className="void-form">

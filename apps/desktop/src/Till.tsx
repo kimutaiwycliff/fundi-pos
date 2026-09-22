@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
-import { getDb } from './database';
-import { useWatchedQuery } from './useWatchedQuery';
-import { type PayloadUser } from './auth';
+import { apiFetch, API_BASE_URL, type PayloadUser } from './auth';
+import { fetchCatalog, fetchStockLevels, stockByKeyMap, stockKey, toLocalVariants, type CatalogProduct } from './catalog';
+import { fetchOrdersForStore, submitOrder, type NewOrder } from './orders';
 import { VoidOrderPanel } from './VoidOrderPanel';
 import { ShiftPanel } from './ShiftPanel';
 import { CashierSwitcher } from './CashierSwitcher';
@@ -68,10 +68,6 @@ interface CartLine {
 }
 
 /** Composite key for per-(product, variant) cart/stock lookups - a bare product still needs a stable key distinct from any of its own variants. */
-function stockKey(productId: string, variantId?: string | null): string {
-  return `${productId}::${variantId ?? ''}`;
-}
-
 function lineKey(line: Pick<CartLine, 'product' | 'variant'>): string {
   return stockKey(line.product.id, line.variant?.id ?? null);
 }
@@ -117,6 +113,21 @@ function effectiveDiscountCapForLine(line: Pick<CartLine, 'quantity' | 'product'
   return capsActive ? maxDiscountAmountForLine(line) : line.quantity * lineUnitPrice(line);
 }
 
+/** Maps the REST catalog shape into this screen's existing local product type, so all downstream cart/pricing logic keeps working unmodified. */
+function toLocalProduct(p: CatalogProduct, stockByKey: Map<string, number>): LocalProduct {
+  return {
+    id: String(p.id),
+    name: p.name,
+    sku: p.sku,
+    barcode: p.barcode,
+    sell_price: p.sellPrice,
+    tax_rate: p.taxRate,
+    max_discount_amount: p.maxDiscountAmount,
+    stock_on_hand: stockByKey.get(stockKey(p.id, null)) ?? 0,
+    variant_count: p.variants.length,
+  };
+}
+
 interface TillProps {
   user: PayloadUser;
   terminalId: string;
@@ -124,9 +135,8 @@ interface TillProps {
   onRenameTerminal: (name: string) => void;
   payloadToken: string;
   onDisconnect: () => void;
-  // Whichever store this till is currently scoped to for stock_movements/
-  // orders sync (see /api/powersync/token) - null only while a multi-store
-  // user hasn't picked a branch yet.
+  // Whichever store this till is currently scoped to - null only while a
+  // multi-store user hasn't picked a branch yet.
   activeStoreId: number | null;
   // True only for an owner/manager overseeing multiple stores (Users.store
   // is null) - a cashier/manager with one fixed store never sees a toggle.
@@ -176,14 +186,13 @@ export function Till({
   const [tenderType, setTenderType] = useState<(typeof TENDER_OPTIONS)[number]['value']>('cash');
   const [selectedCustomer, setSelectedCustomer] = useState<LocalCustomer | null>(null);
   const [completing, setCompleting] = useState(false);
-  const [pendingSyncCount, setPendingSyncCount] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [todayStats, setTodayStats] = useState({ salesTotal: 0, unpaidCreditCount: 0, unpaidCreditTotal: 0 });
   const [activeCashier, setActiveCashier] = useState({ id: user.id, phone: user.phone ?? null, name: user.name ?? null, role: user.role });
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
   const [tenant, setTenant] = useState<LocalTenant | null>(null);
-  // Fail-safe default: required until the tenant row has actually synced
-  // down, matching this field's own server-side defaultValue: true.
+  // Fail-safe default: required until the tenant row has actually loaded,
+  // matching this field's own server-side defaultValue: true.
   const shiftsRequired = tenant?.shifts_required !== 0;
   // Same fail-safe direction as shiftsRequired above, matching this field's
   // own server-side defaultValue: true and apps/api's Orders.ts's identical
@@ -213,40 +222,70 @@ export function Till({
     refreshHeldSales();
   }, []);
 
-  // Business name + receipt header/footer, synced down via PowerSync's
-  // tenants stream (docker/powersync/sync-config.yaml) - printing works
-  // fully offline once this has synced once, same as everything else here.
+  // Business name + receipt header/footer - was read from PowerSync's synced
+  // `tenants` table; now a plain REST call, same auth pattern as every other
+  // apiFetch call in this file. This app is online-only now, so printing no
+  // longer needs to work from a locally-cached copy of this the way it used to.
   useEffect(() => {
     if (tenantId == null) return;
-    const db = getDb();
-    db.getAll<LocalTenant>(
-      'SELECT name, receipt_header, receipt_footer, shifts_required, enforce_discount_caps FROM tenants WHERE id = ?',
-      [String(tenantId)],
-    ).then((rows) => setTenant(rows[0] ?? null));
-  }, [tenantId]);
+    let active = true;
+    apiFetch(`${API_BASE_URL}/api/tenants/${tenantId}`, { headers: { Authorization: `JWT ${payloadToken}` } })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return res.json().catch(() => null);
+      })
+      .then((body) => {
+        if (!active || !body) return;
+        setTenant({
+          name: body.name,
+          receipt_header: body.receiptHeader ?? null,
+          receipt_footer: body.receiptFooter ?? null,
+          shifts_required: body.shiftsRequired === false ? 0 : 1,
+          enforce_discount_caps: body.enforceDiscountCaps === false ? 0 : 1,
+        });
+      })
+      .catch(() => {
+        // Best-effort - a failed tenant fetch just means receipts print
+        // with the "Fundi" fallback name/no header-footer until the next
+        // successful load; it must never block selling.
+      });
+    return () => {
+      active = false;
+    };
+  }, [tenantId, payloadToken]);
 
-  // stores is tenant-wide (not store-scoped) per sync-config.yaml, so this
-  // is always available regardless of which branch is currently active -
-  // exactly what lets a multi-store user see every branch to switch to
-  // before/without having picked one yet.
+  // stores is tenant-wide (not store-scoped), so this is always available
+  // regardless of which branch is currently active - exactly what lets a
+  // multi-store user see every branch to switch to before/without having
+  // picked one yet.
   useEffect(() => {
     if (tenantId == null) return;
-    const db = getDb();
-    db.getAll<{ id: string; name: string }>('SELECT id, name FROM stores WHERE tenant_id = ? ORDER BY name', [tenantId]).then(
-      (rows) => setStores(rows.map((r) => ({ id: Number(r.id), name: r.name }))),
-    );
-  }, [tenantId]);
+    let active = true;
+    apiFetch(`${API_BASE_URL}/api/stores?where[tenant][equals]=${tenantId}&sort=name&limit=200&depth=0`, {
+      headers: { Authorization: `JWT ${payloadToken}` },
+    })
+      .then(async (res) => {
+        if (!res.ok) return [];
+        const body = await res.json().catch(() => null);
+        return (body?.docs ?? []) as Array<{ id: number; name: string }>;
+      })
+      .then((rows) => {
+        if (active) setStores(rows.map((r) => ({ id: r.id, name: r.name })));
+      })
+      .catch(() => {
+        if (active) setStores([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [tenantId, payloadToken]);
 
   // A store-eligible user (owner/manager with no fixed store) who hasn't
-  // picked a branch yet is connected with store_id: null in their
-  // PowerSync token - every store-scoped stream (stock_movements, orders,
-  // store_product_overrides - see sync-config.yaml) then matches zero
-  // rows, while products still shows fine (tenant-wide, no store filter).
-  // Caught live: every product searched fine but showed as out of stock,
-  // with nothing in the UI explaining why - the till was sitting in this
-  // exact unpicked-branch state the whole time. With only one store to
-  // choose from there's no real decision to make, so pick it
-  // automatically rather than leaving that choice for someone to notice.
+  // picked a branch yet has storeId == null - every store-scoped read below
+  // (stock levels, today's stats) then naturally yields empty/zero, while
+  // the product catalog still shows fine (tenant-wide, no store filter).
+  // With only one store to choose from there's no real decision to make, so
+  // pick it automatically rather than leaving that choice for someone to notice.
   //
   // autoSelectAttempted is a ref, not state: onSwitchStore is a fresh
   // function reference on every App.tsx render (not memoized), so this
@@ -255,8 +294,7 @@ export function Till({
   // tracking "already tried", every one of those re-runs would retry it
   // again, forever, with the failure itself invisible (App.tsx's error
   // state is never rendered once <Till> has mounted - the only place this
-  // runs from). Caught live in production: repeated silent reconnects
-  // over several minutes, stock never once actually synced.
+  // runs from).
   const autoSelectAttempted = useRef(false);
   useEffect(() => {
     if (!canSelectStore || activeStoreId != null || stores.length !== 1) return;
@@ -291,46 +329,82 @@ export function Till({
     showToast('Sale resumed', 'success');
   }
 
+  // Tenant-wide product catalog + this store's stock levels, both via REST
+  // (catalog.ts) - replaces the old locally-synced products/products_variants/
+  // stock_movements PowerSync tables. Not reactive any more (there's no local
+  // database to watch), so this re-fetches on mount/tenant/store change, plus
+  // a lighter stock-only poll below to keep quantities reasonably fresh
+  // (matching the polling cadence already established in this exact file for
+  // refreshTodayStats). A failure here shows a clear, persistent error - it
+  // must never silently render an empty "no products" catalog.
+  const [rawCatalog, setRawCatalog] = useState<CatalogProduct[]>([]);
+  const [stockByKey, setStockByKey] = useState<Map<string, number>>(new Map());
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+
+  async function refreshCatalog() {
+    if (tenantId == null) return;
+    try {
+      const [products, levels] = await Promise.all([
+        fetchCatalog(payloadToken, tenantId),
+        storeId != null ? fetchStockLevels(payloadToken, storeId) : Promise.resolve([]),
+      ]);
+      setRawCatalog(products);
+      setStockByKey(stockByKeyMap(levels));
+      setCatalogError(null);
+    } catch (err) {
+      setCatalogError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  useEffect(() => {
+    refreshCatalog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, storeId, payloadToken]);
+
+  // Lighter periodic refresh of just stock levels (not the whole catalog) -
+  // keeps quantities from going too stale while the till sits open on the
+  // search screen. Errors are swallowed here (the initial refreshCatalog
+  // above already surfaced a clear error if the till is genuinely offline;
+  // a background poll failing on top of that would just be repeated noise).
+  useEffect(() => {
+    if (storeId == null) return;
+    const interval = setInterval(() => {
+      fetchStockLevels(payloadToken, storeId)
+        .then((levels) => setStockByKey(stockByKeyMap(levels)))
+        .catch(() => undefined);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [payloadToken, storeId]);
+
+  const products = useMemo(() => rawCatalog.map((p) => toLocalProduct(p, stockByKey)), [rawCatalog, stockByKey]);
+  const variantsByProductId = useMemo(() => {
+    const map = new Map<string, LocalVariant[]>();
+    for (const p of rawCatalog) {
+      map.set(String(p.id), toLocalVariants(p, stockByKey));
+    }
+    return map;
+  }, [rawCatalog, stockByKey]);
+
   // Barcode scanners are plain USB-HID keyboard input (spec: "no plugin
   // needed") - they type into whatever has focus and end with Enter, so a
   // focused search box that submits on Enter already handles scans with no
-  // special-case code.
-  //
-  // Reactive (useWatchedQuery, not a one-shot db.getAll): re-runs on its
-  // own whenever products/products_variants/stock_movements change
-  // locally, not just when the search text changes - so a stock count on
-  // screen never goes stale mid-search the way a one-shot snapshot would
-  // (another till selling the last unit of something already showing here,
-  // a manual stock adjustment landing, etc.). stock_on_hand is derived,
-  // never stored (the ledger is the only source of truth - see
-  // stock-adjustment-dialog.tsx's own comment on the web side) - summed
-  // here per product/store in the same query so search results can both
-  // display it and gate against overselling.
-  //
-  // `AND ? != ''` (bound to trimmedQuery itself) reproduces the old
-  // early-return-when-empty behavior in SQL, since a hook can't
-  // conditionally skip running its query (hooks can't be called
-  // conditionally) - an empty search term now naturally matches zero rows
-  // here instead of every product.
-  const { data: results } = useWatchedQuery<LocalProduct>(
-    `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, p.tax_rate, p.max_discount_amount,
-            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
-                      WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS stock_on_hand,
-            (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
-     FROM products p
-     WHERE p.tenant_id = ? AND ? != '' AND (p.sku LIKE ? OR p.barcode = ? OR p.name LIKE ?)
-     ORDER BY p.name LIMIT 20`,
-    [storeId ?? null, tenantId, trimmedQuery, `%${trimmedQuery}%`, trimmedQuery, `%${trimmedQuery}%`],
-  );
+  // special-case code. Client-side filtering over the fetched catalog now,
+  // not a reactive local SQL query - same matching rules as before (an exact
+  // barcode match, or a SKU/name substring), capped to 20 results.
+  const results = useMemo(() => {
+    if (storeId == null || !trimmedQuery) return [];
+    const q = trimmedQuery.toLowerCase();
+    return products
+      .filter((p) => p.barcode === trimmedQuery || p.sku.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 20);
+  }, [products, trimmedQuery, storeId]);
 
-  // navigator.onLine (+ the browser's online/offline events) instead of
-  // PowerSync's own status.connected: that reflects the sync protocol's
-  // own connection state, which only updates once PowerSync notices and
-  // successfully reconnects - the same reconnect path already found to
-  // silently get stuck (see the auto-select-store fix above). The OS-level
-  // network interface signal is unconditionally reliable and updates the
-  // instant the adapter actually goes up/down, regardless of whether
-  // PowerSync's own sync stream has caught up yet.
+  // navigator.onLine (+ the browser's online/offline events) instead of any
+  // sync-engine's own connection signal - that kind of signal only updates
+  // once it notices and successfully reconnects, where the OS-level network
+  // interface signal is unconditionally reliable and updates the instant the
+  // adapter actually goes up/down.
   useEffect(() => {
     const updateOnlineStatus = () => setIsOnline(navigator.onLine);
     updateOnlineStatus();
@@ -342,56 +416,42 @@ export function Till({
     };
   }, []);
 
-  useEffect(() => {
-    const db = getDb();
-    const interval = setInterval(async () => {
-      // ps_crud is PowerSync's own local upload-queue table (confirmed via
-      // direct sqlite3 inspection during the Phase 0 spike) - counting it
-      // directly is simpler and more robust than trying to derive a
-      // pending-count from SyncStatus, which doesn't expose one.
-      try {
-        const rows = await db.getAll<{ c: number }>('SELECT COUNT(*) as c FROM ps_crud');
-        setPendingSyncCount(rows[0]?.c ?? 0);
-      } catch {
-        setPendingSyncCount(null);
-      }
-    }, 2000);
-    return () => {
-      clearInterval(interval);
-    };
-  }, []);
-
-  // synced_at (not created_at) is the filter column here on purpose:
-  // created_at only arrives once an order round-trips through the server
-  // and syncs back down (Payload sets it, PowerSync mirrors it down later),
-  // so it's still NULL for a sale rung up seconds ago on an offline till -
-  // exactly the case this header stat most needs to reflect. synced_at is
-  // set from this same device's clock at INSERT time in completeSale()
-  // below, online or offline, so it's always available immediately.
-  // Unpaid credit has no date filter - it's every outstanding tab on this
-  // store, not just today's, since that's the number a cashier/manager
-  // actually needs to chase up.
+  // createdAt (server-assigned) now works fine as the "today" filter column,
+  // unlike the old synced_at-based filter this replaced - a sale is
+  // completed synchronously now (submitOrder below), so there's no more
+  // offline-created gap where createdAt would still be null. Unpaid credit
+  // has no date filter - it's every outstanding tab on this store, not just
+  // today's, since that's the number a cashier/manager actually needs to
+  // chase up.
   async function refreshTodayStats() {
-    if (storeId == null || tenantId == null) return;
-    const db = getDb();
+    if (storeId == null) return;
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
-    const [salesRow] = await db.getAll<{ total: number | null }>(
-      `SELECT SUM(total) AS total FROM orders
-       WHERE tenant_id = ? AND store_id = ? AND status = 'completed' AND synced_at >= ?`,
-      [tenantId, storeId, startOfDay.toISOString()],
-    );
-    const [creditRow] = await db.getAll<{ total: number | null; cnt: number }>(
-      `SELECT SUM(total) AS total, COUNT(*) AS cnt FROM orders
-       WHERE tenant_id = ? AND store_id = ? AND status = 'completed'
-         AND tender_type = 'credit' AND payment_status = 'pending'`,
-      [tenantId, storeId],
-    );
-    setTodayStats({
-      salesTotal: salesRow?.total ?? 0,
-      unpaidCreditCount: creditRow?.cnt ?? 0,
-      unpaidCreditTotal: creditRow?.total ?? 0,
-    });
+    try {
+      const [todayOrders, unpaidOrders] = await Promise.all([
+        fetchOrdersForStore(payloadToken, storeId, {
+          status: 'completed',
+          createdAtGte: startOfDay.toISOString(),
+          limit: 500,
+          depth: 0,
+        }),
+        fetchOrdersForStore(payloadToken, storeId, {
+          status: 'completed',
+          tenderType: 'credit',
+          paymentStatus: 'pending',
+          limit: 500,
+          depth: 0,
+        }),
+      ]);
+      setTodayStats({
+        salesTotal: todayOrders.reduce((sum, o) => sum + o.total, 0),
+        unpaidCreditCount: unpaidOrders.length,
+        unpaidCreditTotal: unpaidOrders.reduce((sum, o) => sum + o.total, 0),
+      });
+    } catch {
+      // Best-effort header stat - a failed refresh just leaves the last
+      // known numbers on screen rather than clearing them to zero.
+    }
   }
 
   useEffect(() => {
@@ -415,12 +475,13 @@ export function Till({
   );
   const totals = useMemo(() => computeOrderTotals(lineInputs), [lineInputs]);
 
-  // The till only knows about stock it has already searched for in this
-  // session (product.stock_on_hand is a snapshot from the search query, not
-  // re-queried live) - good enough to stop a cashier ringing up more of one
-  // item than the shelf has, without a DB round-trip on every +/- click. A
-  // product with variants is never sold as its bare self - see web/Android's
-  // identical rule - so this opens the picker instead of adding directly.
+  // The till only knows about stock from its last catalog/stock-level fetch
+  // (product.stock_on_hand is a snapshot, not re-queried live on every
+  // click) - good enough to stop a cashier ringing up more of one item than
+  // the shelf had as of the last refresh, without a network round-trip on
+  // every +/- click. A product with variants is never sold as its bare self -
+  // see web/Android's identical rule - so this opens the picker instead of
+  // adding directly.
   function addToCart(product: LocalProduct) {
     if (product.variant_count > 0) {
       setVariantPickerProduct(product);
@@ -483,7 +544,7 @@ export function Till({
   }
 
   async function completeSale() {
-    if (cart.length === 0 || storeId == null) return;
+    if (cart.length === 0 || storeId == null || tenantId == null) return;
     if (shiftsRequired && activeShift == null) {
       showToast('Open a shift before completing a sale', 'error');
       return;
@@ -492,92 +553,70 @@ export function Till({
       showToast('Select a customer for a credit sale', 'error');
       return;
     }
-    // Final authoritative check right before committing - a line's snapshot
-    // stock could be stale if it sat in the cart a while (another till
-    // selling the same product, a manual stock adjustment, etc.).
+    // Final check right before committing - a line's snapshot stock could be
+    // stale (another till selling the same product, a manual stock
+    // adjustment, etc. since the last catalog/stock-level refresh). Not the
+    // actual authority either way - the server is free to reject this too -
+    // just the same fast, friendly pre-check this always was.
     const oversold = cart.find((line) => line.quantity > lineStock(line));
     if (oversold) {
       showToast(`Only ${lineStock(oversold)} ${lineDisplayLabel(oversold)} left in stock`, 'error');
       return;
     }
     setCompleting(true);
+    const orderId = crypto.randomUUID();
+    // Cash and M-Pesa are both settled the moment the sale is rung up -
+    // M-Pesa here is purely a tender-type label for how the customer paid
+    // (they pay the till/paybill directly, outside this app), not an
+    // integration that pushes a live payment request - per the user's own
+    // explicit instruction, no STK push, no phone number capture. Credit is
+    // the one real "not actually paid yet" case, resolved by a manager/owner
+    // marking it settled later (see FindSalePanel/authorizeSettlement).
+    const paymentStatus = tenderType === 'credit' ? 'pending' : 'paid';
+
+    const order: NewOrder = {
+      id: orderId,
+      tenant: tenantId,
+      store: storeId,
+      terminal: terminalId,
+      terminalName: terminalName,
+      cashier: activeCashier.id,
+      customer: selectedCustomer ? Number(selectedCustomer.id) : null,
+      lineItems: cart.map((line) => ({
+        product: Number(line.product.id),
+        variant: line.variant?.id ?? null,
+        quantity: line.quantity,
+        unitPrice: lineUnitPrice(line),
+        discount: lineDiscountAmount(line),
+      })),
+      taxTotal: totals.taxTotal,
+      discountTotal: totals.discountTotal,
+      total: totals.total,
+      tenderType,
+      paymentStatus,
+      status: 'completed',
+      createdOffline: false,
+    };
+
     try {
-      const db = getDb();
-      const orderId = crypto.randomUUID();
-      const now = new Date().toISOString();
-      // Cash and M-Pesa are both settled the moment the sale is rung up -
-      // M-Pesa here is purely a tender-type label for how the customer
-      // paid (they pay the till/paybill directly, outside this app), not
-      // an integration that pushes a live payment request - per the
-      // user's own explicit instruction, no STK push, no phone number
-      // capture. Credit is the one real "not actually paid yet" case,
-      // resolved by a manager/owner marking it settled later (see
-      // FindSalePanel/authorizeSettlement).
-      const paymentStatus = tenderType === 'credit' ? 'pending' : 'paid';
-
-      // One local transaction for the order + all its line items, so
-      // PowerSync's upload queue drains them together and the Rust
-      // connector (src-tauri/src/connector.rs) can assemble one nested
-      // POST to /api/sync/orders instead of racing partial state.
-      await db.writeTransaction(async (tx) => {
-        await tx.execute(
-          `INSERT INTO orders
-             (id, tenant_id, store_id, terminal, terminal_name, cashier_id, customer_id, tax_total, discount_total, total,
-              tender_type, payment_status, status, created_offline, synced_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', 1, ?)`,
-          [
-            orderId,
-            tenantId,
-            storeId,
-            terminalId,
-            terminalName,
-            activeCashier.id,
-            selectedCustomer ? Number(selectedCustomer.id) : null,
-            totals.taxTotal,
-            totals.discountTotal,
-            totals.total,
-            tenderType,
-            paymentStatus,
-            now,
-          ],
-        );
-
-        for (let i = 0; i < cart.length; i++) {
-          const line = cart[i];
-          await tx.execute(
-            `INSERT INTO orders_line_items (id, _parent_id, _order, product_id, variant, quantity, unit_price, discount)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            // Number(line.product.id): products.id is a PowerSync-implicit
-            // TEXT primary key locally, but this column mirrors Postgres's
-            // real INTEGER foreign key (schema.ts declares product_id as
-            // column.integer) - binding the raw string here is what let a
-            // "275" string leak into the sync queue and get rejected by
-            // Payload's numeric relationship field server-side (see
-            // src-tauri/src/connector.rs's to_number, which patches this up
-            // defensively for anything already queued before this fix).
-            [
-              crypto.randomUUID(),
-              orderId,
-              i,
-              Number(line.product.id),
-              line.variant?.id ?? null,
-              line.quantity,
-              lineUnitPrice(line),
-              lineDiscountAmount(line),
-            ],
-          );
-        }
-      });
+      // Synchronous REST call (POST /api/sync/orders) instead of a local
+      // db.writeTransaction for a background sync engine to pick up later -
+      // this app is online-only now. The endpoint is idempotent on a
+      // duplicate `id` (see orders.ts's own comment), which is worth keeping
+      // even here: it protects against a double-click, or a retry after a
+      // request that timed out client-side but actually landed.
+      await submitOrder(payloadToken, order);
 
       const tenderLabel = TENDER_OPTIONS.find((t) => t.value === tenderType)?.label ?? tenderType;
       showToast(`Sale completed - ${tenderLabel} ${totals.total.toFixed(2)}`, 'success');
       refreshTodayStats();
+      refreshCatalog();
 
       // Printing is best-effort and must never undo or block a completed
       // sale - the order above is already durably recorded regardless of
-      // whether a receipt can be printed (spec's offline-first premise
-      // would be undermined if the source of truth depended on a
-      // peripheral). UNVERIFIED against real hardware.
+      // whether a receipt can be printed (this app's offline-sale-writing
+      // days are over, but the same "a peripheral must never be the source
+      // of truth" reasoning still applies). UNVERIFIED against real hardware.
       printReceipt({
         storeName: tenant?.name ?? 'Fundi',
         orderId,
@@ -600,6 +639,9 @@ export function Till({
       setCart([]);
       setSelectedCustomer(null);
     } catch (err) {
+      // Deliberately does NOT clear the cart - a network failure (or a
+      // rejected request) must leave the sale exactly as the cashier built
+      // it, ready to retry, never silently lost.
       showToast(`Error completing sale: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setCompleting(false);
@@ -660,9 +702,6 @@ export function Till({
         <span className={`status-pill ${isOnline ? 'online' : 'offline'}`}>
           {isOnline ? <WifiIcon /> : <WifiOffIcon />}
           {isOnline ? 'Online' : 'Offline'}
-          {pendingSyncCount != null && pendingSyncCount > 0 ? (
-            <span className="sync-count">· {pendingSyncCount} pending</span>
-          ) : null}
         </span>
 
         <div className="till-topbar-actions">
@@ -739,7 +778,16 @@ export function Till({
             />
           </div>
 
-          {storeId == null ? (
+          {catalogError ? (
+            <div className="pane-empty-state">
+              <WifiOffIcon />
+              <p className="pane-empty-state-title">Couldn't load products</p>
+              <p className="pane-empty-state-hint">{catalogError}</p>
+              <button className="btn btn-secondary btn-sm" onClick={refreshCatalog}>
+                Retry
+              </button>
+            </div>
+          ) : storeId == null ? (
             <div className="pane-empty-state">
               <WrenchIcon />
               <p className="pane-empty-state-title">Select a branch to start selling</p>
@@ -750,10 +798,9 @@ export function Till({
               {results.map((product) => {
                 const hasVariants = product.variant_count > 0;
                 // A variant-having product's own bare stock_on_hand is
-                // meaningless (its stock lives per-variant instead, per the
-                // AND sm.variant IS NULL filter above) - never disable the
-                // card on that basis; out-of-stock variants are disabled
-                // individually inside the picker.
+                // meaningless (its stock lives per-variant instead) - never
+                // disable the card on that basis; out-of-stock variants are
+                // disabled individually inside the picker.
                 const outOfStock = !hasVariants && product.stock_on_hand <= 0;
                 return (
                   <button
@@ -818,7 +865,14 @@ export function Till({
                       <button onClick={() => updateQuantity(lineKey(line), line.quantity - 1)} aria-label="Decrease quantity">
                         <MinusIcon />
                       </button>
-                      <span>{line.quantity}</span>
+                      <input
+                        className="table-input"
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        value={line.quantity}
+                        onChange={(e) => updateQuantity(lineKey(line), Number(e.currentTarget.value) || 0)}
+                      />
                       <button onClick={() => updateQuantity(lineKey(line), line.quantity + 1)} aria-label="Increase quantity">
                         <PlusIcon />
                       </button>
@@ -944,7 +998,7 @@ export function Till({
       {storeId != null && (
         <VariantPickerDialog
           product={variantPickerProduct}
-          storeId={storeId}
+          variants={variantPickerProduct ? (variantsByProductId.get(variantPickerProduct.id) ?? []) : []}
           onSelect={(variant) => variantPickerProduct && addLineToCart(variantPickerProduct, variant)}
           onClose={() => setVariantPickerProduct(null)}
         />

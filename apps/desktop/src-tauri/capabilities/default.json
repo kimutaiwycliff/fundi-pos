@@ -6,7 +6,6 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "powersync:default",
     {
       "identifier": "http:default",
       "allow": [
