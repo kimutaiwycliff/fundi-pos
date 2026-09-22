@@ -80,7 +80,7 @@ export function TenantStatusActions({ tenantId, status, name }: { tenantId: numb
               <AlertDialogHeader>
                 <AlertDialogTitle>Suspend {name}?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Every staff member immediately loses access - web login, till PIN login, and PowerSync sync. Fully reversible by
+                  Every staff member immediately loses access - web login and till PIN login. Fully reversible by
                   reactivating. No data is touched.
                 </AlertDialogDescription>
               </AlertDialogHeader>

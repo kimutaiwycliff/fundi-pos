@@ -11,11 +11,11 @@ import { extendTillSession, mintTillToken } from '@/lib/tillAuth';
 // dashboard keeps email/password - Payload's auth strategy is built around
 // it, and PINs are far weaker for protecting back-office/financial screens).
 // This still requires connectivity - it mints a real, fresh Payload session
-// the same way /api/users/login does, which the till then uses for
-// PowerSync auth exactly like a password login. Fully-offline PIN
-// re-entry for an ALREADY-connected till session is a different, already-
-// solved problem - see apps/desktop/src/pin.ts's cashier-switching flow,
-// which never touches the network at all.
+// the same way /api/users/login does, which the till then uses for every
+// subsequent REST call exactly like a password login. Fast cashier-
+// switching on an already-connected till (a separate, already-solved
+// problem) re-verifies the PIN the same way - see
+// apps/desktop/src/CashierSwitcher.tsx.
 //
 // A network-reachable PIN endpoint is a materially different threat model
 // than the offline-only Rust PIN check (lib/pin.rs) - that one requires

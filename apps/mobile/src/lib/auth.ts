@@ -11,7 +11,6 @@
 // since `localhost` from a physical device/emulator means the device
 // itself, not the dev machine.
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:3011';
-export const POWERSYNC_URL = process.env.EXPO_PUBLIC_POWERSYNC_URL ?? 'http://localhost:8080';
 
 // Shown wherever a caught error's message reaches the screen directly (this
 // file's own throws, and any other lib file that reuses it) - consistent
@@ -122,32 +121,4 @@ export async function refreshTillToken(payloadToken: string): Promise<LoginResul
   }
 
   return { payloadToken: body.token as string, user: body.user as PayloadUser };
-}
-
-/**
- * GET /api/powersync/token - exchanges the Payload session JWT for a
- * short-lived (1hr) RS256 JWT scoped for PowerSync client auth (tenant_id/
- * store_id/role claims, see apps/api/src/lib/powersyncAuth.ts). Unused by
- * this app now that PowerSync has been removed client-side (see db/*.ts's
- * own removal) - kept here, unused, since the server-side PowerSync
- * infrastructure this endpoint belongs to is explicitly out of scope to
- * decommission (other devices may still be on an old PowerSync-based build
- * during the rollout).
- */
-export async function fetchPowerSyncToken(payloadToken: string, storeId?: number | null): Promise<string> {
-  const url = storeId != null ? `${API_BASE_URL}/api/powersync/token?storeId=${storeId}` : `${API_BASE_URL}/api/powersync/token`;
-  const res = await apiFetch(url, {
-    method: 'GET',
-    headers: { Authorization: `JWT ${payloadToken}` },
-  });
-
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(body?.error ?? `PowerSync token fetch failed (HTTP ${res.status})`);
-  }
-  if (!body?.token) {
-    throw new Error('PowerSync token response did not include a token');
-  }
-
-  return body.token as string;
 }

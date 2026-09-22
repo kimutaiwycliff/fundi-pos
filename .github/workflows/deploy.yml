@@ -101,18 +101,13 @@ jobs:
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "cd '${{ secrets.DEPLOY_PATH }}/docker' && \
              docker compose -f docker-compose.yml -f docker-compose.prod.yml build fundi-payload-api fundi-web && \
-             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d fundi-payload-api fundi-web && \
-             docker compose -f docker-compose.yml -f docker-compose.prod.yml restart fundi-powersync"
-          # fundi-powersync runs a prebuilt image (journeyapps/powersync-service)
-          # with docker/powersync/sync-config.yaml bind-mounted read-only - it
-          # only reads that file at startup (see sync-config.yaml's own header
-          # comment), and `docker compose up -d` does NOT recreate a container
-          # just because a bind-mounted file's contents changed on disk (compose
-          # only diffs the service definition, not mounted file content). An
-          # unconditional `restart` every deploy is the only way sync-rule edits
-          # ever reach the running service - previously deploy.yml never
-          # touched this container at all, so it could run indefinitely on
-          # whatever rules were live when it was first started.
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans fundi-payload-api fundi-web"
+          # --remove-orphans stops and removes any container this compose
+          # project previously started for a service no longer declared in
+          # the compose files (e.g. fundi-powersync/postgres-storage, removed
+          # when PowerSync was decommissioned) - without it, a container for
+          # a since-deleted service keeps running indefinitely, since `up -d`
+          # only ever acts on the services it's told about.
 
       - name: Verify fundi health
         run: |

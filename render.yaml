@@ -13,10 +13,6 @@ databases:
     databaseName: pos_saas
     user: pos_admin
     plan: free
-  - name: pos-saas-powersync-storage
-    databaseName: powersync_storage
-    user: powersync_storage
-    plan: free
 
 services:
   - type: web
@@ -46,31 +42,3 @@ services:
           type: web
           name: pos-saas-api
           property: hostport
-
-  # journeyapps/powersync-service - deployed as a prebuilt image, not built
-  # from this repo. Render Blueprints support `runtime: image` for this.
-  - type: web
-    name: pos-saas-powersync
-    runtime: image
-    image:
-      url: docker.io/journeyapps/powersync-service:1.24.0
-    plan: free
-    envVars:
-      - key: PS_PORT
-        value: 8080
-      - key: PS_DATA_SOURCE_URI
-        fromDatabase:
-          name: pos-saas-db
-          property: connectionString
-      - key: PS_STORAGE_SOURCE_URI
-        fromDatabase:
-          name: pos-saas-powersync-storage
-          property: connectionString
-      - key: PS_JWKS_URL
-        fromService:
-          type: web
-          name: pos-saas-api
-          property: hostport
-        # Blueprint env var references can't append a path - after the
-        # first deploy, edit this in the Render dashboard to the full
-        # "https://pos-saas-api.onrender.com/api/powersync/jwks" URL.

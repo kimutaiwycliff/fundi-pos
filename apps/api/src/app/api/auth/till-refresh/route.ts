@@ -25,10 +25,10 @@ export async function POST() {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Same re-checks as pin-login/route.ts and /api/powersync/token - a till
-  // silently renewing its own session forever would otherwise never notice
-  // a ban or a canceled subscription until its (now very long-lived) token
-  // eventually expired on its own.
+  // Same re-checks as pin-login/route.ts - a till silently renewing its own
+  // session forever would otherwise never notice a ban or a canceled
+  // subscription until its (now very long-lived) token eventually expired
+  // on its own.
   const tenant = await payload.findByID({ collection: 'tenants', id: toID(user.tenant), overrideAccess: true });
   const billing = checkTenantAccess(tenant);
   if (!billing.allowed) {

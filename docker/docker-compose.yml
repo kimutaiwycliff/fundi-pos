@@ -5,29 +5,15 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-pos_saas}
       POSTGRES_USER: ${POSTGRES_USER:-pos_admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_only_change_me}
-    # Logical replication (wal_level=logical) is required for PowerSync to
-    # stream changes out of Postgres.
+    # wal_level=logical was required by PowerSync's logical-replication
+    # stream (now decommissioned) - left as-is since changing it back needs
+    # a Postgres restart for zero real benefit with no replication slot
+    # active anymore.
     command: ["postgres", "-c", "wal_level=logical"]
     ports: ["5433:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pos_admin}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  # PowerSync's OWN internal bucket-storage DB — deliberately separate from
-  # the app DB above. Pattern confirmed against PowerSync's official
-  # self-host-demo repo (demos/nodejs-postgres-bucket-storage).
-  postgres-storage:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: powersync_storage
-      POSTGRES_USER: powersync_storage
-      POSTGRES_PASSWORD: ${POSTGRES_STORAGE_PASSWORD:-dev_only_change_me_2}
-    volumes: ["pgdata_storage:/var/lib/postgresql/data"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U powersync_storage"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -63,13 +49,6 @@ services:
       # payload.config.ts's own comment for why the admin panel's own
       # origin has to be in this list too, not just apps/web's.
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
-      # Required by apps/api/src/lib/powersyncAuth.ts - signs/serves the
-      # PowerSync client-auth JWT and its JWKS. No dev default: a missing
-      # value should fail loudly (requireEnv throws) rather than silently
-      # run with a key nobody generated.
-      POWERSYNC_JWT_PRIVATE_KEY: ${POWERSYNC_JWT_PRIVATE_KEY}
-      POWERSYNC_JWT_PUBLIC_KEY: ${POWERSYNC_JWT_PUBLIC_KEY}
-      POWERSYNC_JWT_KID: ${POWERSYNC_JWT_KID}
       # Cloudflare R2 (S3-compatible) - product/variant image storage, see
       # payload.config.ts's s3Storage() plugin. No dev defaults: an empty
       # R2_BUCKET just disables the plugin (Payload falls back to local-disk
@@ -85,31 +64,6 @@ services:
     networks: [default, colocated_net]
     depends_on:
       postgres:
-        condition: service_healthy
-
-  # journeyapps/powersync-service:1.24.0 confirmed current as of 2026-08 via
-  # https://hub.docker.com/r/journeyapps/powersync-service/tags — re-check at
-  # build time per POS_SAAS_SPEC.md's own note, since tags do move.
-  #
-  # Named fundi-powersync - see fundi-payload-api's comment above for why.
-  fundi-powersync:
-    image: journeyapps/powersync-service:1.24.0
-    command: ["start", "-r", "unified"]
-    environment:
-      POWERSYNC_CONFIG_PATH: /config/powersync.yaml
-      PS_PORT: ${PS_PORT:-8080}
-      PS_DATA_SOURCE_URI: ${PS_DATA_SOURCE_URI}
-      PS_STORAGE_SOURCE_URI: ${PS_STORAGE_SOURCE_URI}
-      PS_JWKS_URL: ${PS_JWKS_URL}
-      PS_ADMIN_TOKEN: ${PS_ADMIN_TOKEN}
-    volumes:
-      - ./powersync:/config:ro
-    ports: ["8080:8080"]
-    networks: [default, colocated_net]
-    depends_on:
-      postgres:
-        condition: service_healthy
-      postgres-storage:
         condition: service_healthy
 
   # Named fundi-web, not web: the other, unrelated compose project sharing
@@ -157,13 +111,12 @@ services:
 
 volumes:
   pgdata:
-  pgdata_storage:
 
 networks:
   default: {}
   # Pre-existing network a separate, unrelated app's own Caddy container is
   # already on - joining it (not replacing our own `default` network) is
-  # what lets that Caddy reach fundi-payload-api/fundi-web/fundi-powersync by
+  # what lets that Caddy reach fundi-payload-api/fundi-web by
   # container name, without this stack's Postgres instances ever being
   # reachable from that other app's side. The real network name is a
   # third party's infrastructure detail, not ours, so it's supplied via

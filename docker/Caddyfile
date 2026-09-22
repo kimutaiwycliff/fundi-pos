@@ -11,7 +11,3 @@
 {$WEB_DOMAIN:app.example.com} {
 	reverse_proxy fundi-web:3000
 }
-
-{$POWERSYNC_DOMAIN:sync.example.com} {
-	reverse_proxy fundi-powersync:8080
-}

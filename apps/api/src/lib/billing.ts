@@ -1,14 +1,14 @@
 // billingStatus was previously just a label a platform admin could set via
 // /admin with zero actual effect - nothing ever read it. This is the one
 // place that decides what each status actually does, so every enforcement
-// point (login, PIN login, PowerSync token issuance) stays consistent.
+// point (login, PIN login, till-session refresh) stays consistent.
 //
 // Deliberately soft on 'past_due' (a real subscription grace period, not an
-// instant lockout) and hard on 'canceled' - blocking new sessions/tokens
-// rather than touching every collection's access control, which would be
-// far more invasive for the same practical effect: no login, no fresh
-// PowerSync token, and the till stops syncing once its current token
-// expires (see powersyncAuth.ts's 1-hour TTL) even if it was already open.
+// instant lockout) and hard on 'canceled' - blocking new sessions/token
+// refreshes rather than touching every collection's access control, which
+// would be far more invasive for the same practical effect: no login, and
+// an already-open till session stops renewing once its current token
+// expires (see tillAuth.ts's TILL_TOKEN_TTL_SECONDS).
 //
 // tenant.status (platform-admin-controlled suspend/soft-delete, distinct
 // from the tenant's own billingStatus) is checked first and takes priority -

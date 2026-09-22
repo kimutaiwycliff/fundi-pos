@@ -51,7 +51,7 @@ export const Tenants: CollectionConfig = {
       defaultValue: 'active',
       options: ['active', 'suspended', 'deleted'],
       access: { update: ({ req }) => req.user?.collection === 'platform-admins' },
-      admin: { description: 'Suspended/deleted tenants (and all their staff) are locked out of every login path - web, till PIN, and PowerSync.' },
+      admin: { description: 'Suspended/deleted tenants (and all their staff) are locked out of every login path - web and till PIN.' },
     },
     { name: 'statusChangedAt', type: 'date', admin: { readOnly: true } },
     { name: 'statusReason', type: 'text', admin: { description: 'Optional note - shown in the platform audit log, not to the tenant.' } },

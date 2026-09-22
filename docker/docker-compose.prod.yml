@@ -23,27 +23,10 @@ services:
           cpus: '1'
           memory: 512M
 
-  postgres-storage:
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-
   fundi-payload-api:
     restart: unless-stopped
     # Not published directly in production - Caddy is the only public
     # entrypoint (see the caddy service below).
-    ports: !reset []
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 512M
-
-  fundi-powersync:
-    restart: unless-stopped
     ports: !reset []
     deploy:
       resources:
@@ -70,14 +53,13 @@ services:
     environment:
       API_DOMAIN: ${API_DOMAIN}
       WEB_DOMAIN: ${WEB_DOMAIN}
-      POWERSYNC_DOMAIN: ${POWERSYNC_DOMAIN}
     volumes:
       - ./Caddyfile:/etc/caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     command: ["caddy", "run", "--config", "/etc/caddyfile"]
     ports: ["80:80", "443:443"]
-    depends_on: [fundi-payload-api, fundi-web, fundi-powersync]
+    depends_on: [fundi-payload-api, fundi-web]
 
   backup:
     image: postgres:16

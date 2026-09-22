@@ -208,7 +208,7 @@ export interface Tenant {
   id: number;
   name: string;
   /**
-   * Suspended/deleted tenants (and all their staff) are locked out of every login path - web, till PIN, and PowerSync.
+   * Suspended/deleted tenants (and all their staff) are locked out of every login path - web and till PIN.
    */
   status: 'active' | 'suspended' | 'deleted';
   statusChangedAt?: string | null;
