@@ -1,19 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@powersync/react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import Fuse from 'fuse.js';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Image, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Image, Platform, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert, showToast } from '../components/AppNotice';
 import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
-import { getDb } from '../db/database';
+import { API_BASE_URL, apiFetch } from '../lib/auth';
+import { fetchCatalog, fetchStockLevels, stockKey as apiStockKey, stockByKeyMap, type CatalogProduct } from '../lib/catalog';
+import { usePullToRefresh } from '../lib/usePullToRefresh';
 import { deleteHeldSale, holdSale, listHeldSales, type HeldSale } from '../db/heldSales';
 import { findOpenShift, type Shift } from '../lib/shifts';
 import { uuid } from '../lib/uuid';
+import { QuantityField } from '../components/QuantityField';
+import { NetworkStatusPill } from '../components/NetworkStatusPill';
 import type { PayloadUser } from '../lib/auth';
 import { ShiftWidget } from './ShiftWidget';
 import { CustomerPicker, type LocalCustomer } from './CustomerPicker';
@@ -30,20 +34,31 @@ import {
   type TenderType,
 } from './types';
 
-// Ported from apps/desktop/src/Till.tsx + apps/web/.../sell/sell-client.tsx
-// (the more current reference - it already has variant selling and the
-// per-unit discount-cap model desktop's Till.tsx hasn't been updated to
-// yet), combined with desktop's offline-first checkout: the order is
-// written directly into the local synced tables inside one transaction,
-// never a server round-trip at sale time. Stock is deliberately NOT
-// decremented here - stock_movements is server-authoritative and only
-// arrives once this order syncs up and the resulting ledger rows sync back
-// down (see schema.ts's own note on this).
+// Ported from apps/desktop/src/Till.tsx + apps/web/.../sell/sell-client.tsx,
+// now fully online: the catalog is a plain REST fetch (Payload's own
+// /api/products, same as apps/web's dashboard/sell/page.tsx) rather than a
+// PowerSync-synced local table, and completeSale below is a synchronous
+// POST to /api/sync/orders rather than a local SQLite write - there is no
+// offline capability left in this screen at all (see App.tsx/db removal
+// this shipped alongside). Stock is decremented server-side, automatically,
+// as part of that same order-creation call (Orders.ts's afterChange hook
+// posts the resulting stock_movements rows itself) - nothing here writes to
+// stock_movements directly any more.
 const TENDER_OPTIONS: Array<{ value: TenderType; label: string }> = [
   { value: 'cash', label: 'Cash' },
   { value: 'mpesa', label: 'M-Pesa' },
   { value: 'credit', label: 'Credit' },
 ];
+
+interface OrderHistoryRow {
+  id: string;
+  lineItems: Array<{ product: number }>;
+}
+
+interface TenantFlags {
+  shiftsRequired: boolean;
+  enforceDiscountCaps: boolean;
+}
 
 function lineKey(line: Pick<CartLine, 'product' | 'variant'>): string {
   return stockKey(line.product.id, line.variant?.id ?? null);
@@ -53,42 +68,31 @@ function lineStock(line: Pick<CartLine, 'product' | 'variant'>): number {
   return line.variant ? line.variant.stock_on_hand : line.product.stock_on_hand;
 }
 
-// Tap the quantity number to type an exact amount, rather than tapping +/−
-// one unit at a time - a real gap for a hardware/electrical shop selling
-// 20-50 units of a small item. Needs its own local draft state (a plain
-// FlatList renderItem callback can't hold hooks), synced back to the real
-// quantity whenever it changes from elsewhere (the +/− steppers), and only
-// committed on blur/submit - never on every keystroke, since a briefly-
-// cleared field would otherwise call onChange(0), which updateQuantity
-// treats as "remove this line".
-function QuantityField({ quantity, onChange }: { quantity: number; onChange: (next: number) => void }) {
-  const [draft, setDraft] = useState(String(quantity));
+function toLocalProduct(p: CatalogProduct, stockByKey: Map<string, number>): LocalProduct {
+  return {
+    id: String(p.id),
+    name: p.name,
+    sku: p.sku,
+    barcode: p.barcode,
+    sell_price: p.sellPrice,
+    tax_rate: p.taxRate,
+    max_discount_amount: p.maxDiscountAmount,
+    stock_on_hand: stockByKey.get(apiStockKey(p.id, null)) ?? 0,
+    variant_count: p.variants.length,
+    image_url: p.imageUrl,
+  };
+}
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDraft(String(quantity));
-  }, [quantity]);
-
-  function commit() {
-    const next = Number(draft);
-    if (Number.isFinite(next) && next > 0 && next !== quantity) {
-      onChange(next);
-    } else {
-      setDraft(String(quantity));
-    }
-  }
-
-  return (
-    <TextInput
-      className="w-12 text-center text-foreground"
-      keyboardType="number-pad"
-      value={draft}
-      onChangeText={setDraft}
-      onEndEditing={commit}
-      onSubmitEditing={commit}
-      selectTextOnFocus
-    />
-  );
+function toLocalVariants(p: CatalogProduct, stockByKey: Map<string, number>): LocalVariant[] {
+  return p.variants.map((v) => ({
+    id: v.id,
+    label: v.label,
+    sku: v.sku,
+    barcode: v.barcode,
+    sell_price: v.sellPrice,
+    stock_on_hand: stockByKey.get(apiStockKey(p.id, v.id)) ?? 0,
+    image_url: v.imageUrl,
+  }));
 }
 
 export function SellScreen({
@@ -108,8 +112,10 @@ export function SellScreen({
   const placeholderColor = useMutedPlaceholderColor();
 
   const [query, setQuery] = useState('');
-  const [recentProductIds, setRecentProductIds] = useState<number[]>([]);
-  const [frequentlyBoughtIds, setFrequentlyBoughtIds] = useState<number[]>([]);
+  const [rawCatalog, setRawCatalog] = useState<CatalogProduct[]>([]);
+  const [stockByKey, setStockByKey] = useState<Map<string, number>>(new Map());
+  const [orderHistory, setOrderHistory] = useState<OrderHistoryRow[]>([]);
+  const [tenantFlags, setTenantFlags] = useState<TenantFlags>({ shiftsRequired: true, enforceDiscountCaps: true });
   const [cart, setCart] = useState<CartLine[]>([]);
   const [tenderType, setTenderType] = useState<TenderType>('cash');
   const [selectedCustomer, setSelectedCustomer] = useState<LocalCustomer | null>(null);
@@ -152,38 +158,59 @@ export function SellScreen({
     setQuery('');
   }, [storeId]);
 
-  // Whole active catalog for this store, kept live via PowerSync's reactive
-  // useQuery (re-runs on its own whenever products/products_variants/
-  // stock_movements/media change locally, including a row that just landed
-  // via sync) so search can fuzzy-match client-side against up-to-date data
-  // - same "fetch everything, filter in memory" shape as apps/web's
-  // dashboard/sell/page.tsx + product-search.tsx, just against local SQLite
-  // instead of a Payload REST fetch. storeId ?? -1 since hooks can't be
-  // called conditionally - a -1 store id naturally matches zero rows.
-  const { data: catalog } = useQuery<LocalProduct>(
-    `SELECT p.id, p.name, p.sku, p.barcode, p.sell_price, p.tax_rate, p.max_discount_amount, m.url AS image_url,
-            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
-                      WHERE sm.product_id = p.id AND sm.store_id = ? AND sm.variant IS NULL), 0) AS stock_on_hand,
-            (SELECT COUNT(*) FROM products_variants pv WHERE pv._parent_id = p.id) AS variant_count
-     FROM products p
-     LEFT JOIN media m ON m.id = p.image_id
-     WHERE p.tenant_id = ? AND p.is_active = 1
-     ORDER BY p.name LIMIT 5000`,
-    [storeId ?? -1, tenantId],
+  // Whole active catalog for this tenant plus this store's stock levels,
+  // fetched together and re-fetched on pull-to-refresh/tab-focus - same
+  // "fetch everything, filter in memory" shape as apps/web's own
+  // dashboard/sell/page.tsx + product-search.tsx. orderHistory backs both
+  // the idle "recently sold" grid and the "frequently bought together"
+  // cross-sell strip below, computed client-side from the same recent-order
+  // window rather than two separate SQL aggregate queries.
+  const refresh = useCallback(async () => {
+    const [catalog, levels, tenant] = await Promise.all([
+      fetchCatalog(payloadToken, tenantId),
+      storeId != null ? fetchStockLevels(payloadToken, storeId) : Promise.resolve([]),
+      fetch(`${API_BASE_URL}/api/tenants/${tenantId}`, { headers: { Authorization: `JWT ${payloadToken}` } })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ]);
+    setRawCatalog(catalog);
+    setStockByKey(stockByKeyMap(levels));
+    if (tenant) {
+      setTenantFlags({
+        shiftsRequired: tenant.shiftsRequired !== false,
+        enforceDiscountCaps: tenant.enforceDiscountCaps !== false,
+      });
+    }
+    if (storeId != null) {
+      const res = await fetch(
+        `${API_BASE_URL}/api/orders?where[store][equals]=${storeId}&where[status][equals]=completed&sort=-createdAt&limit=300&depth=0`,
+        { headers: { Authorization: `JWT ${payloadToken}` } },
+      ).catch(() => null);
+      const body = res && res.ok ? await res.json().catch(() => null) : null;
+      setOrderHistory(body?.docs ?? []);
+    } else {
+      setOrderHistory([]);
+    }
+  }, [payloadToken, tenantId, storeId]);
+
+  // useFocusEffect alone covers both the initial mount (a newly-mounted
+  // screen that's part of the initial route is immediately focused) and
+  // every subsequent return to this tab - a separate plain useEffect
+  // calling the same refresh() would be redundant, matching how
+  // CustomersScreen.tsx/SalesScreen.tsx already only use this one hook.
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
   );
 
-  // Owner-controlled, tenant-wide - defaults to required (matches this
-  // field's own server-side defaultValue: true) whenever the row hasn't
-  // synced down yet, so a device that's never seen this tenant row keeps
-  // today's behavior rather than silently skipping the gate. Same
-  // unsynced-row-defaults-true convention applies to enforce_discount_caps
-  // (server default is also true - see Tenants.ts/Orders.ts).
-  const { data: tenantRows } = useQuery<{ shifts_required: number; enforce_discount_caps: number }>(
-    'SELECT shifts_required, enforce_discount_caps FROM tenants WHERE id = ?',
-    [tenantId],
-  );
-  const shiftsRequired = tenantRows[0]?.shifts_required !== 0;
-  const enforceDiscountCaps = tenantRows[0]?.enforce_discount_caps !== 0;
+  const { refreshing, onRefresh } = usePullToRefresh(refresh);
+
+  const catalogById = useMemo(() => new Map(rawCatalog.map((p) => [String(p.id), p])), [rawCatalog]);
+  const catalog = useMemo(() => rawCatalog.map((p) => toLocalProduct(p, stockByKey)), [rawCatalog, stockByKey]);
+
+  const shiftsRequired = tenantFlags.shiftsRequired;
+  const enforceDiscountCaps = tenantFlags.enforceDiscountCaps;
   // Owners always bypass the per-product discount cap regardless of the
   // toggle; everyone else bypasses it only when the tenant has turned
   // enforcement off entirely (matches Orders.ts's own
@@ -203,77 +230,50 @@ export function SellScreen({
     return maxDiscountAmountForLine({ quantity, product: line.product });
   }
 
-  // Idle-state default is this store's recently sold products, not the
-  // whole catalog - matches the web Sell page's own "search-first" flow
-  // (idle center area isn't meant to be a full product browser), while
-  // still giving a cashier something tappable without having to type/scan
-  // first. Ordered by most recent sale; catalog above already holds the
-  // full product rows, so this only needs to fetch the id ordering.
-  useEffect(() => {
-    if (storeId == null) return;
-    let active = true;
-    getDb()
-      .getAll<{ product_id: number }>(
-        `SELECT oli.product_id, MAX(COALESCE(o.created_at, o.synced_at)) AS last_sold
-         FROM orders_line_items oli
-         JOIN orders o ON o.id = oli._parent_id
-         WHERE o.store_id = ?
-         GROUP BY oli.product_id
-         ORDER BY last_sold DESC
-         LIMIT 30`,
-        [storeId],
-      )
-      .then((rows) => {
-        if (active) setRecentProductIds(rows.map((r) => r.product_id));
-      });
-    return () => {
-      active = false;
-    };
-  }, [storeId]);
+  // Idle-state default is this store's recently sold products, ordered by
+  // most recent sale first - orderHistory is already sorted -createdAt, so
+  // a simple first-seen-wins scan over it reproduces the same ordering the
+  // old `ORDER BY last_sold DESC` SQL query produced.
+  const recentProductIds = useMemo(() => {
+    const seen = new Set<number>();
+    const ids: number[] = [];
+    for (const order of orderHistory) {
+      for (const li of order.lineItems ?? []) {
+        if (!seen.has(li.product)) {
+          seen.add(li.product);
+          ids.push(li.product);
+        }
+      }
+      if (ids.length >= 30) break;
+    }
+    return ids.slice(0, 30);
+  }, [orderHistory]);
 
   // "Frequently bought with" - cross-sell suggestions computed from this
-  // store's own order history: which other products have shown up in the
-  // SAME order as anything currently in the cart, most-co-occurring first.
-  // Recomputed whenever the cart's set of distinct products changes (a
-  // quantity-only change doesn't need a requery, hence the joined-id-string
-  // dependency instead of depending on `cart` itself). Empty cart just
-  // falls back to the existing "recently sold" idle grid below.
-  // LocalProduct.id is a string (every PowerSync primary key is TEXT
-  // locally, regardless of the real Postgres column type), but
-  // orders_line_items.product_id is a plain replicated INTEGER column, not
-  // a primary key - converted to numbers here so both the arithmetic sort
-  // and the SQL binding below actually match that column's real type.
+  // store's own recent order history: which other products have shown up in
+  // the SAME order as anything currently in the cart, most-co-occurring
+  // first. Recomputed whenever the cart's set of distinct products changes.
   const cartProductIds = useMemo(() => [...new Set(cart.map((l) => Number(l.product.id)))].sort((a, b) => a - b), [cart]);
   const cartProductIdsKey = cartProductIds.join(',');
 
-  useEffect(() => {
-    if (storeId == null || cartProductIds.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFrequentlyBoughtIds([]);
-      return;
+  const frequentlyBoughtIds = useMemo(() => {
+    if (cartProductIds.length === 0) return [];
+    const cartSet = new Set(cartProductIds);
+    const counts = new Map<number, number>();
+    for (const order of orderHistory) {
+      const idsInOrder = new Set((order.lineItems ?? []).map((li) => li.product));
+      if (!cartProductIds.some((id) => idsInOrder.has(id))) continue;
+      for (const id of idsInOrder) {
+        if (cartSet.has(id)) continue;
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
     }
-    let active = true;
-    const placeholders = cartProductIds.map(() => '?').join(',');
-    getDb()
-      .getAll<{ product_id: number }>(
-        `SELECT oli2.product_id, COUNT(DISTINCT oli2._parent_id) AS co_count
-         FROM orders_line_items oli1
-         JOIN orders_line_items oli2 ON oli2._parent_id = oli1._parent_id AND oli2.product_id NOT IN (${placeholders})
-         JOIN orders o ON o.id = oli1._parent_id
-         WHERE oli1.product_id IN (${placeholders}) AND o.store_id = ?
-         GROUP BY oli2.product_id
-         ORDER BY co_count DESC
-         LIMIT 12`,
-        [...cartProductIds, ...cartProductIds, storeId],
-      )
-      .then((rows) => {
-        if (active) setFrequentlyBoughtIds(rows.map((r) => r.product_id));
-      });
-    return () => {
-      active = false;
-    };
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12)
+      .map(([id]) => id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cartProductIdsKey, storeId]);
+  }, [orderHistory, cartProductIdsKey]);
 
   // Barcode scanners are plain HID keyboard input, same as desktop/web -
   // typing into a focused search box already handles a scan with no
@@ -324,6 +324,17 @@ export function SellScreen({
     [cart],
   );
   const totals = useMemo(() => computeOrderTotals(lineInputs), [lineInputs]);
+
+  // Variants for whichever product the picker currently has open - looked
+  // up from the already-fetched catalog (which already carries each
+  // product's nested `variants` array from Payload, per-store stock
+  // resolved against the same stockByKey map used everywhere else on this
+  // screen) rather than a separate network round trip.
+  const variantPickerOptions = useMemo(() => {
+    if (!variantPickerProduct) return [];
+    const raw = catalogById.get(variantPickerProduct.id);
+    return raw ? toLocalVariants(raw, stockByKey) : [];
+  }, [variantPickerProduct, catalogById, stockByKey]);
 
   function requestAdd(product: LocalProduct) {
     if (product.variant_count > 0) {
@@ -404,6 +415,14 @@ export function SellScreen({
     await refreshHeldSales();
   }
 
+  // Synchronous REST checkout: POST /api/sync/orders (the same idempotent-
+  // on-duplicate-id ingestion endpoint the old upload queue used, reused
+  // here as a live call rather than switched to a different route - the
+  // idempotency is worth keeping as protection against a double-tap or a
+  // timeout-then-retry). On success, clears the cart and shows the receipt
+  // toast, same as before. On failure - apiFetch throwing (no connectivity)
+  // or a non-2xx response - the cart is deliberately left untouched so the
+  // cashier can retry once reconnected without re-entering everything.
   async function completeSale() {
     if (cart.length === 0 || storeId == null || tenantId == null) return;
     if (shiftsRequired && activeShift == null) {
@@ -421,59 +440,54 @@ export function SellScreen({
     }
 
     setCompleting(true);
+    const orderId = uuid();
+    const paymentStatus = tenderType === 'credit' ? 'pending' : 'paid';
+    const body = {
+      id: orderId,
+      tenant: tenantId,
+      store: storeId,
+      terminal: terminalId,
+      terminalName: terminalName,
+      cashier: user.id,
+      customer: selectedCustomer ? Number(selectedCustomer.id) : null,
+      lineItems: cart.map((line) => ({
+        product: Number(line.product.id),
+        variant: line.variant?.id ?? null,
+        quantity: line.quantity,
+        unitPrice: lineUnitPrice(line),
+        discount: line.discountAmount,
+      })),
+      taxTotal: totals.taxTotal,
+      discountTotal: totals.discountTotal,
+      total: totals.total,
+      tenderType,
+      paymentStatus,
+      status: 'completed',
+      createdOffline: false,
+    };
+
     try {
-      const db = getDb();
-      const orderId = uuid();
-      const now = new Date().toISOString();
-      const paymentStatus = tenderType === 'credit' ? 'pending' : 'paid';
-
-      // One local transaction for the order + all its line items, matching
-      // apps/desktop/src/Till.tsx's completeSale() exactly, so PowerSync's
-      // upload queue drains them together.
-      await db.writeTransaction(async (tx) => {
-        await tx.execute(
-          `INSERT INTO orders
-             (id, tenant_id, store_id, terminal, terminal_name, cashier_id, customer_id, tax_total, discount_total, total,
-              tender_type, payment_status, status, created_offline, synced_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', 1, ?)`,
-          [
-            orderId,
-            tenantId,
-            storeId,
-            terminalId,
-            terminalName,
-            user.id,
-            selectedCustomer ? Number(selectedCustomer.id) : null,
-            totals.taxTotal,
-            totals.discountTotal,
-            totals.total,
-            tenderType,
-            paymentStatus,
-            now,
-          ],
-        );
-
-        for (let i = 0; i < cart.length; i++) {
-          const line = cart[i];
-          await tx.execute(
-            `INSERT INTO orders_line_items (id, _parent_id, _order, product_id, variant, quantity, unit_price, discount)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            // Number(line.product.id): products.id is a PowerSync-implicit
-            // TEXT primary key locally, but this column mirrors Postgres's
-            // real INTEGER foreign key - see schema.ts's own note (ported
-            // from the same fix already proven on desktop).
-            [uuid(), orderId, i, Number(line.product.id), line.variant?.id ?? null, line.quantity, lineUnitPrice(line), line.discountAmount],
-          );
-        }
+      const res = await apiFetch(`${API_BASE_URL}/api/sync/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
+        body: JSON.stringify(body),
       });
-
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => null);
+        showAlert('Could not complete sale', errBody?.errors?.[0]?.message ?? errBody?.error ?? `Request failed (HTTP ${res.status})`);
+        return;
+      }
       const tenderLabel = TENDER_OPTIONS.find((t) => t.value === tenderType)?.label ?? tenderType;
       showToast(`Sale completed · ${tenderLabel} · ${totals.total.toFixed(2)}`);
       setCart([]);
       setSelectedCustomer(null);
       setCartOpen(false);
+      refresh();
     } catch (err) {
-      showAlert('Error completing sale', err instanceof Error ? err.message : String(err));
+      // apiFetch turns a connectivity-layer failure into Error(OFFLINE_MESSAGE)
+      // - the cart is intentionally NOT cleared here, so a cashier can retry
+      // once reconnected without re-entering the whole sale.
+      showAlert('Could not complete sale', err instanceof Error ? err.message : String(err));
     } finally {
       setCompleting(false);
     }
@@ -514,7 +528,7 @@ export function SellScreen({
                 onShiftChange={setActiveShift}
               />
             ) : (
-              <View />
+              <NetworkStatusPill />
             )}
             <Pressable android_ripple={{}} className="ml-2 rounded-md border border-border px-3 py-1.5 active:opacity-70" onPress={() => setHeldSalesOpen(true)}>
               <Text className="text-sm text-foreground">
@@ -544,6 +558,7 @@ export function SellScreen({
             keyExtractor={(p) => p.id}
             numColumns={2}
             columnWrapperClassName="gap-2"
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#df5102" />}
             ListHeaderComponent={
               !trimmedQuery ? (
                 <Text className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -587,13 +602,13 @@ export function SellScreen({
         ) : (
           <View className="flex-1 items-center justify-center px-6">
             <Text className="text-center font-medium text-foreground">
-              {trimmedQuery ? `No products match "${trimmedQuery}"` : catalog.length === 0 ? 'No products synced yet' : 'No sales yet at this store'}
+              {trimmedQuery ? `No products match "${trimmedQuery}"` : catalog.length === 0 ? 'No products found' : 'No sales yet at this store'}
             </Text>
             <Text className="mt-1 text-center text-muted-foreground">
               {trimmedQuery
                 ? 'Try a different name, SKU, or scan the barcode directly.'
                 : catalog.length === 0
-                  ? 'Products will appear here once this till finishes syncing.'
+                  ? 'Pull down to refresh once products have been added.'
                   : 'Scan a barcode or start typing to add a product to the sale.'}
             </Text>
           </View>
@@ -741,7 +756,7 @@ export function SellScreen({
 
       <VariantPickerModal
         product={variantPickerProduct}
-        storeId={storeId}
+        variants={variantPickerOptions}
         onSelect={(variant) => variantPickerProduct && addToCart(variantPickerProduct, variant)}
         onClose={() => setVariantPickerProduct(null)}
       />

@@ -1,12 +1,9 @@
-import { useEffect, useState } from 'react';
-import { View, Text, Pressable, Modal, Switch, Platform } from 'react-native';
+import { useState } from 'react';
+import { View, Text, Pressable, Modal, Platform } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { disconnectPowerSync } from '../db/database';
-import { clearSession } from '../lib/session';
-import { isBiometricEnabledFor, setBiometricEnabledFor, authenticateWithBiometrics, getBiometricDiagnostics, type BiometricDiagnostics } from '../lib/biometric';
 import type { PayloadUser } from '../lib/auth';
 import { SellScreen as RealSellScreen } from '../sell/SellScreen';
 import { CustomersScreen as RealCustomersScreen } from '../customers/CustomersScreen';
@@ -22,7 +19,7 @@ import { OverviewScreen } from '../overview/OverviewScreen';
 import { RestockHomeScreen } from '../restock/RestockHomeScreen';
 import { QuotationsHomeScreen } from '../quotes/QuotationsHomeScreen';
 
-type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers' | 'security' | 'reports' | 'inventory' | 'restock' | 'quotations';
+type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers' | 'reports' | 'inventory' | 'restock' | 'quotations';
 
 // Back-office admin (Phase 5) is intentionally tucked under More, not its
 // own tabs - this is deliberately last per the plan: none of it happens on
@@ -48,33 +45,6 @@ function MoreScreen({
   const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
   const canManage = user.role === 'owner' || user.role === 'manager';
   const [section, setSection] = useState<AdminSection | null>(null);
-  const [biometricDiagnostics, setBiometricDiagnostics] = useState<BiometricDiagnostics | null>(null);
-  const [biometricEnabled, setBiometricEnabledState] = useState(false);
-  const biometricAvailable = biometricDiagnostics?.hasHardware && biometricDiagnostics?.isEnrolled;
-
-  useEffect(() => {
-    let active = true;
-    Promise.all([getBiometricDiagnostics(), isBiometricEnabledFor(user.id)]).then(([diagnostics, enabled]) => {
-      if (!active) return;
-      setBiometricDiagnostics(diagnostics);
-      setBiometricEnabledState(enabled);
-    });
-    return () => {
-      active = false;
-    };
-  }, [user.id]);
-
-  async function handleToggleBiometric(next: boolean) {
-    if (next) {
-      // Confirm the sensor actually works for this person before trusting
-      // it as a login shortcut - same reasoning as apps/web's own "verify
-      // before saving" pattern for anything security-adjacent.
-      const ok = await authenticateWithBiometrics('Confirm to enable fingerprint login');
-      if (!ok) return;
-    }
-    await setBiometricEnabledFor(user.id, next);
-    setBiometricEnabledState(next);
-  }
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-background px-6 pt-4">
@@ -93,9 +63,6 @@ function MoreScreen({
         </Pressable>
         <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('restock')}>
           <Text className="text-foreground">Restock</Text>
-        </Pressable>
-        <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('security')}>
-          <Text className="text-foreground">Security</Text>
         </Pressable>
       </View>
 
@@ -146,49 +113,6 @@ function MoreScreen({
           {section === 'inventory' ? <RealInventoryScreen user={user} terminalId={terminalId} storeId={storeId} /> : null}
           {section === 'restock' ? <RestockHomeScreen user={user} storeId={storeId} payloadToken={payloadToken} /> : null}
           {section === 'quotations' ? <QuotationsHomeScreen user={user} payloadToken={payloadToken} storeId={storeId} /> : null}
-          {section === 'security' ? (
-            <View className="flex-1 px-6 pt-4">
-              {biometricAvailable ? (
-                <View className="flex-row items-center justify-between rounded-lg border border-border bg-card p-3">
-                  <View className="shrink pr-3">
-                    <Text className="text-foreground">Fingerprint login</Text>
-                    <Text className="text-xs text-muted-foreground">Skip typing your PIN to resume this till</Text>
-                  </View>
-                  <Switch value={biometricEnabled} onValueChange={handleToggleBiometric} trackColor={{ true: '#df5102' }} />
-                </View>
-              ) : biometricDiagnostics && !biometricAvailable ? (
-                // Not the normal "hide the row" case - the toggle is expected
-                // but the device is reporting it as unavailable, so show why
-                // instead of silently disappearing. Temporary until confirmed
-                // working on a real sideloaded install (see biometric.ts's
-                // own note on MIUI).
-                <View className="rounded-lg border border-border bg-card p-3">
-                  <Text className="text-foreground">Fingerprint login unavailable</Text>
-                  <Text className="mt-1 text-xs text-muted-foreground">
-                    hardware: {String(biometricDiagnostics.hasHardware)} · enrolled: {String(biometricDiagnostics.isEnrolled)}
-                    {biometricDiagnostics.error ? ` · error: ${biometricDiagnostics.error}` : ''}
-                  </Text>
-                  {biometricDiagnostics.systemReportsSensor && !biometricDiagnostics.hasHardware ? (
-                    // Android's own PackageManager confirms a sensor is
-                    // physically present (a check independent of the one
-                    // above - see biometric.ts's own note), so this isn't a
-                    // missing-hardware case. Known MIUI behavior for apps
-                    // installed outside the Play Store/GetApps: it can block
-                    // the security API this app checks against without
-                    // actually removing the fingerprint sensor. Only actual
-                    // fix is a device-side permission, not app code.
-                    <Text className="mt-2 text-xs text-muted-foreground">
-                      Your phone reports a fingerprint sensor, but its security settings are blocking this app from using it - common on MIUI/Xiaomi for apps
-                      installed outside the Play Store. Check Settings → Apps → Fundi Till → Permissions (or Settings → Privacy → Special app access) for a
-                      fingerprint/biometric permission to enable.
-                    </Text>
-                  ) : null}
-                </View>
-              ) : (
-                <Text className="text-muted-foreground">Checking device capabilities...</Text>
-              )}
-            </View>
-          ) : null}
         </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
@@ -247,10 +171,4 @@ export function RootTabs({
       </Tab.Screen>
     </Tab.Navigator>
   );
-}
-
-/** Signs this till out entirely - disconnects PowerSync and clears the persisted offline-resume session. */
-export async function signOut(): Promise<void> {
-  await disconnectPowerSync();
-  await clearSession();
 }

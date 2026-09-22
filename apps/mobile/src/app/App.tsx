@@ -1,29 +1,23 @@
 import '../../global.css';
 import { StatusBar } from 'expo-status-bar';
 import { useMutedPlaceholderColor, useNavigationTheme } from '../lib/theme';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, Platform, Linking, Image } from 'react-native';
 import { KeyboardProvider, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
-import { PowerSyncContext } from '@powersync/react';
-import { Ionicons } from '@expo/vector-icons';
-import { loginToPayload, loginWithPin, refreshTillToken, type PayloadUser } from '../lib/auth';
-import { connectPowerSync, disconnectPowerSync, refreshPayloadToken } from '../db/database';
+import { API_BASE_URL, loginToPayload, loginWithPin, refreshTillToken, type PayloadUser } from '../lib/auth';
 import { getTerminalId, getTerminalName, setTerminalName } from '../lib/terminal';
-import { checkPinLocallyById, MIN_PIN_LENGTH, MAX_PIN_LENGTH } from '../lib/pin';
-import { loadSession, saveSession, clearSession, updateSessionStore, type PersistedSession } from '../lib/session';
-import { getDb } from '../db/database';
+import { MIN_PIN_LENGTH, MAX_PIN_LENGTH } from '../lib/pin';
 import { RootTabs } from '../navigation/RootTabs';
 import { checkForUpdate, type AvailableUpdate } from '../lib/updateCheck';
 import { PinPad } from '../components/PinPad';
 import { AppNoticeHost } from '../components/AppNotice';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { isBiometricAvailable, isBiometricEnabledFor, authenticateWithBiometrics } from '../lib/biometric';
 
-type ConnectionState = 'idle' | 'logging-in' | 'connecting' | 'connected' | 'error';
+type ConnectionState = 'idle' | 'logging-in' | 'connected' | 'error';
 type LoginMode = 'pin' | 'password';
 
 interface StoreOption {
@@ -31,12 +25,11 @@ interface StoreOption {
   name: string;
 }
 
-// Ported from apps/desktop/src/App.tsx - same state machine (terminal-name
-// gate -> connected app -> offline-resume PIN screen -> login screen), same
-// guard order, same reasoning for every branch - just RN components/
-// NativeWind instead of DOM+CSS, and everything that touched localStorage
-// synchronously there (session.ts/terminal.ts) is awaited here since
-// expo-secure-store is async.
+// This app is online-only now (no local database, no offline-resume login) -
+// every login goes through a live /api/users/login or /api/auth/pin-login
+// call, same as apps/web. There's no "connecting" step distinct from
+// "logging-in" any more either, since there's no local sync engine to spin
+// up afterward - a successful login response IS being connected.
 function AppInner() {
   const placeholderColor = useMutedPlaceholderColor();
   const navigationTheme = useNavigationTheme();
@@ -54,13 +47,13 @@ function AppInner() {
   const [nameDraft, setNameDraft] = useState('');
   const [activeStoreId, setActiveStoreId] = useState<number | null>(null);
   const [storeOptions, setStoreOptions] = useState<StoreOption[]>([]);
-  const payloadTokenRef = useRef<string | null>(null);
-  const terminalIdRef = useRef<string | null>(null);
-  const [resumeCandidate, setResumeCandidate] = useState<PersistedSession | null>(null);
-  const [resumePin, setResumePin] = useState('');
-  const [resumeError, setResumeError] = useState<string | null>(null);
+  // State, not a ref - both are read during render below (RootTabs' props,
+  // the "connected" guard, the login footer), and a ref's `.current` can't
+  // safely be read during render (it wouldn't reliably trigger a re-render
+  // when it changes).
+  const [payloadToken, setPayloadToken] = useState<string | null>(null);
+  const [terminalId, setTerminalId] = useState<string | null>(null);
   const [availableUpdate, setAvailableUpdate] = useState<AvailableUpdate | null>(null);
-  const [biometricReady, setBiometricReady] = useState(false);
 
   // "Notify + redownload", not a silent auto-updater - same as
   // apps/desktop's identical checkForUpdate(). Fires once on launch;
@@ -72,106 +65,71 @@ function AppInner() {
 
   useEffect(() => {
     (async () => {
-      terminalIdRef.current = await getTerminalId();
+      setTerminalId(await getTerminalId());
       setTerminalNameState(await getTerminalName());
-      setResumeCandidate(await loadSession());
       setInitializing(false);
     })();
   }, []);
 
-  // Slides this till's session forward while it's actually connected, well
-  // ahead of its 30-day server-side/local-resume cap (tillAuth.ts's
-  // TILL_TOKEN_TTL_SECONDS, session.ts's matching OFFLINE_SESSION_TTL_MS) -
-  // a till that's regularly online this way never actually needs a fresh
-  // phone+PIN login; only one that goes fully offline for the entire
-  // window does. Failures (offline, banned, canceled subscription) are
-  // silently ignored here - the next attempt retries, and a genuinely
-  // banned/canceled account is caught sooner anyway by PowerSync's own
-  // ~1hr credential re-check (/api/powersync/token) - this timer isn't the
-  // place to interrupt an already-working till mid-shift over a transient
-  // network blip. Matches apps/desktop/src/App.tsx's identical effect.
+  // Slides this till's session forward while it's connected, well ahead of
+  // the server's TILL_TOKEN_TTL_SECONDS (apps/api/src/lib/tillAuth.ts) -
+  // failures (offline, banned, canceled subscription) are silently ignored
+  // here since a genuinely offline till simply can't refresh; the next
+  // attempt retries, and any request needing a valid token will surface its
+  // own clear "you're offline"/auth error at the point of use. Matches
+  // apps/desktop/src/App.tsx's identical effect. Re-arms on every
+  // payloadToken change so the closure below always holds the latest token,
+  // not one already invalidated by an earlier refresh.
   useEffect(() => {
-    if (state !== 'connected' || !user) return;
+    if (state !== 'connected' || !user || !payloadToken) return;
     const TILL_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
     const interval = setInterval(async () => {
-      if (!payloadTokenRef.current) return;
       try {
-        const { payloadToken: freshToken, user: freshUser } = await refreshTillToken(payloadTokenRef.current);
-        payloadTokenRef.current = freshToken;
+        const { payloadToken: freshToken, user: freshUser } = await refreshTillToken(payloadToken);
+        setPayloadToken(freshToken);
         setUser(freshUser);
-        refreshPayloadToken(freshToken);
-        await saveSession(freshToken, freshUser, activeStoreId);
       } catch (err) {
         console.warn('Till session refresh failed (will retry later):', err);
       }
     }, TILL_REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [state, user, activeStoreId]);
-
-  // Fingerprint is purely an additive shortcut on top of the same
-  // resumeCandidate PIN flow below (see biometric.ts's own note on why) -
-  // only offered once both the device can actually do it AND this specific
-  // person opted in via the More tab.
-  useEffect(() => {
-    if (!resumeCandidate) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setBiometricReady(false);
-      return;
-    }
-    let active = true;
-    Promise.all([isBiometricAvailable(), isBiometricEnabledFor(resumeCandidate.user.id)]).then(([available, enabled]) => {
-      if (active) setBiometricReady(available && enabled);
-    });
-    return () => {
-      active = false;
-    };
-  }, [resumeCandidate]);
+  }, [state, user, payloadToken]);
 
   // Once connected, an owner/manager with no fixed store (Users.store is
-  // nullable for exactly this) needs to pick which branch to sync - the
-  // tenant-scoped `stores` table is already populated at this point even
-  // with storeId=null (only store-scoped streams like stock_movements wait
-  // on a real storeId). Auto-selects the only option when there's just one,
-  // matching the plan's "auto-select-if-one-store" decision.
+  // nullable for exactly this) needs to pick which branch to work from -
+  // fetched via the same REST endpoint StoresScreen.tsx already uses.
+  // Auto-selects the only option when there's just one, matching the plan's
+  // "auto-select-if-one-store" decision.
   useEffect(() => {
-    if (state !== 'connected' || !user) return;
+    if (state !== 'connected' || !user || !payloadToken) return;
     const fixedStoreId = typeof user.store === 'object' ? (user.store?.id ?? null) : (user.store ?? null);
     if (fixedStoreId != null) return;
-    getDb()
-      // PowerSync's local `stores.id` is TEXT (every PowerSync primary key
-      // is, regardless of the real Postgres column type - same rule
-      // connector.ts's toNumber() already works around for order line
-      // items) - coerced back to a real number right here so every
-      // downstream consumer (activeStoreId, ShiftWidget, openShift's POST
-      // body) sends Payload a JSON number, not a string. Left uncoerced,
-      // Payload's relationship-field validation on Shifts.store rejects it
-      // outright ("The following field is invalid: Store").
-      .getAll<StoreOption>('SELECT id, name FROM stores ORDER BY name')
-      .then((rows) => {
-        const coerced = rows.map((row) => ({ ...row, id: Number(row.id) }));
-        setStoreOptions(coerced);
-        if (coerced.length === 1 && activeStoreId == null) {
-          void handleSwitchStore(coerced[0].id);
+    const tenantId = typeof user.tenant === 'object' ? user.tenant.id : user.tenant;
+    fetch(`${API_BASE_URL}/api/stores?where[tenant][equals]=${tenantId}&sort=name&limit=100`, {
+      headers: { Authorization: `JWT ${payloadToken}` },
+    })
+      .then((res) => res.json())
+      .then((body) => {
+        const rows = (body?.docs ?? []) as StoreOption[];
+        setStoreOptions(rows);
+        if (rows.length === 1 && activeStoreId == null) {
+          setActiveStoreId(rows[0].id);
         }
       })
       .catch(() => setStoreOptions([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, user]);
+  }, [state, user, payloadToken]);
 
   async function handleLogin(pinOverride?: string) {
     setError(null);
     try {
       setState('logging-in');
-      const { payloadToken, user: loggedInUser } =
+      const { payloadToken: newToken, user: loggedInUser } =
         mode === 'pin' ? await loginWithPin(phone, pinOverride ?? pin) : await loginToPayload(email, password);
-      payloadTokenRef.current = payloadToken;
+      setPayloadToken(newToken);
       setUser(loggedInUser);
-
       const fixedStoreId = typeof loggedInUser.store === 'object' ? (loggedInUser.store?.id ?? null) : (loggedInUser.store ?? null);
-      setState('connecting');
-      await connectPowerSync(payloadToken, fixedStoreId ?? null);
       setActiveStoreId(fixedStoreId ?? null);
-      await saveSession(payloadToken, loggedInUser, fixedStoreId ?? null);
       setState('connected');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -179,113 +137,17 @@ function AppInner() {
     }
   }
 
-  // Shared by both resume paths below once the person's identity is
-  // confirmed (PIN or fingerprint) - reconnects PowerSync under the
-  // already-resident payloadToken, same as a fresh login's own tail end.
-  async function finishResume(candidate: PersistedSession) {
-    payloadTokenRef.current = candidate.payloadToken;
-    setUser(candidate.user);
-    setActiveStoreId(candidate.storeId);
-    setState('connecting');
-    await connectPowerSync(candidate.payloadToken, candidate.storeId);
-    setState('connected');
-  }
-
-  // Re-entry for a till that already logged in online at least once
-  // (session.ts, up to 30 days old, slid forward automatically while
-  // online by the refresh effect above) - gated by the same local,
-  // zero-network PIN mechanism (pin.ts's checkPinLocallyById). Deliberately
-  // checks only resumeCandidate's own user id: this is "resume MY session",
-  // not a general login.
-  async function handleResume(pinOverride?: string) {
-    if (!resumeCandidate) return;
-    setResumeError(null);
-    const candidate = resumeCandidate;
-    try {
-      setState('logging-in');
-      // Start the PowerSync connect immediately, in parallel with the
-      // local PIN check, instead of waiting for it to finish first -
-      // candidate.payloadToken is already a valid, previously-issued
-      // credential sitting in SecureStore regardless of the PIN outcome
-      // (the PIN here is a local convenience gate on an already-
-      // authenticated device, not what produces the token), so there's no
-      // security reason to serialize two independent slow steps. checkPin-
-      // LocallyById's scrypt verification is a genuinely heavy pure-JS
-      // computation (see pin.ts's own note) - this was the dominant real
-      // cost of resuming a session, confirmed by testing sync speed alone
-      // wasn't enough. Torn back down below if the PIN turns out wrong.
-      const connectPromise = connectPowerSync(candidate.payloadToken, candidate.storeId);
-      setState('connecting');
-      const result = await checkPinLocallyById(candidate.user.id, pinOverride ?? resumePin);
-      if (!result || !result.valid) {
-        await connectPromise.catch(() => undefined);
-        await disconnectPowerSync().catch(() => undefined);
-        setResumeError('Incorrect PIN');
-        setState('idle');
-        return;
-      }
-      await connectPromise;
-      payloadTokenRef.current = candidate.payloadToken;
-      setUser(candidate.user);
-      setActiveStoreId(candidate.storeId);
-      setState('connected');
-    } catch (err) {
-      await disconnectPowerSync().catch(() => undefined);
-      setResumeError(err instanceof Error ? err.message : String(err));
-      setState('idle');
-    }
-  }
-
-  // Fingerprint shortcut for the same resume flow - authenticateAsync only
-  // confirms the device owner is present, it never returns a credential, so
-  // success here skips straight past checkPinLocallyById to finishResume
-  // (the payloadToken it unlocks was already sitting in SecureStore either
-  // way). Any failure/cancel just leaves the PIN pad there - never a
-  // dead end.
-  async function handleResumeWithBiometrics() {
-    if (!resumeCandidate) return;
-    setResumeError(null);
-    const ok = await authenticateWithBiometrics(`Sign in as ${resumeCandidate.user.name || resumeCandidate.user.email}`);
-    if (!ok) return;
-    try {
-      setState('logging-in');
-      await finishResume(resumeCandidate);
-    } catch (err) {
-      setResumeError(err instanceof Error ? err.message : String(err));
-      setState('idle');
-    }
-  }
-
-  function handleUseDifferentAccount() {
-    setResumeCandidate(null);
-    setResumeError(null);
-    setResumePin('');
-  }
-
-  async function handleSignOut() {
-    await disconnectPowerSync();
-    await clearSession();
-    setResumeCandidate(null);
+  function handleSignOut() {
     setUser(null);
     setActiveStoreId(null);
+    setStoreOptions([]);
     setState('idle');
     setPin('');
     setPassword('');
   }
 
-  // Full disconnect + reconnect, exactly like login - PowerSync has no "hot"
-  // way to reparameterize an already-connected session's store scope (see
-  // connectPowerSync's own comment).
-  async function handleSwitchStore(storeId: number) {
-    if (!payloadTokenRef.current) return;
-    try {
-      await disconnectPowerSync();
-      await connectPowerSync(payloadTokenRef.current, storeId);
-      setActiveStoreId(storeId);
-      await updateSessionStore(storeId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
+  function handleSwitchStore(storeId: number) {
+    setActiveStoreId(storeId);
   }
 
   function handleSaveTerminalName() {
@@ -316,7 +178,7 @@ function AppInner() {
     );
   }
 
-  if (state === 'connected' && user && payloadTokenRef.current) {
+  if (state === 'connected' && user && payloadToken) {
     const fixedStoreId = typeof user.store === 'object' ? (user.store?.id ?? null) : (user.store ?? null);
     const needsStorePick = fixedStoreId == null && activeStoreId == null;
     if (needsStorePick) {
@@ -353,8 +215,8 @@ function AppInner() {
         <NavigationContainer theme={navigationTheme}>
           <RootTabs
             user={user}
-            payloadToken={payloadTokenRef.current}
-            terminalId={terminalIdRef.current ?? ''}
+            payloadToken={payloadToken}
+            terminalId={terminalId ?? ''}
             terminalName={terminalName}
             storeId={activeStoreId}
             onSignOut={handleSignOut}
@@ -364,47 +226,8 @@ function AppInner() {
     );
   }
 
-  if (resumeCandidate) {
-    const resumeBusy = state === 'logging-in' || state === 'connecting';
-    return (
-      <LoginShell title="Welcome back" subtitle={resumeCandidate.user.name || resumeCandidate.user.email}>
-        {biometricReady ? (
-          <Pressable
-            android_ripple={{ color: '#ffffff30', radius: 40, borderless: true }}
-            className={`mb-1 items-center gap-1.5 self-center ${resumeBusy ? 'opacity-50' : ''}`}
-            disabled={resumeBusy}
-            onPress={handleResumeWithBiometrics}
-          >
-            <View className="h-16 w-16 items-center justify-center rounded-full border border-primary bg-card">
-              <Ionicons name="finger-print-outline" size={30} color="#df5102" />
-            </View>
-            <Text className="text-sm text-muted-foreground">Use fingerprint</Text>
-          </Pressable>
-        ) : null}
-        <PinPad
-          value={resumePin}
-          onChange={(v) => {
-            setResumeError(null);
-            setResumePin(v);
-          }}
-          onComplete={(v) => handleResume(v)}
-          disabled={resumeBusy}
-          error={resumeError}
-        />
-        {resumePin.length >= MIN_PIN_LENGTH && resumePin.length < MAX_PIN_LENGTH ? (
-          <PrimaryButton label={resumeBusy ? 'Continuing...' : 'Continue'} onPress={() => handleResume()} disabled={resumeBusy} />
-        ) : null}
-        {resumeError && <Text className="text-center text-destructive">{resumeError}</Text>}
-        <Pressable android_ripple={{}} className="items-center py-2" onPress={handleUseDifferentAccount} disabled={resumeBusy}>
-          <Text className="text-muted-foreground">Use a different account</Text>
-        </Pressable>
-        <Text className="text-center text-xs text-muted-foreground">Works offline - this till already signed in as this person within the last 30 days.</Text>
-      </LoginShell>
-    );
-  }
-
-  const busy = state === 'logging-in' || state === 'connecting';
-  const submitLabel = state === 'logging-in' ? 'Logging in...' : state === 'connecting' ? 'Connecting...' : 'Log in';
+  const busy = state === 'logging-in';
+  const submitLabel = busy ? 'Logging in...' : 'Log in';
   const phoneValid = phone.trim().length >= 9;
 
   // Split into a phone step then a dedicated, single-focus PIN step - matching
@@ -494,7 +317,7 @@ function AppInner() {
         <Text className="text-sm text-muted-foreground">{mode === 'pin' ? 'Sign in with email instead' : 'Sign in with phone + PIN instead'}</Text>
       </Pressable>
       <Text className="text-center text-xs text-muted-foreground">
-        {terminalName} · {terminalIdRef.current}
+        {terminalName} · {terminalId}
       </Text>
     </LoginShell>
   );
@@ -542,23 +365,7 @@ export const App = () => {
           <KeyboardProvider>
             {/* "auto" tracks the OS color scheme itself (light content on dark, dark content on light) - same source of truth as global.css's prefers-color-scheme tokens, so the status bar never mismatches the app's own theme. */}
             <StatusBar style="auto" />
-            {/* Lets any screen use @powersync/react's useQuery for a live,
-                auto-refreshing view of local SQLite instead of a one-shot
-                getAll() - getDb() lazily creates the shared instance
-                regardless of connection state, so this is safe to mount
-                before login too. The cast below is a real but harmless
-                mismatch: apps/mobile pins @powersync/common@2.1.0 (for
-                @powersync/react-native), while @powersync/react itself still
-                depends on @powersync/common@^2.0.0 and npm hasn't deduped
-                the two into one copy - so TypeScript sees two structurally
-                near-identical but nominally distinct `Table`/`SchemaType`
-                classes. Both are the same class at runtime; only the type
-                checker can't tell. Safe to drop once @powersync/react ships
-                a release compatible with @powersync/common 2.1.x. */}
-            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any -- dual-package-instance cast, see comment above */}
-            <PowerSyncContext.Provider value={getDb() as any}>
-              <AppInner />
-            </PowerSyncContext.Provider>
+            <AppInner />
             <AppNoticeHost />
           </KeyboardProvider>
         </GestureHandlerRootView>

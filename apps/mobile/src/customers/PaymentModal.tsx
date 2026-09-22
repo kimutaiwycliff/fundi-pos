@@ -3,7 +3,7 @@ import { useMutedPlaceholderColor } from '../lib/theme';
 import { Modal, View, Text, TextInput, Pressable, ScrollView, Platform } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { API_BASE_URL, type PayloadUser } from '../lib/auth';
-import { findManagerAndCheckPinLocally, recordCreditPayment } from '../lib/pin';
+import { findManagerByPhone, recordCreditPayment } from '../lib/pin';
 
 export interface LocalOrder {
   id: string;
@@ -115,13 +115,13 @@ export function PaymentModal({
       let managerId = user.id;
       let pin = '';
       if (!isSelfManager) {
-        const localCheck = await findManagerAndCheckPinLocally(managerPhone, managerPin);
-        if (!localCheck || !localCheck.valid) {
-          setError('Manager PIN incorrect');
+        const manager = await findManagerByPhone(payloadToken, managerPhone);
+        if (!manager) {
+          setError('No manager/owner found with that phone number');
           setBusy(false);
           return;
         }
-        managerId = localCheck.managerId;
+        managerId = manager.managerId;
         pin = managerPin;
       }
       const result = await recordCreditPayment(payloadToken, order.id, parsed, method, note.trim() || undefined, managerId, pin);

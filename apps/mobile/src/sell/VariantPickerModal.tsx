@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@powersync/react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Modal, View, Text, TextInput, Pressable, FlatList, Image, Platform } from 'react-native';
@@ -10,40 +9,23 @@ import type { LocalProduct, LocalVariant } from './types';
 
 // Opens whenever a variant-having product is picked (see SellScreen's
 // requestAdd) - a product with variants is never sold as its bare self,
-// same rule as apps/web/.../sell/variant-picker-dialog.tsx. Queries
-// products_variants on demand rather than joining it into every search
-// result row, since most searches never open this.
+// same rule as apps/web/.../sell/variant-picker-dialog.tsx. `variants` is
+// pre-fetched by the caller (SellScreen's own catalog fetch, mapped via
+// toLocalVariants) rather than queried here - there's no local database
+// to query anymore now that catalog data comes from the REST API.
 export function VariantPickerModal({
   product,
-  storeId,
+  variants,
   onSelect,
   onClose,
 }: {
   product: LocalProduct | null;
-  storeId: number;
+  variants: LocalVariant[];
   onSelect: (variant: LocalVariant) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState('');
   const placeholderColor = useMutedPlaceholderColor();
-
-  // Reactive - a stale stock_on_hand snapshot here directly risks
-  // overselling a variant (this modal is the last stop before addToCart's
-  // own stock check). product?.id ?? '' keeps the hook call unconditional
-  // (PowerSync's useQuery can't be called conditionally) while still
-  // matching zero rows whenever the modal is closed (product == null),
-  // same "safe non-matching sentinel" convention as SellScreen's own
-  // storeId ?? -1.
-  const { data: variants } = useQuery<LocalVariant>(
-    `SELECT pv.id, pv.label, pv.sku, pv.barcode, pv.sell_price, m.url AS image_url,
-            COALESCE((SELECT SUM(sm.quantity_delta) FROM stock_movements sm
-                      WHERE sm.variant = pv.id AND sm.store_id = ?), 0) AS stock_on_hand
-     FROM products_variants pv
-     LEFT JOIN media m ON m.id = pv.image_id
-     WHERE pv._parent_id = ?
-     ORDER BY pv._order`,
-    [storeId, product?.id ?? ''],
-  );
 
   const results = useMemo(() => {
     const trimmed = query.trim();

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutedPlaceholderColor } from '../lib/theme';
 import { Modal, View, Text, TextInput, Pressable, Platform } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { findManagerAndCheckPinLocally, authorizeOrderStatusChange } from '../lib/pin';
+import { findManagerByPhone, authorizeOrderStatusChange } from '../lib/pin';
 
 export interface VoidableOrder {
   id: string;
@@ -39,13 +39,13 @@ export function VoidRefundModal({
     setBusy(true);
     setError(null);
     try {
-      const localCheck = await findManagerAndCheckPinLocally(managerPhone, managerPin);
-      if (!localCheck || !localCheck.valid) {
-        setError('Manager PIN incorrect');
+      const manager = await findManagerByPhone(payloadToken, managerPhone);
+      if (!manager) {
+        setError('No manager/owner found with that phone number');
         setBusy(false);
         return;
       }
-      const result = await authorizeOrderStatusChange(payloadToken, order.id, status, localCheck.managerId, managerPin);
+      const result = await authorizeOrderStatusChange(payloadToken, order.id, status, manager.managerId, managerPin);
       if (!result.ok) {
         setError(result.error);
         setBusy(false);

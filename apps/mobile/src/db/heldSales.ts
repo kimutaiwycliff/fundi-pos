@@ -1,53 +1,49 @@
-import { getDb } from './database';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uuid } from '../lib/uuid';
 
-// Held/parked sales are deliberately terminal-local and NOT part of the
-// synced PowerSync schema (see schema.ts/AppSchema) - a parked cart is a
-// till-local convenience, not business data other stores/the dashboard need
-// to see. Ported 1:1 from apps/desktop/src/heldSales.ts (same PowerSync raw
-// SQL API), swapping crypto.randomUUID() for lib/uuid.ts's RFC4122 v4
-// generator (RN has no Web Crypto API - see uuid.ts).
+// Held/parked sales are a till-local convenience, not business data other
+// stores/the dashboard need to see - previously a plain SQL table created on
+// the same PowerSync-managed SQLite instance every other local read used,
+// even though this table itself was never part of the synced schema. Now
+// that this app is online-only (no local database of any kind), a small
+// JSON array in AsyncStorage is the simplest local-only store for the same
+// data - same exported shape/signatures as before, so SellScreen.tsx/
+// HeldSalesModal.tsx need no changes beyond whatever else touches them.
 export interface HeldSale {
   id: string;
   createdAt: string;
   cartJson: string;
 }
 
-let ensured = false;
+const STORAGE_KEY = 'hardware-pos-held-sales';
 
-export async function ensureHeldSalesTable(): Promise<void> {
-  if (ensured) return;
-  const db = getDb();
-  await db.execute(
-    `CREATE TABLE IF NOT EXISTS local_held_sales (
-       id TEXT PRIMARY KEY,
-       created_at TEXT NOT NULL,
-       cart_json TEXT NOT NULL
-     )`,
-  );
-  ensured = true;
+async function readAll(): Promise<HeldSale[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as HeldSale[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeAll(sales: HeldSale[]): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(sales));
 }
 
 export async function holdSale(cartJson: string): Promise<void> {
-  await ensureHeldSalesTable();
-  const db = getDb();
-  await db.execute(`INSERT INTO local_held_sales (id, created_at, cart_json) VALUES (?, ?, ?)`, [
-    uuid(),
-    new Date().toISOString(),
-    cartJson,
-  ]);
+  const sales = await readAll();
+  sales.unshift({ id: uuid(), createdAt: new Date().toISOString(), cartJson });
+  await writeAll(sales);
 }
 
 export async function listHeldSales(): Promise<HeldSale[]> {
-  await ensureHeldSalesTable();
-  const db = getDb();
-  const rows = await db.getAll<{ id: string; created_at: string; cart_json: string }>(
-    `SELECT id, created_at, cart_json FROM local_held_sales ORDER BY created_at DESC`,
-  );
-  return rows.map((r) => ({ id: r.id, createdAt: r.created_at, cartJson: r.cart_json }));
+  const sales = await readAll();
+  return [...sales].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
 export async function deleteHeldSale(id: string): Promise<void> {
-  const db = getDb();
-  await db.execute(`DELETE FROM local_held_sales WHERE id = ?`, [id]);
+  const sales = await readAll();
+  await writeAll(sales.filter((s) => s.id !== id));
 }
