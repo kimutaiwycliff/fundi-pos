@@ -21,5 +21,6 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-http = "2"
+tauri-plugin-serialplugin = "3"
 serde = { version = "1", features = ["derive"] }
 

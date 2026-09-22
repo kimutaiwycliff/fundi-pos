@@ -23,7 +23,8 @@
     "fuse.js": "^7.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "rollup": "^4.63.1"
+    "rollup": "^4.63.1",
+    "tauri-plugin-serialplugin-api": "^3.0.7"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

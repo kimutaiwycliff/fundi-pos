@@ -71,6 +71,15 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
+        // USB-connected receipt printer support (alongside the existing
+        // network path, unchanged below) - most budget thermal printers
+        // enumerate as a virtual COM/serial port via a CH340/CP210x-class
+        // chip, not a generic USB-printer bulk endpoint, so this plugin
+        // (not raw rusb/nusb) is the broader-compatibility choice. All the
+        // actual port-listing/open/write happens from the frontend via its
+        // JS API (src/printer.ts) - no custom Rust command needed here
+        // beyond registering the plugin itself.
+        .plugin(tauri_plugin_serialplugin::init())
         .invoke_handler(tauri::generate_handler![
             greet,
             print_receipt,
