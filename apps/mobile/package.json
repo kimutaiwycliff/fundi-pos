@@ -46,6 +46,7 @@
     "react-native-screens": "~4.26.0",
     "react-native-svg": "*",
     "react-native-svg-transformer": "*",
+    "react-native-tcp-socket": "^6.4.3",
     "react-native-web": "*",
     "scrypt-js": "^3.0.1",
     "tailwindcss": "^3.4.4"

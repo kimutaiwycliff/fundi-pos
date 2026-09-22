@@ -13,13 +13,14 @@ import { SalesScreen as RealSalesScreen } from '../sales/SalesScreen';
 import { StaffScreen } from '../admin/StaffScreen';
 import { StoresScreen } from '../admin/StoresScreen';
 import { SettingsScreen } from '../admin/SettingsScreen';
+import { PrinterSettingsScreen } from '../admin/PrinterSettingsScreen';
 import { AuditLogScreen } from '../admin/AuditLogScreen';
 import { ReportsScreen } from '../admin/ReportsScreen';
 import { OverviewScreen } from '../overview/OverviewScreen';
 import { RestockHomeScreen } from '../restock/RestockHomeScreen';
 import { QuotationsHomeScreen } from '../quotes/QuotationsHomeScreen';
 
-type AdminSection = 'staff' | 'stores' | 'settings' | 'audit' | 'customers' | 'reports' | 'inventory' | 'restock' | 'quotations';
+type AdminSection = 'staff' | 'stores' | 'settings' | 'printer' | 'audit' | 'customers' | 'reports' | 'inventory' | 'restock' | 'quotations';
 
 // Back-office admin (Phase 5) is intentionally tucked under More, not its
 // own tabs - this is deliberately last per the plan: none of it happens on
@@ -64,6 +65,9 @@ function MoreScreen({
         <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('restock')}>
           <Text className="text-foreground">Restock</Text>
         </Pressable>
+        <Pressable android_ripple={{}} className="rounded-lg border border-border bg-card p-3 active:opacity-70" onPress={() => setSection('printer')}>
+          <Text className="text-foreground">Receipt printer</Text>
+        </Pressable>
       </View>
 
       {canManage ? (
@@ -107,6 +111,7 @@ function MoreScreen({
           {section === 'staff' ? <StaffScreen payloadToken={payloadToken} tenantId={tenantId} /> : null}
           {section === 'stores' ? <StoresScreen payloadToken={payloadToken} tenantId={tenantId} /> : null}
           {section === 'settings' ? <SettingsScreen payloadToken={payloadToken} tenantId={tenantId} /> : null}
+          {section === 'printer' ? <PrinterSettingsScreen /> : null}
           {section === 'audit' ? <AuditLogScreen payloadToken={payloadToken} /> : null}
           {section === 'customers' ? <RealCustomersScreen user={user} payloadToken={payloadToken} storeId={storeId} /> : null}
           {section === 'reports' ? <ReportsScreen user={user} payloadToken={payloadToken} /> : null}

@@ -14,6 +14,8 @@ import { API_BASE_URL, apiFetch } from '../lib/auth';
 import { fetchCatalog, fetchStockLevels, stockKey as apiStockKey, stockByKeyMap, type CatalogProduct } from '../lib/catalog';
 import { usePullToRefresh } from '../lib/usePullToRefresh';
 import { deleteHeldSale, holdSale, listHeldSales, type HeldSale } from '../db/heldSales';
+import { printReceipt } from '../printer';
+import type { ReceiptTenantInfo } from '../sales/receiptHtml';
 import { findOpenShift, type Shift } from '../lib/shifts';
 import { uuid } from '../lib/uuid';
 import { QuantityField } from '../components/QuantityField';
@@ -116,6 +118,10 @@ export function SellScreen({
   const [stockByKey, setStockByKey] = useState<Map<string, number>>(new Map());
   const [orderHistory, setOrderHistory] = useState<OrderHistoryRow[]>([]);
   const [tenantFlags, setTenantFlags] = useState<TenantFlags>({ shiftsRequired: true, enforceDiscountCaps: true });
+  // Letterhead for the fire-and-forget network-printer receipt below - same
+  // tenant fields SalesScreen.tsx's reprint reads, fetched here alongside
+  // tenantFlags rather than a second round trip.
+  const [tenantInfo, setTenantInfo] = useState<ReceiptTenantInfo | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [tenderType, setTenderType] = useState<TenderType>('cash');
   const [selectedCustomer, setSelectedCustomer] = useState<LocalCustomer | null>(null);
@@ -180,6 +186,7 @@ export function SellScreen({
         shiftsRequired: tenant.shiftsRequired !== false,
         enforceDiscountCaps: tenant.enforceDiscountCaps !== false,
       });
+      setTenantInfo({ name: tenant.name, receiptHeader: tenant.receiptHeader ?? null, receiptFooter: tenant.receiptFooter ?? null });
     }
     if (storeId != null) {
       const res = await fetch(
@@ -479,6 +486,32 @@ export function SellScreen({
       }
       const tenderLabel = TENDER_OPTIONS.find((t) => t.value === tenderType)?.label ?? tenderType;
       showToast(`Sale completed · ${tenderLabel} · ${totals.total.toFixed(2)}`);
+
+      // Printing is best-effort and must never undo or block a completed
+      // sale - the order above is already durably recorded regardless of
+      // whether a receipt can be printed (mirrors desktop's Till.tsx
+      // completeSale -> printReceipt call site exactly). Fire-and-forget:
+      // never awaited, so the cashier sees their confirmation immediately
+      // and never waits on a printer's connect/write/timeout. A no-op when
+      // this till has no printer configured. UNVERIFIED against real
+      // hardware - see ../printer.ts.
+      printReceipt({
+        storeName: tenantInfo?.name ?? 'Fundi',
+        orderId,
+        lines: cart.map((line) => ({
+          name: lineDisplayLabel(line),
+          quantity: line.quantity,
+          unitPrice: lineUnitPrice(line),
+          lineTotal: line.quantity * lineUnitPrice(line) - line.discountAmount,
+        })),
+        taxTotal: totals.taxTotal,
+        total: totals.total,
+        tenderType,
+        header: tenantInfo?.receiptHeader ?? null,
+        footer: tenantInfo?.receiptFooter ?? null,
+        unpaidNotice: tenderType === 'credit' ? 'UNPAID - PAY LATER' : null,
+      }).catch(() => undefined);
+
       setCart([]);
       setSelectedCustomer(null);
       setCartOpen(false);
