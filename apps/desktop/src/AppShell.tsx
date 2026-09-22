@@ -1,17 +1,22 @@
 import { useMemo, useState } from 'react';
 import { Till } from './Till';
 import { Reports } from './ReportsScreen';
+import { Products } from './ProductsScreen';
 import { Inventory } from './InventoryScreen';
 import { Restock } from './RestockScreen';
 import { Quotations } from './QuotationsScreen';
 import type { PayloadUser } from './auth';
-import { BoxIcon, CartIcon, ChartIcon, ReceiptIcon, TruckIcon } from './icons';
+import { BoxIcon, CartIcon, ChartIcon, ReceiptIcon, TagIcon, TruckIcon } from './icons';
 
-type Section = 'sell' | 'reports' | 'inventory' | 'restock' | 'quotations';
+type Section = 'sell' | 'reports' | 'products' | 'inventory' | 'restock' | 'quotations';
 
 const NAV_ITEMS: { key: Section; label: string; Icon: (props: { className?: string }) => React.ReactElement; managerOnly?: boolean }[] = [
   { key: 'sell', label: 'Sell', Icon: CartIcon },
   { key: 'reports', label: 'Reports', Icon: ChartIcon },
+  // Not managerOnly - Products.ts lets any tenant user read/attempt an
+  // update (a cashier needs this tab open to change a product's own photo);
+  // ProductsScreen.tsx itself gates every other field to owner/manager.
+  { key: 'products', label: 'Products', Icon: TagIcon },
   { key: 'inventory', label: 'Inventory', Icon: BoxIcon },
   { key: 'restock', label: 'Restock', Icon: TruckIcon },
   // Matches Quotations.ts's own access control server-side (manager/owner
@@ -88,6 +93,12 @@ export function AppShell(props: AppShellProps) {
         {visited.has('reports') ? (
           <div className="app-shell-pane app-shell-pane-padded" hidden={section !== 'reports'}>
             <Reports user={props.user} payloadToken={props.payloadToken} />
+          </div>
+        ) : null}
+
+        {visited.has('products') ? (
+          <div className="app-shell-pane app-shell-pane-padded" hidden={section !== 'products'}>
+            <Products user={props.user} payloadToken={props.payloadToken} />
           </div>
         ) : null}
 

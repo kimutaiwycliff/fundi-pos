@@ -133,3 +133,10 @@ export const TruckIcon = base(
     <circle cx="17" cy="18" r="1.6" />
   </>,
 );
+
+export const TagIcon = base(
+  <>
+    <path d="M12.5 3.5h5.4a1.6 1.6 0 0 1 1.6 1.6v5.4a1.6 1.6 0 0 1-.47 1.13l-8.4 8.4a1.6 1.6 0 0 1-2.26 0l-5.4-5.4a1.6 1.6 0 0 1 0-2.26l8.4-8.4c.3-.3.7-.47 1.13-.47z" />
+    <circle cx="16.2" cy="7.8" r="1.3" fill="currentColor" stroke="none" />
+  </>,
+);

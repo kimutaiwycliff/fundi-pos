@@ -17,6 +17,13 @@ export interface CatalogVariant {
   barcode: string | null;
   sellPrice: number | null;
   costPrice: number | null;
+  // Bare media doc id - Payload's `depth` param doesn't reliably populate an
+  // upload field nested inside an array (confirmed against this same list
+  // endpoint), so this is never a populated doc. ProductsScreen.tsx resolves
+  // it to an actual URL via a separately-fetched mediaUrlById map
+  // (products.ts's fetchMediaUrlMap) - same "load once, join client-side"
+  // pattern apps/web's dashboard pages already use for this exact field.
+  image: number | null;
 }
 
 export interface CatalogProduct {
@@ -32,7 +39,14 @@ export interface CatalogProduct {
   reorderPoint: number;
   isActive: boolean;
   isBundle: boolean;
+  // Bare media doc id - see CatalogVariant.image's own comment above.
+  image: number | null;
+  relatedProducts: number[];
   variants: CatalogVariant[];
+}
+
+interface RawImage {
+  id?: number;
 }
 
 interface RawVariant {
@@ -42,6 +56,7 @@ interface RawVariant {
   barcode?: string | null;
   sellPrice?: number | null;
   costPrice?: number | null;
+  image?: RawImage | number | null;
 }
 
 interface RawProduct {
@@ -57,7 +72,14 @@ interface RawProduct {
   reorderPoint?: number;
   isActive?: boolean;
   isBundle?: boolean;
+  image?: RawImage | number | null;
   variants?: RawVariant[];
+  relatedProducts?: Array<number | { id: number }>;
+}
+
+function imageIdOf(image: RawImage | number | null | undefined): number | null {
+  if (image == null) return null;
+  return typeof image === 'object' ? (image.id ?? null) : image;
 }
 
 function mapVariant(v: RawVariant): CatalogVariant {
@@ -68,6 +90,7 @@ function mapVariant(v: RawVariant): CatalogVariant {
     barcode: v.barcode ?? null,
     sellPrice: v.sellPrice ?? null,
     costPrice: v.costPrice ?? null,
+    image: imageIdOf(v.image),
   };
 }
 
@@ -85,6 +108,8 @@ function mapProduct(p: RawProduct): CatalogProduct {
     reorderPoint: p.reorderPoint ?? 0,
     isActive: p.isActive !== false,
     isBundle: p.isBundle === true,
+    image: imageIdOf(p.image),
+    relatedProducts: (p.relatedProducts ?? []).map((r) => (typeof r === 'object' ? r.id : r)),
     variants: (p.variants ?? []).map(mapVariant),
   };
 }
