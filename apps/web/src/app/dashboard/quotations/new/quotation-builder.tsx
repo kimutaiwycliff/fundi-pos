@@ -11,6 +11,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmptyState } from '@/components/empty-state';
 import { FileText, Store as StoreIcon } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { stockKey } from '@/lib/stock-key';
 import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 import type { CurrentUser } from '@/lib/current-user';
@@ -51,6 +59,14 @@ export function QuotationBuilder({
   mediaUrlById: Record<number, string>;
 }) {
   const router = useRouter();
+  // Same 1024px alignment with the `lg:` side-by-side breakpoint below as
+  // sell-client.tsx's isCompactCart - without it, 768-1023px (portrait
+  // tablets) would get neither a side-by-side layout nor a bottom-sheet
+  // summary, just a full-width stack with a long scroll to "Create
+  // quotation". Reuses the exact Sheet/floating-bar pattern from
+  // sell-client.tsx rather than inventing a new one.
+  const isCompactPanel = useIsMobile(1024);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
 
   const fixedStoreId = me.store == null ? null : typeof me.store === 'object' ? me.store.id : me.store;
   const [pickedStoreId, setPickedStoreId] = useState<number | null>(stores[0]?.id ?? null);
@@ -149,6 +165,7 @@ export function QuotationBuilder({
       }
 
       toast.success('Quotation created');
+      setMobilePanelOpen(false);
       router.push('/dashboard/quotations/' + body.doc.id);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -156,6 +173,100 @@ export function QuotationBuilder({
       setSubmitting(false);
     }
   }
+
+  const sidebarContent = (
+    <>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="customerName">Customer name</Label>
+          <Input id="customerName" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="customerPhone">Customer phone</Label>
+          <Input
+            id="customerPhone"
+            placeholder="0712345678"
+            value={customerPhone}
+            onChange={(e) => setCustomerPhone(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="notes">Notes</Label>
+          <Textarea
+            id="notes"
+            placeholder="e.g. Valid for 14 days, prices exclude delivery..."
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t pt-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">Line items</h2>
+          <span className="text-xs text-muted-foreground">
+            {lines.length} item{lines.length === 1 ? '' : 's'}
+          </span>
+        </div>
+        {lines.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            title="No items yet"
+            description="Search for a product to add it to this quotation."
+          />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {lines.map((line) => (
+              <div key={line.key} className="flex flex-col gap-2 rounded-lg border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="min-w-0 flex-1 truncate text-sm font-medium">{line.label}</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 shrink-0"
+                    onClick={() => removeLine(line.key)}
+                    aria-label={`Remove ${line.label}`}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-xs text-muted-foreground">Qty</Label>
+                    <Input
+                      type="number"
+                      step="0.001"
+                      min="0.001"
+                      value={line.quantity}
+                      onChange={(e) => updateQuantity(line.key, Number(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-xs text-muted-foreground">Unit price</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={line.unitPrice}
+                      onChange={(e) => updateUnitPrice(line.key, Number(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+                <p className="text-right text-sm font-medium">{(line.quantity * line.unitPrice).toFixed(2)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 border-t pt-3">
+        <p className="text-right text-lg font-semibold">Total: {total.toFixed(2)}</p>
+        <Button type="button" size="lg" disabled={submitting || lines.length === 0} onClick={handleSubmit}>
+          {submitting ? 'Creating...' : 'Create quotation'}
+        </Button>
+      </div>
+    </>
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -181,103 +292,39 @@ export function QuotationBuilder({
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="min-w-0 flex-1">
+      <div className={isCompactPanel ? 'flex flex-col gap-4 pb-20' : 'flex flex-col gap-6 lg:flex-row'}>
+        <div className={isCompactPanel ? '' : 'min-w-0 flex-1'}>
           <ProductSearch products={products} stockByKey={stockByKey} mediaUrlById={mediaUrlById} onSelect={requestAdd} />
         </div>
 
-        <aside className="flex w-full shrink-0 flex-col gap-4 rounded-lg border p-4 lg:w-96">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="customerName">Customer name</Label>
-              <Input id="customerName" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="customerPhone">Customer phone</Label>
-              <Input
-                id="customerPhone"
-                placeholder="0712345678"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
-                placeholder="e.g. Valid for 14 days, prices exclude delivery..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 border-t pt-3">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold">Line items</h2>
-              <span className="text-xs text-muted-foreground">
-                {lines.length} item{lines.length === 1 ? '' : 's'}
-              </span>
-            </div>
-            {lines.length === 0 ? (
-              <EmptyState
-                icon={FileText}
-                title="No items yet"
-                description="Search for a product to add it to this quotation."
-              />
-            ) : (
-              <div className="flex flex-col gap-2">
-                {lines.map((line) => (
-                  <div key={line.key} className="flex flex-col gap-2 rounded-lg border p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 flex-1 truncate text-sm font-medium">{line.label}</p>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 shrink-0"
-                        onClick={() => removeLine(line.key)}
-                        aria-label={`Remove ${line.label}`}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs text-muted-foreground">Qty</Label>
-                        <Input
-                          type="number"
-                          step="0.001"
-                          min="0.001"
-                          value={line.quantity}
-                          onChange={(e) => updateQuantity(line.key, Number(e.target.value) || 0)}
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs text-muted-foreground">Unit price</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={line.unitPrice}
-                          onChange={(e) => updateUnitPrice(line.key, Number(e.target.value) || 0)}
-                        />
-                      </div>
-                    </div>
-                    <p className="text-right text-sm font-medium">{(line.quantity * line.unitPrice).toFixed(2)}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2 border-t pt-3">
-            <p className="text-right text-lg font-semibold">Total: {total.toFixed(2)}</p>
-            <Button type="button" size="lg" disabled={submitting || lines.length === 0} onClick={handleSubmit}>
-              {submitting ? 'Creating...' : 'Create quotation'}
-            </Button>
-          </div>
-        </aside>
+        {isCompactPanel ? null : (
+          <aside className="flex w-full shrink-0 flex-col gap-4 rounded-lg border p-4 lg:w-96">
+            {sidebarContent}
+          </aside>
+        )}
       </div>
+
+      {isCompactPanel ? (
+        <Sheet open={mobilePanelOpen} onOpenChange={setMobilePanelOpen}>
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background p-3">
+            <SheetTrigger asChild>
+              <Button type="button" size="lg" className="w-full justify-between">
+                <span className="flex items-center gap-2">
+                  <FileText data-icon="inline-start" />
+                  {lines.length} item{lines.length === 1 ? '' : 's'}
+                </span>
+                <span>{total.toFixed(2)}</span>
+              </Button>
+            </SheetTrigger>
+          </div>
+          <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>Quotation details</SheetTitle>
+            </SheetHeader>
+            <div className="flex flex-col gap-4 px-4 pb-4">{sidebarContent}</div>
+          </SheetContent>
+        </Sheet>
+      ) : null}
 
       <VariantPickerDialog
         product={variantPickerProduct}

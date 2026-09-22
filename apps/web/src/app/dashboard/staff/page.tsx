@@ -42,10 +42,10 @@ export default async function StaffPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
+              <TableHead className="hidden sm:table-cell">Email</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Role</TableHead>
-              <TableHead>Store</TableHead>
+              <TableHead className="hidden lg:table-cell">Store</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-0" />
             </TableRow>
@@ -54,14 +54,14 @@ export default async function StaffPage() {
             {staff.map((person) => (
               <TableRow key={person.id}>
                 <TableCell className="font-medium">{person.name ?? '—'}</TableCell>
-                <TableCell className="max-w-40 truncate" title={person.email}>
+                <TableCell className="hidden max-w-40 truncate sm:table-cell" title={person.email}>
                   {person.email}
                 </TableCell>
                 <TableCell>{person.phone ?? '—'}</TableCell>
                 <TableCell>
                   <Badge variant={person.role === 'owner' ? 'default' : 'secondary'}>{person.role}</Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell className="hidden lg:table-cell">
                   {person.store == null
                     ? 'All stores'
                     : typeof person.store === 'object'

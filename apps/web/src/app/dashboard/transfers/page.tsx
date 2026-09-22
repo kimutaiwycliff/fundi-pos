@@ -43,7 +43,7 @@ export default async function TransfersPage() {
             <TableRow>
               <TableHead>From</TableHead>
               <TableHead>To</TableHead>
-              <TableHead>Items</TableHead>
+              <TableHead className="hidden md:table-cell">Items</TableHead>
               <TableHead>Status</TableHead>
               <TableHead />
             </TableRow>
@@ -64,7 +64,7 @@ export default async function TransfersPage() {
                 <TableRow key={t.id}>
                   <TableCell>{storeName(t.fromStore)}</TableCell>
                   <TableCell>{storeName(t.toStore)}</TableCell>
-                  <TableCell className="max-w-64 truncate" title={itemsSummary}>
+                  <TableCell className="hidden max-w-64 truncate md:table-cell" title={itemsSummary}>
                     {itemsSummary}
                   </TableCell>
                   <TableCell>

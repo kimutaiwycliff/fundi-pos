@@ -295,9 +295,9 @@ export function NewPurchaseOrderForm({
               const key = lineKey(l.productId, l.variant);
               return (
                 <div key={key} className="flex items-center gap-3 rounded-lg border p-3">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{l.productName}</p>
-                    {l.variantLabel ? <p className="text-xs text-muted-foreground">{l.variantLabel}</p> : null}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{l.productName}</p>
+                    {l.variantLabel ? <p className="truncate text-xs text-muted-foreground">{l.variantLabel}</p> : null}
                   </div>
                   <div className="flex items-center gap-1">
                     <Button type="button" variant="outline" size="icon" onClick={() => updateQuantity(key, l.quantity - 1)}>

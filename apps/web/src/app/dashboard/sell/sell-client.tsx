@@ -57,7 +57,15 @@ export function SellClient({
   mediaUrlById: Record<number, string>;
 }) {
   const router = useRouter();
-  const isMobile = useIsMobile();
+  // 1024px, matching the `lg:` breakpoint the side-by-side cart layout
+  // below already switches on in JSX - so the JS "show bottom sheet +
+  // floating checkout bar" decision and the CSS "side-by-side cart"
+  // decision agree, instead of the old 768px default leaving 768-1023px
+  // (portrait tablets) with neither treatment. This is the only decision
+  // `isMobile` drives on this page, so a single renamed boolean is enough
+  // (see variant-picker-dialog.tsx for a separate call site that keeps the
+  // original 768px default for its own dialog/sheet swap).
+  const isCompactCart = useIsMobile(1024);
 
   const fixedStoreId = me.store == null ? null : typeof me.store === 'object' ? me.store.id : me.store;
   const [pickedStoreId, setPickedStoreId] = useState<number | null>(null);
@@ -436,11 +444,11 @@ export function SellClient({
           description="Use the branch selector above to pick a store."
         />
       ) : (
-        <div className={isMobile ? 'flex flex-col gap-4 pb-20' : 'flex flex-col gap-6 lg:flex-row'}>
-          <div className={isMobile ? '' : 'min-w-0 flex-1'}>
+        <div className={isCompactCart ? 'flex flex-col gap-4 pb-20' : 'flex flex-col gap-6 lg:flex-row'}>
+          <div className={isCompactCart ? '' : 'min-w-0 flex-1'}>
             <ProductSearch products={products} stockByKey={stockByKey} mediaUrlById={mediaUrlById} onSelect={requestAdd} />
           </div>
-          {isMobile ? null : (
+          {isCompactCart ? null : (
             <aside className="w-full shrink-0 rounded-lg border p-4 lg:w-96">
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="font-semibold">Current sale</h2>
@@ -454,7 +462,7 @@ export function SellClient({
         </div>
       )}
 
-      {isMobile && activeStoreId != null ? (
+      {isCompactCart && activeStoreId != null ? (
         <Sheet open={mobileCartOpen} onOpenChange={setMobileCartOpen}>
           <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background p-3">
             <SheetTrigger asChild>

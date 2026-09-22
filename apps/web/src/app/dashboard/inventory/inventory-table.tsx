@@ -52,7 +52,7 @@ export function InventoryTable({ levels, stores }: { levels: StockLevel[]; store
         />
       </div>
 
-      <div className="rounded-md border">
+      <div className="hidden rounded-md border md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -94,6 +94,45 @@ export function InventoryTable({ levels, stores }: { levels: StockLevel[]; store
             )}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Compact card list for narrow/tablet screens - same rows, with the
+          on-hand quantity given the most visual weight (it's the number a
+          cashier/manager actually scans for) and the low-stock badge kept
+          front and center rather than buried in a trailing column. */}
+      <div className="flex flex-col gap-2 md:hidden">
+        {filtered.length === 0 ? (
+          <p className="rounded-md border p-4 text-center text-sm text-muted-foreground">
+            {levels.length === 0 ? 'No stock movements yet.' : 'No products match your search.'}
+          </p>
+        ) : (
+          filtered.map((level) => (
+            <div
+              key={`${level.store}-${stockKey(level.product, level.variant)}`}
+              className="flex items-center gap-3 rounded-lg border p-3"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">
+                  {level.productName}
+                  {level.variantLabel ? (
+                    <span className="text-muted-foreground"> · {level.variantLabel}</span>
+                  ) : null}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {storeName.get(level.store) ?? `#${level.store}`} · reorder at {level.reorderPoint}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <span className="text-lg font-semibold">{level.quantity}</span>
+                {level.lowStock ? (
+                  <Badge variant="destructive">Low stock</Badge>
+                ) : (
+                  <Badge variant="secondary">OK</Badge>
+                )}
+              </div>
+            </div>
+          ))
+        )}
       </div>
       {query && (
         <p className="text-xs text-muted-foreground">

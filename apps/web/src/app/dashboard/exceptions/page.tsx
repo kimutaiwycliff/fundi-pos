@@ -42,7 +42,7 @@ export default async function ExceptionsPage() {
               <TableHead>Store</TableHead>
               <TableHead className="text-right">Delta</TableHead>
               <TableHead>Reason</TableHead>
-              <TableHead>Terminal</TableHead>
+              <TableHead className="hidden lg:table-cell">Terminal</TableHead>
               <TableHead>When</TableHead>
             </TableRow>
           </TableHeader>
@@ -64,7 +64,7 @@ export default async function ExceptionsPage() {
                   <TableCell className="max-w-48 truncate" title={m.reason}>
                     {m.reason}
                   </TableCell>
-                  <TableCell>{m.sourceTerminal}</TableCell>
+                  <TableCell className="hidden lg:table-cell">{m.sourceTerminal}</TableCell>
                   <TableCell>{formatDateTime(m.createdAt)}</TableCell>
                 </TableRow>
               ))

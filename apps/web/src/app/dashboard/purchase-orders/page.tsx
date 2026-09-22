@@ -1,6 +1,14 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
 import { DeletePurchaseOrderButton } from './delete-purchase-order-button';
 
@@ -34,7 +42,7 @@ export default async function PurchaseOrdersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Restock lists</h1>
         <Button asChild>
           <Link href="/dashboard/purchase-orders/new">New restock list</Link>
@@ -44,37 +52,37 @@ export default async function PurchaseOrdersPage() {
       {orders.length === 0 ? (
         <p className="text-sm text-muted-foreground">No restock lists yet. Create one to get started.</p>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-left text-muted-foreground">
-              <tr>
-                <th className="p-3 font-medium">Store</th>
-                <th className="p-3 font-medium">Supplier</th>
-                <th className="p-3 font-medium">Items</th>
-                <th className="p-3 font-medium">Status</th>
-                <th className="p-3 font-medium">Created</th>
-                <th className="p-3 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Store</TableHead>
+                <TableHead>Supplier</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {orders.map((po) => (
-                <tr key={po.id} className="border-t hover:bg-muted/30">
-                  <td className="p-3">
+                <TableRow key={po.id}>
+                  <TableCell>
                     <Link href={`/dashboard/purchase-orders/${po.id}`} className="hover:underline">
                       {typeof po.store === 'object' ? po.store.name : `Store #${po.store}`}
                     </Link>
-                  </td>
-                  <td className="p-3">{typeof po.supplier === 'object' ? po.supplier.name : `#${po.supplier}`}</td>
-                  <td className="p-3">{po.lineItems.length}</td>
-                  <td className="p-3">
+                  </TableCell>
+                  <TableCell>{typeof po.supplier === 'object' ? po.supplier.name : `#${po.supplier}`}</TableCell>
+                  <TableCell>{po.lineItems.length}</TableCell>
+                  <TableCell>
                     <Badge variant={STATUS_VARIANT[po.status]}>{STATUS_LABEL[po.status]}</Badge>
-                  </td>
-                  <td className="p-3 text-muted-foreground">{new Date(po.createdAt).toLocaleDateString()}</td>
-                  <td className="p-3 text-right">{po.status === 'draft' ? <DeletePurchaseOrderButton id={po.id} /> : null}</td>
-                </tr>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{new Date(po.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-right">{po.status === 'draft' ? <DeletePurchaseOrderButton id={po.id} /> : null}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>

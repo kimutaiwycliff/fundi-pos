@@ -1,3 +1,11 @@
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
 import { PurchaseOrderActions } from './purchase-order-actions';
@@ -44,30 +52,30 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-left text-muted-foreground">
-            <tr>
-              <th className="p-3 font-medium">Item</th>
-              <th className="p-3 font-medium">Qty</th>
-              {canSeeCost ? <th className="p-3 font-medium">Unit cost</th> : null}
-            </tr>
-          </thead>
-          <tbody>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Item</TableHead>
+              <TableHead>Qty</TableHead>
+              {canSeeCost ? <TableHead>Unit cost</TableHead> : null}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {po.lineItems.map((l, i) => (
-              <tr key={i} className="border-t">
-                <td className="p-3">
+              <TableRow key={i}>
+                <TableCell>
                   {l.product?.name ?? `#${l.product}`}
                   {l.variant ? (
                     <span className="text-muted-foreground"> ({l.product?.variants?.find((v) => v.id === l.variant)?.label})</span>
                   ) : null}
-                </td>
-                <td className="p-3">{l.quantity}</td>
-                {canSeeCost ? <td className="p-3">{l.unitCost.toFixed(2)}</td> : null}
-              </tr>
+                </TableCell>
+                <TableCell>{l.quantity}</TableCell>
+                {canSeeCost ? <TableCell>{l.unitCost.toFixed(2)}</TableCell> : null}
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {estimatedTotal !== null ? <p className="text-right text-lg font-semibold">Estimated total: {estimatedTotal.toFixed(2)}</p> : null}

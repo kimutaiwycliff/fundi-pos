@@ -32,7 +32,7 @@ export default async function StoresPage() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Address</TableHead>
-              <TableHead>Timezone</TableHead>
+              <TableHead className="hidden sm:table-cell">Timezone</TableHead>
               <TableHead className="w-0" />
             </TableRow>
           </TableHeader>
@@ -50,7 +50,7 @@ export default async function StoresPage() {
                   <TableCell className="max-w-48 truncate" title={store.address ?? undefined}>
                     {store.address ?? '—'}
                   </TableCell>
-                  <TableCell>{store.timezone}</TableCell>
+                  <TableCell className="hidden sm:table-cell">{store.timezone}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <StoreDialog store={store} />

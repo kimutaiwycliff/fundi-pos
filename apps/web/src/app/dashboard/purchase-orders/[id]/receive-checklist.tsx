@@ -68,7 +68,7 @@ export function ReceiveChecklist({ poId, lines }: { poId: number; lines: Receive
             checked={checked[l.index] ?? false}
             onChange={(e) => setChecked((prev) => ({ ...prev, [l.index]: e.target.checked }))}
           />
-          <span className="flex-1 text-sm">{l.label}</span>
+          <span className="min-w-0 flex-1 truncate text-sm">{l.label}</span>
           <Input
             type="number"
             className="w-20"
