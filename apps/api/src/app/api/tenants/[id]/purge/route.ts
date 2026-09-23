@@ -22,9 +22,13 @@ import { headers as nextHeaders } from 'next/headers';
 //
 // Deliberately excluded: platform-audit-log (the SaaS operator's own
 // permanent record that this tenant was ever deleted - purging it at the
-// moment of deletion would defeat its own purpose) and sync-log (no
-// `tenant` field at all - it's keyed by terminal id, diagnostic-only, not
-// worth a fragile cross-collection join to clean up).
+// moment of deletion would defeat its own purpose; its own `tenant` field
+// is nullable specifically so its FK's ON DELETE SET NULL can actually
+// fire here instead of blocking the tenant delete, and `summary` already
+// holds a self-contained human-readable record independent of the live
+// relationship) and sync-log (no `tenant` field at all - it's keyed by
+// terminal id, diagnostic-only, not worth a fragile cross-collection join
+// to clean up).
 const TENANT_SCOPED_COLLECTIONS = [
   'audit-log',
   'shifts',
@@ -35,6 +39,16 @@ const TENANT_SCOPED_COLLECTIONS = [
   'stock-transfers',
   'quotations',
   'customers',
+  // Must come after 'purchase-orders' - PurchaseOrders.supplier is a
+  // required, top-level relationship, so a supplier can't be deleted while
+  // a purchase order still references it. Was missing from this list
+  // entirely (every OTHER collection with a `tenant` relationship is
+  // covered here or handled separately below) - the tenant row's own
+  // delete failed with any supplier left behind, for the identical
+  // NOT-NULL-vs-unsatisfiable-ON-DELETE-SET-NULL reason as the
+  // store-product-overrides fix below, just one level up (blocking the
+  // tenant delete itself, not a child collection's).
+  'suppliers',
   // Must come before 'products' - StoreProductOverrides.product is a
   // required, top-level relationship (unlike every other collection's own
   // `product` field, which lives inside a line-items array and gets

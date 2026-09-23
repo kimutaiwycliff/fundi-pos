@@ -658,7 +658,7 @@ export interface AuditLog {
  */
 export interface PlatformAuditLog {
   id: number;
-  tenant: number | Tenant;
+  tenant?: (number | null) | Tenant;
   actor: number | PlatformAdmin;
   action:
     'tenant_suspended' | 'tenant_reactivated' | 'tenant_soft_deleted' | 'tenant_restored' | 'subscription_changed';

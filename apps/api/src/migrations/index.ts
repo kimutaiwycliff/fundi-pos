@@ -18,6 +18,7 @@ import * as migration_20260921_131801_add_tenant_enforce_discount_caps from './2
 import * as migration_20260921_133639_add_quotations from './20260921_133639_add_quotations';
 import * as migration_20260921_210756_add_quotation_name from './20260921_210756_add_quotation_name';
 import * as migration_20260922_105821_add_stock_report_indexes from './20260922_105821_add_stock_report_indexes';
+import * as migration_20260923_165015_make_platform_audit_log_tenant_nullable from './20260923_165015_make_platform_audit_log_tenant_nullable';
 
 export const migrations = [
   {
@@ -118,6 +119,11 @@ export const migrations = [
   {
     up: migration_20260922_105821_add_stock_report_indexes.up,
     down: migration_20260922_105821_add_stock_report_indexes.down,
-    name: '20260922_105821_add_stock_report_indexes'
+    name: '20260922_105821_add_stock_report_indexes',
+  },
+  {
+    up: migration_20260923_165015_make_platform_audit_log_tenant_nullable.up,
+    down: migration_20260923_165015_make_platform_audit_log_tenant_nullable.down,
+    name: '20260923_165015_make_platform_audit_log_tenant_nullable'
   },
 ];

@@ -17,7 +17,14 @@ export const PlatformAuditLog: CollectionConfig = {
     delete: () => false,
   },
   fields: [
-    { name: 'tenant', type: 'relationship', relationTo: 'tenants', required: true, index: true },
+    // Not required - unlike every other tenant-scoped collection, rows here
+    // are meant to outlive the tenant itself (this IS the permanent record
+    // that a tenant was ever purged). The DB's own ON DELETE SET NULL FK
+    // action nulls this out automatically once a tenant is permanently
+    // deleted (see /api/tenants/[id]/purge) - `summary` already holds a
+    // self-contained human-readable record independent of this relationship,
+    // same reasoning `required: true` would otherwise defeat entirely.
+    { name: 'tenant', type: 'relationship', relationTo: 'tenants', index: true },
     { name: 'actor', type: 'relationship', relationTo: 'platform-admins', required: true },
     {
       name: 'action',
