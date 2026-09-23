@@ -35,8 +35,16 @@ const TENANT_SCOPED_COLLECTIONS = [
   'stock-transfers',
   'quotations',
   'customers',
-  'products',
+  // Must come before 'products' - StoreProductOverrides.product is a
+  // required, top-level relationship (unlike every other collection's own
+  // `product` field, which lives inside a line-items array and gets
+  // cascade-deleted along with its parent row instead). With no DB-level
+  // cascade on cross-collection FKs (see this file's own header comment),
+  // deleting a product while an override row still references it hits
+  // Postgres's NOT NULL constraint via an unsatisfiable ON DELETE SET NULL -
+  // an unhandled error that surfaced as a bare 500 on every purge attempt.
   'store-product-overrides',
+  'products',
   'stores',
 ] as const;
 
@@ -56,20 +64,34 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return Response.json({ error: 'Soft-delete this tenant first - permanent delete is only available for an already-deleted tenant.' }, { status: 400 });
   }
 
-  for (const collection of TENANT_SCOPED_COLLECTIONS) {
-    await payload.delete({ collection, where: { tenant: { equals: tenant.id } }, overrideAccess: true });
-  }
+  // Wrapped end-to-end - this loop previously had no error handling at all,
+  // so any failure (the store-product-overrides ordering bug fixed above,
+  // or any future one) surfaced as a bare, uncaught 500 with no actionable
+  // message - the one place on this whole platform where that's worst,
+  // since a platform admin has no way to tell "misordered dependency" apart
+  // from "genuinely stuck, needs a database check" without server log
+  // access. Every dependent collection is now cleared before the request
+  // returns; a failure partway through can leave a tenant partially purged,
+  // but the returned message at least says which collection it stopped on.
+  try {
+    for (const collection of TENANT_SCOPED_COLLECTIONS) {
+      await payload.delete({ collection, where: { tenant: { equals: tenant.id } }, overrideAccess: true });
+    }
 
-  // Media one document at a time, not a bulk `where` delete - R2 object
-  // cleanup only happens through the storage plugin's per-document delete
-  // hook (@payloadcms/storage-s3), never as a side effect of a bulk query.
-  const media = await payload.find({ collection: 'media', where: { tenant: { equals: tenant.id } }, pagination: false, depth: 0, overrideAccess: true });
-  for (const doc of media.docs) {
-    await payload.delete({ collection: 'media', id: doc.id, overrideAccess: true });
-  }
+    // Media one document at a time, not a bulk `where` delete - R2 object
+    // cleanup only happens through the storage plugin's per-document delete
+    // hook (@payloadcms/storage-s3), never as a side effect of a bulk query.
+    const media = await payload.find({ collection: 'media', where: { tenant: { equals: tenant.id } }, pagination: false, depth: 0, overrideAccess: true });
+    for (const doc of media.docs) {
+      await payload.delete({ collection: 'media', id: doc.id, overrideAccess: true });
+    }
 
-  await payload.delete({ collection: 'users', where: { tenant: { equals: tenant.id } }, overrideAccess: true });
-  await payload.delete({ collection: 'tenants', id: tenant.id, overrideAccess: true });
+    await payload.delete({ collection: 'users', where: { tenant: { equals: tenant.id } }, overrideAccess: true });
+    await payload.delete({ collection: 'tenants', id: tenant.id, overrideAccess: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return Response.json({ error: `Purge failed partway through: ${message}` }, { status: 500 });
+  }
 
   return Response.json({ success: true });
 }
