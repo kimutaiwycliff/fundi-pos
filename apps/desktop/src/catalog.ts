@@ -97,7 +97,12 @@ function mapVariant(v: RawVariant): CatalogVariant {
 function mapProduct(p: RawProduct): CatalogProduct {
   return {
     id: p.id,
-    name: p.name,
+    // Every other field here defaults defensively - this one didn't, and a
+    // null/missing name (legacy row predating the `required: true` field
+    // constraint, or any write path that bypasses it) would otherwise crash
+    // the very first `.toLowerCase()` call ProductsScreen.tsx's/
+    // ProductForm's own search filters make against it.
+    name: p.name ?? '',
     sku: p.sku ?? '',
     barcode: p.barcode ?? null,
     category: p.category ?? null,

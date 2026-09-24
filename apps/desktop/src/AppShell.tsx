@@ -5,6 +5,7 @@ import { Products } from './ProductsScreen';
 import { Inventory } from './InventoryScreen';
 import { Restock } from './RestockScreen';
 import { Quotations } from './QuotationsScreen';
+import { SectionErrorBoundary } from './ErrorBoundary';
 import type { PayloadUser } from './auth';
 import { BoxIcon, CartIcon, ChartIcon, ReceiptIcon, TagIcon, TruckIcon } from './icons';
 
@@ -76,47 +77,59 @@ export function AppShell(props: AppShellProps) {
 
       <div className="app-shell-content">
         <div className="app-shell-pane" hidden={section !== 'sell'}>
-          <Till
-            user={props.user}
-            terminalId={props.terminalId}
-            terminalName={props.terminalName}
-            onRenameTerminal={props.onRenameTerminal}
-            payloadToken={props.payloadToken}
-            onDisconnect={props.onDisconnect}
-            activeStoreId={props.activeStoreId}
-            canSelectStore={props.canSelectStore}
-            onSwitchStore={props.onSwitchStore}
-            switchingStore={props.switchingStore}
-          />
+          <SectionErrorBoundary key="sell" label="Sell">
+            <Till
+              user={props.user}
+              terminalId={props.terminalId}
+              terminalName={props.terminalName}
+              onRenameTerminal={props.onRenameTerminal}
+              payloadToken={props.payloadToken}
+              onDisconnect={props.onDisconnect}
+              activeStoreId={props.activeStoreId}
+              canSelectStore={props.canSelectStore}
+              onSwitchStore={props.onSwitchStore}
+              switchingStore={props.switchingStore}
+            />
+          </SectionErrorBoundary>
         </div>
 
         {visited.has('reports') ? (
           <div className="app-shell-pane app-shell-pane-padded" hidden={section !== 'reports'}>
-            <Reports user={props.user} payloadToken={props.payloadToken} />
+            <SectionErrorBoundary key="reports" label="Reports">
+              <Reports user={props.user} payloadToken={props.payloadToken} />
+            </SectionErrorBoundary>
           </div>
         ) : null}
 
         {visited.has('products') ? (
           <div className="app-shell-pane app-shell-pane-padded" hidden={section !== 'products'}>
-            <Products user={props.user} payloadToken={props.payloadToken} />
+            <SectionErrorBoundary key="products" label="Products">
+              <Products user={props.user} payloadToken={props.payloadToken} />
+            </SectionErrorBoundary>
           </div>
         ) : null}
 
         {visited.has('inventory') ? (
           <div className="app-shell-pane app-shell-pane-padded" hidden={section !== 'inventory'}>
-            <Inventory user={props.user} storeId={props.activeStoreId} payloadToken={props.payloadToken} />
+            <SectionErrorBoundary key="inventory" label="Inventory">
+              <Inventory user={props.user} storeId={props.activeStoreId} payloadToken={props.payloadToken} />
+            </SectionErrorBoundary>
           </div>
         ) : null}
 
         {visited.has('restock') ? (
           <div className="app-shell-pane app-shell-pane-padded" hidden={section !== 'restock'}>
-            <Restock user={props.user} storeId={props.activeStoreId} payloadToken={props.payloadToken} />
+            <SectionErrorBoundary key="restock" label="Restock">
+              <Restock user={props.user} storeId={props.activeStoreId} payloadToken={props.payloadToken} />
+            </SectionErrorBoundary>
           </div>
         ) : null}
 
         {visited.has('quotations') && canSeeManagerSections ? (
           <div className="app-shell-pane app-shell-pane-padded" hidden={section !== 'quotations'}>
-            <Quotations user={props.user} storeId={props.activeStoreId} payloadToken={props.payloadToken} />
+            <SectionErrorBoundary key="quotations" label="Quotations">
+              <Quotations user={props.user} storeId={props.activeStoreId} payloadToken={props.payloadToken} />
+            </SectionErrorBoundary>
           </div>
         ) : null}
       </div>
