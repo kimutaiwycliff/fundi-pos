@@ -13,7 +13,14 @@ export const Media: CollectionConfig = {
   admin: { useAsTitle: 'alt' },
   access: {
     read: ownTenantOnly,
-    create: managerOrOwner,
+    // Not managerOrOwner: Products.ts deliberately leaves the product/
+    // variant `image` field open to any tenant user (a cashier needs to be
+    // able to change a product's own photo), but that update is a two-step
+    // process - upload the file here first, then PATCH the product to point
+    // at it. Gating create to managerOrOwner silently broke the cashier
+    // half of that despite the field access implying it should work -
+    // caught live: a cashier's upload 403'd before ever reaching Products.ts.
+    create: ownTenantOnly,
     update: managerOrOwner,
     delete: managerOrOwner,
   },

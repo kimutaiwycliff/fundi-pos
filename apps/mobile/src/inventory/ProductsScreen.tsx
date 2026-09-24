@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import Fuse from 'fuse.js';
 import * as ImagePicker from 'expo-image-picker';
+import { File, UploadTask, UploadType } from 'expo-file-system';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { View, Text, TextInput, Pressable, FlatList, Image, Modal, Switch, ScrollView, RefreshControl, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -321,9 +322,24 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
   // Shared by the product's own image and each variant's - picks from the
   // gallery, uploads straight to Payload's built-in /api/media (same
   // dedicated upload route web's own ImageField posts to), and returns
-  // the new media doc's id/url for the caller to store. RN's fetch/
-  // FormData accept a {uri, name, type} object as the file part - there is
-  // no File/Blob to construct from a picked asset the way a browser has.
+  // the new media doc's id/url for the caller to store.
+  //
+  // Goes through expo-file-system's UploadTask rather than plain fetch +
+  // a hand-built {uri, name, type} FormData part: on Android, the gallery
+  // picker can hand back a content:// URI (not a plain file:// path), and
+  // RN's fetch/FormData can't always read that directly - it fails at the
+  // network layer with a generic rejection that this file's own try/catch
+  // used to relabel as OFFLINE_MESSAGE regardless of the real cause. That
+  // misreported "you're offline" even to a verifiably-online user, every
+  // time an Android photo upload hit this. UploadTask's `File` wraps the
+  // native ContentResolver/file APIs and is Expo's own documented
+  // replacement for the old FileSystem.uploadAsync, so it reads a
+  // content:// URI correctly instead of handing an unreadable reference to
+  // fetch. The catch block below also now surfaces whatever error actually
+  // did occur instead of assuming connectivity - a genuine offline failure
+  // still reads as OFFLINE_MESSAGE (that's what a real network error's
+  // message resolves to via apiFetch elsewhere), but any other cause is no
+  // longer misreported as one.
   async function pickImage(): Promise<{ id: number; url: string } | null> {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -333,29 +349,33 @@ export function ProductsScreen({ user, payloadToken, storeId }: { user: PayloadU
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
     if (result.canceled || !result.assets?.length) return null;
     const asset = result.assets[0];
-    const formData = new FormData();
-    // React Native's FormData accepts this object shape in place of a
-    // web File/Blob - confirmed against expo-image-picker's own
-    // documented upload pattern.
-    formData.append('file', {
-      uri: asset.uri,
-      name: asset.fileName ?? 'photo.jpg',
-      type: asset.mimeType ?? 'image/jpeg',
-    } as unknown as Blob);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/media`, {
-        method: 'POST',
+      const file = new File(asset.uri);
+      const task = new UploadTask(file, `${API_BASE_URL}/api/media`, {
+        httpMethod: 'POST',
+        uploadType: UploadType.MULTIPART,
+        fieldName: 'file',
+        mimeType: asset.mimeType ?? 'image/jpeg',
         headers: { Authorization: `JWT ${payloadToken}` },
-        body: formData,
       });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) {
-        showAlert('Upload failed', body?.errors?.[0]?.message ?? 'Could not upload image');
+      const uploadResult = await task.uploadAsync();
+      let body: { doc?: { id: number; url: string }; errors?: { message: string }[] } | null = null;
+      try {
+        body = JSON.parse(uploadResult.body);
+      } catch {
+        body = null;
+      }
+      if (uploadResult.status < 200 || uploadResult.status >= 300) {
+        showAlert('Upload failed', body?.errors?.[0]?.message ?? `Could not upload image (HTTP ${uploadResult.status})`);
+        return null;
+      }
+      if (!body?.doc) {
+        showAlert('Upload failed', 'Could not upload image');
         return null;
       }
       return { id: body.doc.id, url: body.doc.url };
-    } catch {
-      showAlert('Upload failed', OFFLINE_MESSAGE);
+    } catch (err) {
+      showAlert('Upload failed', err instanceof Error ? err.message : OFFLINE_MESSAGE);
       return null;
     }
   }
