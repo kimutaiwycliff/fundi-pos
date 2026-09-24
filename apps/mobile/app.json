@@ -2,7 +2,7 @@
   "expo": {
     "name": "Fundi Till",
     "slug": "mobile",
-    "version": "1.0.13",
+    "version": "1.0.14",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mobile",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "com.fundipos.till",
-      "versionCode": 14,
+      "versionCode": 15,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#df5102"
