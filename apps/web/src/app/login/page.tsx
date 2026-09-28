@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,8 @@ import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const expired = searchParams.get('expired') === '1';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -26,11 +28,19 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const response = await clientFetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
+      // skipSessionRedirect: a wrong-password attempt here 401s same as an
+      // actually-expired session would elsewhere - without this it'd hijack
+      // every failed login into client-fetch.ts's "session expired, back to
+      // /login" redirect instead of just showing "Login failed" below.
+      const response = await clientFetch(
+        '/api/auth/login',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        },
+        { skipSessionRedirect: true },
+      );
 
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -65,6 +75,7 @@ export default function LoginPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              {expired ? <p className="text-sm text-muted-foreground">Your session expired - please sign in again.</p> : null}
               <div className="flex flex-col gap-2">
                 <Label htmlFor="email">Email</Label>
                 <Input

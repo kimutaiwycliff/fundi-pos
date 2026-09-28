@@ -7,7 +7,8 @@ import { KeyboardProvider, KeyboardAvoidingView } from 'react-native-keyboard-co
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
-import { API_BASE_URL, loginToPayload, loginWithPin, refreshTillToken, type PayloadUser } from '../lib/auth';
+import { API_BASE_URL, OFFLINE_MESSAGE, loginToPayload, loginWithPin, refreshTillToken, type PayloadUser } from '../lib/auth';
+import { clearSession, loadSession, saveSession, updateSessionStore } from '../lib/session';
 import { getTerminalId, getTerminalName, setTerminalName } from '../lib/terminal';
 import { MIN_PIN_LENGTH, MAX_PIN_LENGTH } from '../lib/pin';
 import { RootTabs } from '../navigation/RootTabs';
@@ -67,6 +68,39 @@ function AppInner() {
     (async () => {
       setTerminalId(await getTerminalId());
       setTerminalNameState(await getTerminalName());
+
+      // Resume a previously-logged-in session rather than forcing a fresh
+      // login on every cold start (a normal, frequent event on Android,
+      // which aggressively reclaims backgrounded apps' processes) - see
+      // lib/session.ts. Shows the till UI immediately with the persisted
+      // token/user, then validates+extends it in the background; only
+      // falls back to the login screen on a DEFINITE rejection (banned,
+      // expired past the 30-day resume window, billing issue), never on a
+      // plain connectivity failure - a genuinely offline till just keeps
+      // using its last-known-good session, same leniency the periodic
+      // refresh effect below already applies.
+      const session = await loadSession();
+      if (session) {
+        setPayloadToken(session.payloadToken);
+        setUser(session.user);
+        setActiveStoreId(session.storeId);
+        setState('connected');
+        refreshTillToken(session.payloadToken)
+          .then(({ payloadToken: freshToken, user: freshUser }) => {
+            setPayloadToken(freshToken);
+            setUser(freshUser);
+            saveSession(freshToken, freshUser, session.storeId);
+          })
+          .catch(async (err) => {
+            if (err instanceof Error && err.message === OFFLINE_MESSAGE) return;
+            await clearSession();
+            setUser(null);
+            setPayloadToken(null);
+            setActiveStoreId(null);
+            setState('idle');
+          });
+      }
+
       setInitializing(false);
     })();
   }, []);
@@ -88,12 +122,13 @@ function AppInner() {
         const { payloadToken: freshToken, user: freshUser } = await refreshTillToken(payloadToken);
         setPayloadToken(freshToken);
         setUser(freshUser);
+        await saveSession(freshToken, freshUser, activeStoreId);
       } catch (err) {
         console.warn('Till session refresh failed (will retry later):', err);
       }
     }, TILL_REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [state, user, payloadToken]);
+  }, [state, user, payloadToken, activeStoreId]);
 
   // Once connected, an owner/manager with no fixed store (Users.store is
   // nullable for exactly this) needs to pick which branch to work from -
@@ -131,6 +166,23 @@ function AppInner() {
       const fixedStoreId = typeof loggedInUser.store === 'object' ? (loggedInUser.store?.id ?? null) : (loggedInUser.store ?? null);
       setActiveStoreId(fixedStoreId ?? null);
       setState('connected');
+      await saveSession(newToken, loggedInUser, fixedStoreId ?? null);
+      // A password-mode login gets Payload's plain 2h user token (unlike
+      // pin-login, which already gets a 30-day till token) - till-refresh
+      // has no login-method check, it just extends whatever session is
+      // currently valid, so upgrading immediately here (rather than waiting
+      // for the 6h periodic refresh below, which would otherwise still be
+      // 4+ hours away from its first tick when this 2h token expires) closes
+      // that gap for every login, regardless of mode. Best-effort - a
+      // failure here just leaves the original login token in place, and the
+      // periodic effect below will keep retrying.
+      refreshTillToken(newToken)
+        .then(({ payloadToken: freshToken, user: freshUser }) => {
+          setPayloadToken(freshToken);
+          setUser(freshUser);
+          saveSession(freshToken, freshUser, fixedStoreId ?? null);
+        })
+        .catch((err) => console.warn('Post-login till upgrade failed (will retry later):', err));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setState('error');
@@ -144,10 +196,12 @@ function AppInner() {
     setState('idle');
     setPin('');
     setPassword('');
+    clearSession();
   }
 
   function handleSwitchStore(storeId: number) {
     setActiveStoreId(storeId);
+    updateSessionStore(storeId);
   }
 
   function handleSaveTerminalName() {

@@ -83,6 +83,21 @@ function App() {
       payloadTokenRef.current = payloadToken;
       setUser(loggedInUser);
       setState("connected");
+      // A password-mode login gets Payload's plain 2h user token (unlike
+      // pin-login, which already gets a 30-day till token) - till-refresh
+      // has no login-method check, it just extends whatever session is
+      // currently valid, so upgrading immediately here (rather than waiting
+      // for the 6h periodic refresh below, which would otherwise still be
+      // 4+ hours away from its first tick when this 2h token expires) closes
+      // that gap for every login, regardless of mode. Best-effort - a
+      // failure here just leaves the original login token in place, and the
+      // periodic effect below will keep retrying.
+      refreshTillToken(payloadToken)
+        .then(({ payloadToken: freshToken, user: freshUser }) => {
+          payloadTokenRef.current = freshToken;
+          setUser(freshUser);
+        })
+        .catch((err) => console.warn("Post-login till upgrade failed (will retry later):", err));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
