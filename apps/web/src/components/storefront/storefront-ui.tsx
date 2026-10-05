@@ -1,18 +1,35 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import {
-  formatPriceSummary,
-  productImage,
-  productOrderLink,
-  productPath,
-  type Availability,
-  type StorefrontProduct,
-  type StorefrontShop,
-} from './storefront-data';
+import type { Availability } from './storefront-data';
 
-// Plain server components - wa.me links and anchors need no client state.
+// Server-safe storefront building blocks. Interactive pieces (bag,
+// wishlist, search) live in shop-client.tsx.
+//
+// Palette - fixed light, whatever the visitor's dark-mode setting, since
+// this is the shop's own brand surface:
+//   ink    #1C2541  deep navy - text, primary buttons
+//   muted  #5E6378  secondary text
+//   shell  #F4F2F8  soft lilac-grey - image wells, panels
+//   line   #E4E1EC  hairlines
+//   petal  #D9768A  wishlist heart, "only a few left"
+//   wa     #128C4F  WhatsApp actions only
+const THEME = {
+  '--sf-ink': '#1C2541',
+  '--sf-muted': '#5E6378',
+  '--sf-shell': '#F4F2F8',
+  '--sf-line': '#E4E1EC',
+  '--sf-petal': '#D9768A',
+  '--sf-wa': '#128C4F',
+} as CSSProperties;
+
+export function ShopShell({ children }: { children: ReactNode }) {
+  return (
+    <div style={THEME} className="flex min-h-full flex-1 flex-col overflow-x-hidden bg-white text-[var(--sf-ink)] antialiased">
+      {children}
+    </div>
+  );
+}
 
 export function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -22,6 +39,12 @@ export function WhatsAppIcon({ className }: { className?: string }) {
   );
 }
 
+const BUTTON_SIZES = {
+  sm: 'h-9 px-3.5 text-sm',
+  md: 'h-11 px-5 text-sm',
+  lg: 'h-12 px-6 text-base',
+} as const;
+
 export function WhatsAppOrderButton({
   href,
   label = 'Order on WhatsApp',
@@ -30,7 +53,7 @@ export function WhatsAppOrderButton({
 }: {
   href: string | null;
   label?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: keyof typeof BUTTON_SIZES;
   className?: string;
 }) {
   if (!href) return null;
@@ -40,10 +63,8 @@ export function WhatsAppOrderButton({
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-full bg-[#1f8f4e] font-medium text-white shadow-sm transition-colors hover:bg-[#187a41] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1f8f4e]',
-        size === 'sm' && 'h-9 px-3 text-sm',
-        size === 'md' && 'h-11 px-5 text-sm',
-        size === 'lg' && 'h-12 px-6 text-base',
+        'inline-flex items-center justify-center gap-2 rounded-full bg-[var(--sf-wa)] font-medium text-white transition-colors hover:bg-[#0f7742] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--sf-wa)]',
+        BUTTON_SIZES[size],
         className,
       )}
     >
@@ -54,13 +75,18 @@ export function WhatsAppOrderButton({
 }
 
 export function AvailabilityBadge({ availability, className }: { availability: Availability; className?: string }) {
-  if (availability === 'low') {
-    return <Badge className={cn('border-amber-300 bg-amber-100 text-amber-900', className)}>Last pieces</Badge>;
-  }
-  if (availability === 'sold_out') {
-    return <Badge className={cn('border-stone-300 bg-stone-200 text-stone-600', className)}>Sold out</Badge>;
-  }
-  return null;
+  if (availability === 'in_stock') return null;
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium',
+        availability === 'low' ? 'bg-white/95 text-[var(--sf-petal)]' : 'bg-white/95 text-[var(--sf-muted)]',
+        className,
+      )}
+    >
+      {availability === 'low' ? 'Only a few left' : 'Sold out'}
+    </span>
+  );
 }
 
 export function ImagePlaceholder({ name, className }: { name: string; className?: string }) {
@@ -68,80 +94,45 @@ export function ImagePlaceholder({ name, className }: { name: string; className?
   return (
     <div
       aria-hidden
-      className={cn(
-        'flex h-full w-full items-center justify-center bg-gradient-to-br from-[#f3e7da] via-[#efe0cf] to-[#e6d2bd] font-serif text-5xl text-[#a07e5f]',
-        className,
-      )}
+      className={cn('flex h-full w-full items-center justify-center bg-[var(--sf-shell)] text-5xl font-light text-[#B6B1C6]', className)}
     >
       {initial}
     </div>
   );
 }
 
-export function ProductCard({ shop, product }: { shop: StorefrontShop; product: StorefrontProduct }) {
-  const image = productImage(product);
-  const soldOut = product.availability === 'sold_out';
-  const href = productPath(shop.slug, product.id);
-  const orderLink = soldOut ? null : productOrderLink(shop, product);
-
+// "How ordering works" - a real three-step sequence, so it's numbered.
+export function OrderingSteps() {
+  const steps = ['Add pieces to your bag', 'Send the bag to us on WhatsApp', 'We confirm delivery and M-Pesa payment'];
   return (
-    <article
-      className={cn(
-        'group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[#eadfd3] bg-white shadow-[0_1px_2px_rgba(60,40,20,0.04)] transition-shadow hover:shadow-md',
-        soldOut && 'opacity-60',
-      )}
-    >
-      <Link href={href} className="relative block aspect-[4/5] overflow-hidden bg-[#f6eee5]">
-        {image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={image}
-            alt={product.name}
-            loading="lazy"
-            className={cn(
-              'h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]',
-              soldOut && 'grayscale',
-            )}
-          />
-        ) : (
-          <ImagePlaceholder name={product.name} />
-        )}
-        <AvailabilityBadge availability={product.availability} className="absolute top-2 left-2" />
-      </Link>
-      <div className="flex flex-1 flex-col gap-2 p-3">
-        <Link href={href} className="min-w-0">
-          <h3 className="line-clamp-2 text-sm leading-snug font-medium text-stone-900 sm:text-base">{product.name}</h3>
-          <p className={cn('mt-1 text-sm font-semibold text-[#8a5a33]', soldOut && 'text-stone-500 line-through')}>
-            {formatPriceSummary(product)}
-          </p>
-        </Link>
-        <div className="mt-auto pt-1">
-          {orderLink ? (
-            <WhatsAppOrderButton href={orderLink} label="Order" size="sm" className="w-full" />
-          ) : soldOut ? (
-            <span className="flex h-9 w-full items-center justify-center rounded-full border border-stone-200 text-xs text-stone-500">
-              Sold out
-            </span>
-          ) : null}
-        </div>
-      </div>
-    </article>
+    <ol className="grid gap-3 text-sm text-[var(--sf-muted)] sm:grid-cols-3">
+      {steps.map((step, i) => (
+        <li key={step} className="flex items-center gap-3">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-[var(--sf-line)] text-xs font-medium text-[var(--sf-ink)]">
+            {i + 1}
+          </span>
+          {step}
+        </li>
+      ))}
+    </ol>
   );
 }
 
-export function ShopFooter() {
+export function ShopFooter({ shopName, socialHandles }: { shopName?: string; socialHandles?: string | null }) {
   return (
-    <footer className="border-t border-[#eadfd3] px-4 py-6 text-center text-xs text-stone-500">
-      Powered by{' '}
-      <Link href="/" className="font-medium text-stone-700 underline-offset-4 hover:underline">
-        Fundi POS
-      </Link>
+    <footer className="mt-auto border-t border-[var(--sf-line)] bg-[var(--sf-shell)]">
+      <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-8 text-sm text-[var(--sf-muted)] sm:flex-row sm:items-center sm:justify-between">
+        <p>
+          {shopName ? <span className="font-medium text-[var(--sf-ink)]">{shopName}</span> : null}
+          {socialHandles ? <span className="ml-2 break-words">{socialHandles}</span> : null}
+        </p>
+        <p className="text-xs">
+          Shop powered by{' '}
+          <Link href="/" className="underline-offset-4 hover:underline">
+            Fundi POS
+          </Link>
+        </p>
+      </div>
     </footer>
   );
-}
-
-// Fixed light, warm palette regardless of the visitor's dark-mode setting -
-// this page is the shop's own brand surface, not the Fundi app UI.
-export function ShopShell({ children }: { children: ReactNode }) {
-  return <div className="flex min-h-full flex-1 flex-col overflow-x-hidden bg-[#fbf7f2] text-stone-900">{children}</div>;
 }

@@ -1,31 +1,20 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import {
-  absoluteImage,
   clampText,
   shopRobots,
-  formatKes,
   formatPriceSummary,
   getStorefront,
   jsonLdString,
   productImage,
-  productOrderLink,
   productPath,
   productUrl,
-  shopOrderLink,
   shopPath,
   type StorefrontProduct,
   type StorefrontResponse,
 } from '@/components/storefront/storefront-data';
-import {
-  AvailabilityBadge,
-  ImagePlaceholder,
-  ShopFooter,
-  ShopShell,
-  WhatsAppOrderButton,
-} from '@/components/storefront/storefront-ui';
-import { cn } from '@/lib/utils';
+import { ShopFooter, ShopShell } from '@/components/storefront/storefront-ui';
+import { ProductDetail, RecentlyViewed, RelatedProducts, ShopTopBar } from '@/components/storefront/shop-client';
 
 // See shop/[slug]/page.tsx - request-time render, 60s fetch revalidation.
 export const dynamic = 'force-dynamic';
@@ -81,7 +70,14 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   };
 }
 
-const AVAILABILITY_LABEL = { in_stock: 'In stock', low: 'Last pieces', sold_out: 'Sold out' } as const;
+// "You may also like": same category first, then anything else in stock,
+// never the product itself - 8 at most.
+function relatedFor(product: StorefrontProduct, all: StorefrontProduct[]): StorefrontProduct[] {
+  const others = all.filter((p) => p.id !== product.id);
+  const sameCategory = others.filter((p) => p.category === product.category && p.availability !== 'sold_out');
+  const rest = others.filter((p) => p.category !== product.category && p.availability !== 'sold_out');
+  return [...sameCategory, ...rest].slice(0, 8);
+}
 
 export default async function ShopProductPage({ params }: { params: Params }) {
   const { slug, productId } = await params;
@@ -97,11 +93,7 @@ export default async function ShopProductPage({ params }: { params: Params }) {
   if (!product) notFound();
 
   const image = productImage(product);
-  const soldOut = product.availability === 'sold_out';
   const hasVariants = product.variants.length > 0;
-  const singleOrderLink = !hasVariants && !soldOut ? productOrderLink(shop, product) : null;
-  const askLink = shopOrderLink(shop);
-
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -128,115 +120,13 @@ export default async function ShopProductPage({ params }: { params: Params }) {
   return (
     <ShopShell>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdString(jsonLd) }} />
-
-      <header className="border-b border-[#eadfd3]">
-        <div className="mx-auto flex h-14 max-w-5xl items-center gap-3 px-4">
-          <Link
-            href={shopPath(shop.slug)}
-            className="flex min-w-0 items-center gap-2 text-sm text-stone-600 hover:text-stone-900"
-          >
-            <span aria-hidden>←</span>
-            <span className="truncate font-serif text-base font-semibold text-stone-900">{shop.name}</span>
-          </Link>
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:py-10">
-        <div className="grid gap-6 md:grid-cols-2 md:gap-10">
-          <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl border border-[#eadfd3] bg-[#f6eee5]">
-            {image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={image}
-                alt={product.name}
-                className={cn('h-full w-full object-cover', soldOut && 'grayscale')}
-              />
-            ) : (
-              <ImagePlaceholder name={product.name} className="text-7xl" />
-            )}
-            <AvailabilityBadge availability={product.availability} className="absolute top-3 left-3" />
-          </div>
-
-          <div className="min-w-0">
-            <p className="text-[11px] font-medium tracking-[0.25em] text-[#a07e5f] uppercase">{product.category}</p>
-            <h1 className="mt-2 font-serif text-2xl leading-tight font-semibold break-words text-stone-900 sm:text-3xl">
-              {product.name}
-            </h1>
-            <p className={cn('mt-2 text-xl font-semibold text-[#8a5a33]', soldOut && 'text-stone-500')}>
-              {formatPriceSummary(product)}
-            </p>
-
-            {product.description ? (
-              <p className="mt-4 text-sm leading-relaxed whitespace-pre-line text-stone-700 sm:text-base">
-                {product.description}
-              </p>
-            ) : null}
-
-            {hasVariants ? (
-              <section className="mt-6">
-                <h2 className="text-sm font-semibold text-stone-900">Choose an option</h2>
-                <ul className="mt-3 divide-y divide-[#eadfd3] overflow-hidden rounded-2xl border border-[#eadfd3] bg-white">
-                  {product.variants.map((variant) => {
-                    const variantSoldOut = variant.availability === 'sold_out';
-                    const link = variantSoldOut ? null : productOrderLink(shop, product, variant);
-                    const thumb = absoluteImage(variant.image);
-                    return (
-                      <li
-                        key={variant.id || variant.label}
-                        className={cn('flex flex-wrap items-center gap-3 p-3', variantSoldOut && 'opacity-60')}
-                      >
-                        {thumb ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={thumb}
-                            alt={`${product.name} - ${variant.label}`}
-                            loading="lazy"
-                            className={cn('size-12 shrink-0 rounded-lg object-cover', variantSoldOut && 'grayscale')}
-                          />
-                        ) : null}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-stone-900">{variant.label}</p>
-                          <p className="text-xs text-stone-500">
-                            {formatKes(variant.price)} · {AVAILABILITY_LABEL[variant.availability]}
-                          </p>
-                        </div>
-                        {link ? (
-                          <WhatsAppOrderButton href={link} label="Order" size="sm" />
-                        ) : variantSoldOut ? (
-                          <span className="text-xs text-stone-500">Sold out</span>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            ) : (
-              <div className="mt-6">
-                {singleOrderLink ? (
-                  <WhatsAppOrderButton href={singleOrderLink} size="lg" className="w-full sm:w-auto" />
-                ) : soldOut ? (
-                  <p className="text-sm text-stone-600">
-                    This piece is sold out right now.
-                    {askLink ? ' WhatsApp us to ask when it is back.' : ''}
-                  </p>
-                ) : null}
-              </div>
-            )}
-
-            {soldOut && askLink ? (
-              <div className="mt-4">
-                <WhatsAppOrderButton href={askLink} label="Ask about restock" size="md" />
-              </div>
-            ) : null}
-
-            <p className="mt-6 text-xs text-stone-500">
-              Tap the button to send us your order on WhatsApp — we&apos;ll confirm availability, payment and delivery.
-            </p>
-          </div>
-        </div>
+      <ShopTopBar shop={shop} products={data.products} back />
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-16 sm:pt-10">
+        <ProductDetail shop={shop} product={product} />
+        <RelatedProducts shop={shop} products={relatedFor(product, data.products)} />
+        <RecentlyViewed shop={shop} products={data.products} excludeId={product.id} />
       </main>
-
-      <ShopFooter />
+      <ShopFooter shopName={shop.name} socialHandles={shop.socialHandles} />
     </ShopShell>
   );
 }

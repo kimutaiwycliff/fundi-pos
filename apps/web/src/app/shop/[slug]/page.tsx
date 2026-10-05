@@ -2,12 +2,10 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import {
   absoluteImage,
-  categoryAnchor,
   getStorefront,
   shopRobots,
   shopSeoDescription,
   shopSeoTitle,
-  groupByCategory,
   jsonLdString,
   productImage,
   productUrl,
@@ -16,7 +14,8 @@ import {
   shopUrl,
   type StorefrontShop,
 } from '@/components/storefront/storefront-data';
-import { ProductCard, ShopFooter, ShopShell, WhatsAppOrderButton } from '@/components/storefront/storefront-ui';
+import { OrderingSteps, ShopFooter, ShopShell, WhatsAppOrderButton } from '@/components/storefront/storefront-ui';
+import { Catalog, RecentlyViewed, ShopTopBar } from '@/components/storefront/shop-client';
 
 // Same reasoning as blog/[slug]/page.tsx: the Payload API isn't reachable
 // at image-build time, so render per request. payloadPublicFetch's
@@ -54,59 +53,25 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   };
 }
 
-function ShopHeader({ shop, orderLink }: { shop: StorefrontShop; orderLink: string | null }) {
-  return (
-    <header className="border-b border-[#eadfd3] bg-[#fbf7f2]">
-      <div className="mx-auto max-w-5xl px-4 pt-8 pb-6 text-center sm:pt-12">
-        <p className="text-[11px] font-medium tracking-[0.25em] text-[#a07e5f] uppercase">Online shop</p>
-        <h1 className="mt-2 font-serif text-3xl leading-tight font-semibold break-words text-stone-900 sm:text-4xl">
-          {shop.name}
-        </h1>
-        {shop.tagline ? <p className="mx-auto mt-2 max-w-md text-sm text-stone-600 sm:text-base">{shop.tagline}</p> : null}
-        {shop.socialHandles ? (
-          <p className="mx-auto mt-3 max-w-md text-xs break-words text-stone-500">Follow us: {shop.socialHandles}</p>
-        ) : null}
-        {orderLink ? (
-          <div className="mt-5 hidden sm:block">
-            <WhatsAppOrderButton href={orderLink} />
-          </div>
-        ) : null}
-      </div>
-    </header>
-  );
-}
-
-function StickyOrderBar({ orderLink }: { orderLink: string | null }) {
-  if (!orderLink) return null;
-  return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#eadfd3] bg-[#fbf7f2]/95 px-4 py-3 backdrop-blur sm:inset-x-auto sm:right-5 sm:bottom-5 sm:rounded-full sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
-      <WhatsAppOrderButton href={orderLink} size="lg" className="w-full shadow-lg sm:w-auto" />
-    </div>
-  );
-}
-
 function PausedShop({ shop }: { shop: StorefrontShop }) {
   const orderLink = shopOrderLink(shop);
   return (
     <ShopShell>
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center px-4 py-16 text-center">
-        <p className="text-[11px] font-medium tracking-[0.25em] text-[#a07e5f] uppercase">{shop.name}</p>
-        <h1 className="mt-3 font-serif text-2xl font-semibold text-stone-900 sm:text-3xl">
-          This shop is taking a short break
-        </h1>
-        <p className="mt-3 text-sm text-stone-600">
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center px-4 py-20 text-center">
+        <p className="text-sm text-[var(--sf-muted)]">{shop.name}</p>
+        <h1 className="mt-3 text-3xl font-light">This shop is taking a short break</h1>
+        <p className="mt-3 text-[15px] text-[var(--sf-muted)]">
           {orderLink
-            ? "Our online catalogue is resting for now, but we're still taking orders — WhatsApp us and we'll help you right away."
+            ? "Our online catalogue is resting for now, but we're still taking orders. WhatsApp us and we'll help you right away."
             : 'Our online catalogue is resting for now. Please check back soon.'}
         </p>
         {orderLink ? (
-          <div className="mt-6">
+          <div className="mt-7">
             <WhatsAppOrderButton href={orderLink} label="WhatsApp us to order" size="lg" />
           </div>
         ) : null}
-        {shop.socialHandles ? <p className="mt-6 text-xs break-words text-stone-500">Follow us: {shop.socialHandles}</p> : null}
       </main>
-      <ShopFooter />
+      <ShopFooter shopName={shop.name} socialHandles={shop.socialHandles} />
     </ShopShell>
   );
 }
@@ -118,9 +83,6 @@ export default async function ShopPage({ params }: { params: Params }) {
 
   const { shop } = data;
   if (!data.available) return <PausedShop shop={shop} />;
-
-  const groups = groupByCategory(data.products);
-  const orderLink = shopOrderLink(shop);
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -148,58 +110,35 @@ export default async function ShopPage({ params }: { params: Params }) {
   return (
     <ShopShell>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdString(jsonLd) }} />
-      <ShopHeader shop={shop} orderLink={orderLink} />
+      <ShopTopBar shop={shop} products={data.products} />
 
-      {groups.length > 1 ? (
-        <nav
-          aria-label="Categories"
-          className="sticky top-0 z-30 border-b border-[#eadfd3] bg-[#fbf7f2]/95 backdrop-blur"
-        >
-          <div className="mx-auto flex max-w-5xl gap-2 overflow-x-auto px-4 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {groups.map(({ category }) => (
-              <a
-                key={category}
-                href={`#${categoryAnchor(category)}`}
-                className="shrink-0 rounded-full border border-[#e2d3c3] bg-white px-3.5 py-1.5 text-xs font-medium text-stone-700 transition-colors hover:border-[#c9a988] hover:text-stone-900"
-              >
-                {category}
-              </a>
-            ))}
-          </div>
-        </nav>
-      ) : null}
+      {/* The one bold move: the shop's name, set large, light and open. */}
+      <section className="mx-auto w-full max-w-6xl px-4 pt-12 pb-8 sm:pt-20 sm:pb-12">
+        <h1 className="text-[clamp(2.6rem,11vw,6.5rem)] leading-[0.95] font-light tracking-[0.04em] break-words">{shop.name}</h1>
+        <div className="mt-5 flex flex-col gap-1 text-[15px] text-[var(--sf-muted)] sm:flex-row sm:items-baseline sm:gap-4">
+          {shop.tagline ? <p className="text-[var(--sf-ink)]">{shop.tagline}</p> : null}
+          {shop.seo?.city ? <p>{shop.seo.city}</p> : null}
+        </div>
+        <div className="mt-8 border-t border-[var(--sf-line)] pt-5">
+          <OrderingSteps />
+        </div>
+      </section>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
-        {groups.length === 0 ? (
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16">
+        {data.products.length === 0 ? (
           <div className="mx-auto max-w-sm py-16 text-center">
-            <p className="font-serif text-xl text-stone-800">New pieces coming soon</p>
-            <p className="mt-2 text-sm text-stone-600">
-              {orderLink ? 'WhatsApp us to ask what is in store today.' : 'Please check back soon.'}
+            <p className="text-xl font-light">New pieces coming soon</p>
+            <p className="mt-2 text-sm text-[var(--sf-muted)]">
+              {shopOrderLink(shop) ? 'WhatsApp us to ask what is in store today.' : 'Please check back soon.'}
             </p>
           </div>
         ) : (
-          groups.map(({ category, products }) => (
-            <section key={category} id={categoryAnchor(category)} className="scroll-mt-16 pb-8">
-              <div className="mb-4 flex items-baseline justify-between gap-3">
-                <h2 className="font-serif text-xl font-semibold text-stone-900">{category}</h2>
-                <span className="text-xs text-stone-500">
-                  {products.length} {products.length === 1 ? 'item' : 'items'}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
-                {products.map((product) => (
-                  <ProductCard key={product.id} shop={shop} product={product} />
-                ))}
-              </div>
-            </section>
-          ))
+          <Catalog shop={shop} products={data.products} />
         )}
+        <RecentlyViewed shop={shop} products={data.products} />
       </main>
 
-      <ShopFooter />
-      {/* Keeps the footer clear of the fixed mobile order bar. */}
-      {orderLink ? <div aria-hidden className="h-20 sm:hidden" /> : null}
-      <StickyOrderBar orderLink={orderLink} />
+      <ShopFooter shopName={shop.name} socialHandles={shop.socialHandles} />
     </ShopShell>
   );
 }
