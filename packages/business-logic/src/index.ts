@@ -4,3 +4,5 @@ export * from './discount.ts';
 export * from './costing.ts';
 export * from './pricing.ts';
 export * from './phone.ts';
+export * from './promo.ts';
+export * from './marketing.ts';

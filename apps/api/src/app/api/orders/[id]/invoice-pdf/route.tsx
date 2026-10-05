@@ -3,6 +3,7 @@ import { getPayload } from 'payload';
 import { headers as nextHeaders } from 'next/headers';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { isTenantUser, toID } from '@/lib/relations';
+import { receiptFooterWithMarketing } from '@hardware-pos/business-logic';
 import { InvoiceDocument, type ReceiptOrderData } from '@/lib/invoice-pdf';
 
 // A real A4 PDF invoice for the web dashboard's WhatsApp/download flow,
@@ -55,7 +56,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const pdfBuffer = await renderToBuffer(
     <InvoiceDocument
       data={data}
-      tenant={{ name: tenant.name, receiptHeader: tenant.receiptHeader, receiptFooter: tenant.receiptFooter }}
+      tenant={{
+        name: tenant.name,
+        receiptHeader: tenant.receiptHeader,
+        // Same WhatsApp / socials / review lines every printed receipt gets.
+        receiptFooter: receiptFooterWithMarketing(tenant.receiptFooter, tenant),
+      }}
     />,
   );
 

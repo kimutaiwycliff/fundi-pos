@@ -1,5 +1,13 @@
 import type { CollectionConfig } from 'payload';
+import { APIError } from 'payload';
+import { ADDON_LABELS, ADDONS, normalizeKenyanPhone, normalizeShopSlug, type Addon } from '@hardware-pos/business-logic';
 import { toID } from '../lib/relations.ts';
+
+function sameAddons(a: unknown, b: unknown): boolean {
+  const left = [...((a as string[] | null) ?? [])].sort().join(',');
+  const right = [...((b as string[] | null) ?? [])].sort().join(',');
+  return left === right;
+}
 
 export const Tenants: CollectionConfig = {
   slug: 'tenants',
@@ -75,6 +83,19 @@ export const Tenants: CollectionConfig = {
       access: { update: ({ req }) => req.user?.collection === 'platform-admins' },
     },
     {
+      // Paid add-ons (e.g. Sell Online), switched on/off per tenant by a
+      // platform admin at will - independent of subscriptionTier. Every
+      // add-on feature checks this via @hardware-pos/business-logic's
+      // hasAddon(), server-side and in each client. Turning one off never
+      // deletes the data it created; its screens just lock again.
+      name: 'addons',
+      type: 'select',
+      hasMany: true,
+      options: ADDONS.map((value) => ({ value, label: ADDON_LABELS[value] })),
+      access: { update: ({ req }) => req.user?.collection === 'platform-admins' },
+    },
+    { name: 'addonsChangedAt', type: 'date', admin: { readOnly: true } },
+    {
       // Printed on every receipt, above the line items - typically a
       // physical address/phone/KRA PIN, since `name` alone is already the
       // header's title line. Synced to the till (docker/powersync/
@@ -118,12 +139,76 @@ export const Tenants: CollectionConfig = {
           "Limit staff (not owners) to each product's Max discount amount at the till. Turn off to let staff discount freely - a sale can still never go below a product's cost.",
       },
     },
+    // Marketing details printed under every receipt (see business-logic's
+    // receiptFooterWithMarketing) and used by the public storefront's
+    // "Order on WhatsApp" buttons. Available on every plan.
+    { name: 'whatsappNumber', type: 'text', admin: { description: 'Shop WhatsApp number customers order on, e.g. 0712345678.' } },
+    { name: 'socialHandles', type: 'text', admin: { description: 'e.g. "IG/TikTok @babyshop.ke" - printed on receipts.' } },
+    { name: 'googleReviewUrl', type: 'text', admin: { description: 'Your Google review link - printed on receipts.' } },
+    {
+      // KES each loyalty point is worth when redeemed at checkout (points
+      // are earned at 1 per KES 100 - Orders.ts). Default 1 = 1% back.
+      name: 'loyaltyPointValue',
+      type: 'number',
+      defaultValue: 1,
+      min: 0,
+      admin: { step: 0.01, description: 'KES value of one loyalty point when a customer redeems it. 0 turns redemption off.' },
+    },
+    // Public storefront (Sell Online add-on) - served at /shop/<shopSlug>
+    // by apps/web via the public /api/storefront/<slug> route, only while
+    // the add-on is on AND the owner has it enabled.
+    { name: 'shopSlug', type: 'text', unique: true, index: true, admin: { description: 'Your online shop address: /shop/<this>.' } },
+    { name: 'storefrontEnabled', type: 'checkbox', defaultValue: false },
+    { name: 'storefrontTagline', type: 'text' },
+    // Storefront SEO (Settings -> Online shop -> Search engines). Every one
+    // is optional with a sensible fallback in apps/web's /shop pages, so a
+    // shop that never touches these still gets decent titles/descriptions.
+    { name: 'seoTitle', type: 'text', admin: { description: 'Google result title for the shop page (~60 characters).' } },
+    { name: 'seoDescription', type: 'textarea', admin: { description: 'Google result snippet (~155 characters).' } },
+    { name: 'seoImage', type: 'upload', relationTo: 'media', admin: { description: 'Image shown when the shop link is shared.' } },
+    { name: 'storefrontCity', type: 'text', admin: { description: 'Town / area, e.g. "Westlands, Nairobi" - helps local search.' } },
+    { name: 'storefrontIndexable', type: 'checkbox', defaultValue: true, admin: { description: 'Allow Google to list the shop.' } },
+    {
+      // The content="..." value of Google Search Console's HTML-tag
+      // verification, rendered on /shop/<slug> so the owner can verify a
+      // URL-prefix property for just their shop and submit its sitemap.
+      name: 'googleSiteVerification',
+      type: 'text',
+      admin: { description: 'Google Search Console HTML-tag verification code.' },
+    },
   ],
   hooks: {
     beforeChange: [
       ({ data, originalDoc, operation }) => {
         if (operation === 'update' && data.status && originalDoc && data.status !== originalDoc.status) {
           data.statusChangedAt = new Date().toISOString();
+        }
+        if (operation === 'update' && Array.isArray(data.addons) && originalDoc && !sameAddons(data.addons, originalDoc.addons)) {
+          data.addonsChangedAt = new Date().toISOString();
+        }
+        if (typeof data.shopSlug === 'string' || data.shopSlug === null) {
+          if (!data.shopSlug) {
+            data.shopSlug = null;
+          } else {
+            const slug = normalizeShopSlug(data.shopSlug);
+            if (!slug) throw new APIError('Shop address must be 3-40 letters, numbers or hyphens.', 400);
+            data.shopSlug = slug;
+          }
+        }
+        if (typeof data.googleSiteVerification === 'string') {
+          // Owners usually paste Google's whole <meta ... content="XYZ" /> tag.
+          const raw = data.googleSiteVerification.trim();
+          const fromTag = raw.match(/content\s*=\s*["']([^"']+)["']/i)?.[1];
+          const code = (fromTag ?? raw).trim();
+          if (code && !/^[A-Za-z0-9_-]{10,100}$/.test(code)) {
+            throw new APIError('That Google verification code doesn\'t look right - paste the code (or the whole meta tag) from Search Console.', 400);
+          }
+          data.googleSiteVerification = code || null;
+        }
+        if (typeof data.whatsappNumber === 'string' && data.whatsappNumber.trim()) {
+          const phone = normalizeKenyanPhone(data.whatsappNumber);
+          if (!phone) throw new APIError('Enter a valid Kenyan WhatsApp number, e.g. 0712345678.', 400);
+          data.whatsappNumber = phone;
         }
         return data;
       },
@@ -137,6 +222,27 @@ export const Tenants: CollectionConfig = {
 
         const statusChanged = doc.status !== previousDoc.status;
         const subscriptionChanged = doc.subscriptionTier !== previousDoc.subscriptionTier || doc.billingStatus !== previousDoc.billingStatus;
+        const addonsChanged = !sameAddons(doc.addons, previousDoc.addons);
+        if (addonsChanged) {
+          const before = new Set<string>(previousDoc.addons ?? []);
+          const after = new Set<string>(doc.addons ?? []);
+          const enabled = [...after].filter((a) => !before.has(a));
+          const disabled = [...before].filter((a) => !after.has(a));
+          const describe = (list: string[]) => list.map((a) => ADDON_LABELS[a as Addon] ?? a).join(', ');
+          const parts = [enabled.length ? `enabled ${describe(enabled)}` : null, disabled.length ? `disabled ${describe(disabled)}` : null];
+          await req.payload.create({
+            collection: 'platform-audit-log',
+            overrideAccess: true,
+            data: {
+              tenant: Number(doc.id),
+              actor: Number(req.user.id),
+              action: 'addon_changed',
+              summary: `${doc.name}: ${parts.filter(Boolean).join('; ')}`,
+              metadata: { enabled, disabled },
+            },
+            req,
+          });
+        }
         if (!statusChanged && !subscriptionChanged) return doc;
 
         let action: 'tenant_suspended' | 'tenant_reactivated' | 'tenant_soft_deleted' | 'tenant_restored' | 'subscription_changed';

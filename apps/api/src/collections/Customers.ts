@@ -1,6 +1,6 @@
 import type { CollectionConfig } from 'payload';
 import { APIError } from 'payload';
-import { normalizeKenyanPhone } from '@hardware-pos/business-logic';
+import { CUSTOMER_SOURCE_LABELS, CUSTOMER_SOURCES, normalizeKenyanPhone } from '@hardware-pos/business-logic';
 import { isAuthenticated, ownTenantOnly } from '../access/index.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
@@ -24,6 +24,14 @@ export const Customers: CollectionConfig = {
     // format for us.
     { name: 'email', type: 'email' },
     { name: 'loyaltyPoints', type: 'number', required: true, defaultValue: 0 },
+    {
+      // "How did you hear about us?" - asked when the customer is first
+      // added at the till, so the owner can see which marketing actually
+      // brings new customers (Reports -> New customers by source).
+      name: 'source',
+      type: 'select',
+      options: CUSTOMER_SOURCES.map((value) => ({ value, label: CUSTOMER_SOURCE_LABELS[value] })),
+    },
   ],
   hooks: {
     beforeChange: [

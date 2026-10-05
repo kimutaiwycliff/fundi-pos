@@ -1,4 +1,6 @@
+import type { SalesChannel } from '@hardware-pos/business-logic';
 import { apiFetch, API_BASE_URL } from './auth';
+import type { PrintableLine } from './printer';
 
 // Orders, read and written straight against apps/api's REST endpoints - the
 // desktop counterpart of what apps/web's dashboard/sales pages and
@@ -26,6 +28,37 @@ export interface OrderRecord {
   settledAt: string | null;
   customer: { id: number; name: string } | number | null;
   lineItems: OrderLineItemRecord[];
+  // Order-level discounts (server-computed) - absent on older orders.
+  promoCodeText?: string | null;
+  promoDiscount?: number | null;
+  loyaltyPointsRedeemed?: number | null;
+  loyaltyDiscount?: number | null;
+}
+
+export interface ReceiptAdjustments {
+  promoCode?: string | null;
+  promoDiscount?: number | null;
+  loyaltyPoints?: number | null;
+  loyaltyDiscount?: number | null;
+}
+
+/**
+ * Negative pseudo line items for order-level discounts (promo code, loyalty
+ * points), appended after the real items so a printed receipt's lines add
+ * up to its total. Empty for an ordinary sale, so its receipt is unchanged.
+ */
+export function receiptAdjustmentLines(adj: ReceiptAdjustments): PrintableLine[] {
+  const lines: PrintableLine[] = [];
+  const promo = Number(adj.promoDiscount ?? 0);
+  if (promo > 0) {
+    const label = adj.promoCode ? `Promo ${adj.promoCode}` : 'Promo';
+    lines.push({ name: label, quantity: 1, unitPrice: -promo, lineTotal: -promo });
+  }
+  const loyalty = Number(adj.loyaltyDiscount ?? 0);
+  if (loyalty > 0) {
+    lines.push({ name: `Points redeemed (${Number(adj.loyaltyPoints ?? 0)})`, quantity: 1, unitPrice: -loyalty, lineTotal: -loyalty });
+  }
+  return lines;
 }
 
 export interface FetchOrdersOptions {
@@ -92,6 +125,12 @@ export interface NewOrder {
   paymentStatus: string;
   status: 'completed';
   createdOffline: false;
+  /** Where the sale came from (SALES_CHANNELS) - 'walk_in' unless the cashier picked otherwise. */
+  channel: SalesChannel;
+  /** Only present when a promo code (Sell Online add-on) was applied - the server re-validates it and computes the discount itself. */
+  promoCodeText?: string;
+  /** Only present when > 0 - the server re-checks the customer's balance and computes the discount itself. */
+  loyaltyPointsRedeemed?: number;
 }
 
 /**

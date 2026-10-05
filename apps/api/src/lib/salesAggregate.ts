@@ -63,6 +63,10 @@ interface RawOrder {
   store: unknown;
   cashier: unknown;
   createdAt: string;
+  channel?: string | null;
+  promoCodeText?: string | null;
+  promoDiscount?: number | null;
+  loyaltyDiscount?: number | null;
   lineItems: Array<{
     product: { id: number; name: string; category?: string | null; costPrice?: number } | number;
     quantity: number;
@@ -84,6 +88,10 @@ export interface SalesAggregate {
   byCategory: Array<{ category: string; revenue: number; quantity: number }>;
   byCashier: Array<{ cashier: number; name: string; revenue: number; orderCount: number }>;
   byHour: Array<{ hour: number; revenue: number; orderCount: number }>;
+  byChannel: Array<{ channel: string; revenue: number; orderCount: number }>;
+  byPromo: Array<{ code: string; revenue: number; orderCount: number; discount: number }>;
+  promoDiscountTotal: number;
+  loyaltyDiscountTotal: number;
   voidedCount: number;
   voidedTotal: number;
   refundedCount: number;
@@ -137,6 +145,10 @@ export function aggregateOrders(orders: RawOrder[], canSeeProfit: boolean, canSe
   const revenueByCashier = new Map<string, { name: string; revenue: number; orderCount: number }>();
   const revenueByHour = new Map<number, { revenue: number; orderCount: number }>();
   for (let h = 0; h < 24; h++) revenueByHour.set(h, { revenue: 0, orderCount: 0 });
+  const revenueByChannel = new Map<string, { revenue: number; orderCount: number }>();
+  const revenueByPromo = new Map<string, { revenue: number; orderCount: number; discount: number }>();
+  let promoDiscountTotal = 0;
+  let loyaltyDiscountTotal = 0;
 
   for (const order of orders) {
     if (order.status === 'voided') {
@@ -175,6 +187,24 @@ export function aggregateOrders(orders: RawOrder[], canSeeProfit: boolean, canSe
       cashierEntry.revenue += orderTotal;
       cashierEntry.orderCount += 1;
       revenueByCashier.set(cashierKey, cashierEntry);
+    }
+
+    // Orders from before channels existed have none - those were all
+    // rung up at the counter, so they count as walk-in.
+    const channel = order.channel || 'walk_in';
+    const channelEntry = revenueByChannel.get(channel) ?? { revenue: 0, orderCount: 0 };
+    channelEntry.revenue += orderTotal;
+    channelEntry.orderCount += 1;
+    revenueByChannel.set(channel, channelEntry);
+
+    promoDiscountTotal += order.promoDiscount ?? 0;
+    loyaltyDiscountTotal += order.loyaltyDiscount ?? 0;
+    if (order.promoCodeText) {
+      const promoEntry = revenueByPromo.get(order.promoCodeText) ?? { revenue: 0, orderCount: 0, discount: 0 };
+      promoEntry.revenue += orderTotal;
+      promoEntry.orderCount += 1;
+      promoEntry.discount += order.promoDiscount ?? 0;
+      revenueByPromo.set(order.promoCodeText, promoEntry);
     }
 
     const hour = nairobiHour(new Date(order.createdAt));
@@ -227,6 +257,14 @@ export function aggregateOrders(orders: RawOrder[], canSeeProfit: boolean, canSe
     byHour: Array.from(revenueByHour.entries())
       .map(([hour, v]) => ({ hour, ...v }))
       .sort((a, b) => a.hour - b.hour),
+    byChannel: Array.from(revenueByChannel.entries())
+      .map(([channel, v]) => ({ channel, ...v }))
+      .sort((a, b) => b.revenue - a.revenue),
+    byPromo: Array.from(revenueByPromo.entries())
+      .map(([code, v]) => ({ code, ...v }))
+      .sort((a, b) => b.revenue - a.revenue),
+    promoDiscountTotal,
+    loyaltyDiscountTotal,
     voidedCount,
     voidedTotal,
     refundedCount,

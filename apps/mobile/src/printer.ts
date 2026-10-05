@@ -124,6 +124,9 @@ export interface ReceiptInput {
   tenderType: string;
   header?: string | null;
   footer?: string | null;
+  // Order-level discounts (promo code, loyalty points) - printed above the
+  // tax line only when present, so a plain sale's bytes are unchanged.
+  discounts?: Array<{ label: string; amount: number }> | null;
   // Set only for a credit sale still awaiting payment - left unset/null for
   // every other reprint, including a credit sale that's since been settled.
   unpaidNotice?: string | null;
@@ -161,6 +164,11 @@ export function buildReceiptBytes(order: ReceiptInput): Uint8Array {
   }
 
   out.push(...lineFeed());
+  for (const discount of order.discounts ?? []) {
+    if (!(discount.amount > 0)) continue;
+    out.push(...text(`${discount.label}: -${money(discount.amount)}`));
+    out.push(...lineFeed());
+  }
   out.push(...text(`Tax: ${money(order.taxTotal)}`));
   out.push(...lineFeed());
   out.push(...setBold(true));

@@ -191,6 +191,21 @@ export const Products: CollectionConfig = {
       hasMany: true,
       access: { update: managerOrOwnerField },
     },
+    {
+      // Sell Online add-on: listed on the public storefront (/shop/<slug>).
+      // Off by default so nothing ever appears publicly until the owner
+      // deliberately picks it - cost price and stock counts are never
+      // exposed there regardless (see app/api/storefront).
+      name: 'showOnline',
+      type: 'checkbox',
+      defaultValue: false,
+      access: { update: managerOrOwnerField },
+    },
+    { name: 'onlineDescription', type: 'textarea', access: { update: managerOrOwnerField } },
+    // Optional per-product search overrides - the product page falls back to
+    // "<name> — KES <price> | <shop>" and onlineDescription when blank.
+    { name: 'seoTitle', type: 'text', access: { update: managerOrOwnerField } },
+    { name: 'seoDescription', type: 'textarea', access: { update: managerOrOwnerField } },
   ],
   hooks: {
     beforeValidate: [generateProductCodes],

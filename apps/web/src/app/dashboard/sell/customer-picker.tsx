@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { CUSTOMER_SOURCE_LABELS, CUSTOMER_SOURCES, type CustomerSource } from '@hardware-pos/business-logic';
 import { fuzzySearch } from '@/lib/fuzzy-search';
 import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 import type { CustomerRef } from './page';
@@ -29,6 +31,7 @@ export function CustomerPicker({
   const [creating, setCreating] = useState(false);
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newSource, setNewSource] = useState<CustomerSource | ''>('');
   const [saving, setSaving] = useState(false);
 
   const trimmed = query.trim().toLowerCase();
@@ -41,7 +44,13 @@ export function CustomerPicker({
       const response = await clientFetch('/api/payload/customers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: query.trim(), phone: newPhone.trim(), email: newEmail.trim() || null, loyaltyPoints: 0 }),
+        body: JSON.stringify({
+          name: query.trim(),
+          phone: newPhone.trim(),
+          email: newEmail.trim() || null,
+          loyaltyPoints: 0,
+          ...(newSource ? { source: newSource } : {}),
+        }),
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) {
@@ -56,6 +65,7 @@ export function CustomerPicker({
       setQuery('');
       setNewPhone('');
       setNewEmail('');
+      setNewSource('');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -69,6 +79,7 @@ export function CustomerPicker({
         <span>
           Customer: <strong>{value.name}</strong>
           {value.phone ? ` · ${value.phone}` : ''}
+          {value.loyaltyPoints ? ` · ${value.loyaltyPoints} pts` : ''}
         </span>
         <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null)}>
           Change
@@ -115,6 +126,18 @@ export function CustomerPicker({
             value={newEmail}
             onChange={(e) => setNewEmail(e.target.value)}
           />
+          <Select value={newSource || undefined} onValueChange={(v) => setNewSource(v as CustomerSource)}>
+            <SelectTrigger aria-label="How did you hear about us?">
+              <SelectValue placeholder="How did you hear about us? (optional)" />
+            </SelectTrigger>
+            <SelectContent>
+              {CUSTOMER_SOURCES.map((source) => (
+                <SelectItem key={source} value={source}>
+                  {CUSTOMER_SOURCE_LABELS[source]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button type="button" size="sm" onClick={handleCreate} disabled={saving || !newPhone.trim()}>
             {saving ? 'Adding...' : 'Add customer'}
           </Button>

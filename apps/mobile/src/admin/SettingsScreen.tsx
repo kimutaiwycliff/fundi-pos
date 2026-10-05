@@ -9,6 +9,10 @@ interface Tenant {
   name: string;
   receiptHeader: string | null;
   receiptFooter: string | null;
+  whatsappNumber?: string | null;
+  socialHandles?: string | null;
+  googleReviewUrl?: string | null;
+  loyaltyPointValue?: number | null;
 }
 
 // Owner-only, mirrors apps/web/.../settings/settings-form.tsx. Business
@@ -21,6 +25,10 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
   const [name, setName] = useState('');
   const [receiptHeader, setReceiptHeader] = useState('');
   const [receiptFooter, setReceiptFooter] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [socialHandles, setSocialHandles] = useState('');
+  const [googleReviewUrl, setGoogleReviewUrl] = useState('');
+  const [loyaltyPointValue, setLoyaltyPointValue] = useState('1');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -34,11 +42,21 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
         setName(doc.name);
         setReceiptHeader(doc.receiptHeader ?? '');
         setReceiptFooter(doc.receiptFooter ?? '');
+        setWhatsappNumber(doc.whatsappNumber ?? '');
+        setSocialHandles(doc.socialHandles ?? '');
+        setGoogleReviewUrl(doc.googleReviewUrl ?? '');
+        setLoyaltyPointValue(String(doc.loyaltyPointValue ?? 1));
       })
       .catch(() => setLoadError(OFFLINE_MESSAGE));
   }, [payloadToken, tenantId]);
 
   async function handleSubmit() {
+    const pointValue = loyaltyPointValue.trim() === '' ? 0 : Number(loyaltyPointValue);
+    if (!Number.isFinite(pointValue) || pointValue < 0) {
+      setError('Loyalty point value must be 0 or more');
+      setSaved(false);
+      return;
+    }
     setBusy(true);
     setError(null);
     setSaved(false);
@@ -46,7 +64,15 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
       const res = await fetch(`${API_BASE_URL}/api/tenants/${tenantId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-        body: JSON.stringify({ name, receiptHeader: receiptHeader || null, receiptFooter: receiptFooter || null }),
+        body: JSON.stringify({
+          name,
+          receiptHeader: receiptHeader || null,
+          receiptFooter: receiptFooter || null,
+          whatsappNumber: whatsappNumber.trim() || null,
+          socialHandles: socialHandles.trim() || null,
+          googleReviewUrl: googleReviewUrl.trim() || null,
+          loyaltyPointValue: pointValue,
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
@@ -93,6 +119,50 @@ export function SettingsScreen({ payloadToken, tenantId }: { payloadToken: strin
         placeholderTextColor={placeholderColor}
         value={receiptFooter}
         onChangeText={setReceiptFooter}
+      />
+
+      <Text className="mt-4 text-base font-semibold text-foreground">Marketing</Text>
+      <Text className="text-xs text-muted-foreground">Printed under the receipt footer so every receipt brings customers back.</Text>
+
+      <Text className="mt-2 text-sm text-muted-foreground">Shop WhatsApp number</Text>
+      <TextInput
+        className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
+        keyboardType="phone-pad"
+        placeholder="e.g. 0712345678"
+        placeholderTextColor={placeholderColor}
+        value={whatsappNumber}
+        onChangeText={setWhatsappNumber}
+      />
+
+      <Text className="mt-2 text-sm text-muted-foreground">Social handles</Text>
+      <TextInput
+        className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
+        autoCapitalize="none"
+        placeholder="e.g. IG/TikTok @myshop.ke"
+        placeholderTextColor={placeholderColor}
+        value={socialHandles}
+        onChangeText={setSocialHandles}
+      />
+
+      <Text className="mt-2 text-sm text-muted-foreground">Google review link</Text>
+      <TextInput
+        className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
+        autoCapitalize="none"
+        keyboardType="url"
+        placeholder="e.g. https://g.page/r/..."
+        placeholderTextColor={placeholderColor}
+        value={googleReviewUrl}
+        onChangeText={setGoogleReviewUrl}
+      />
+
+      <Text className="mt-2 text-sm text-muted-foreground">Loyalty point value (KES per point, 0 turns redemption off)</Text>
+      <TextInput
+        className="rounded-lg border border-border bg-card px-3 py-2 text-foreground"
+        keyboardType="decimal-pad"
+        placeholder="1"
+        placeholderTextColor={placeholderColor}
+        value={loyaltyPointValue}
+        onChangeText={setLoyaltyPointValue}
       />
 
       {error ? <Text className="text-destructive">{error}</Text> : null}

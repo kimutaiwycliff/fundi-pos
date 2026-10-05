@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { fetchOrdersForStore, type OrderRecord } from './orders';
+import { receiptFooterWithMarketing } from '@hardware-pos/business-logic';
+import { fetchOrdersForStore, receiptAdjustmentLines, type OrderRecord } from './orders';
 import { authorizeSettlement, findManagerByPhone } from './pin';
 import { printReceipt } from './printer';
 import { useToast } from './Toast';
@@ -8,6 +9,10 @@ interface TenantInfo {
   name: string;
   receipt_header: string | null;
   receipt_footer: string | null;
+  // Receipt marketing lines (WhatsApp / socials / Google review) - see Till.tsx's LocalTenant.
+  whatsapp_number?: string | null;
+  social_handles?: string | null;
+  google_review_url?: string | null;
 }
 
 interface FindSalePanelProps {
@@ -65,17 +70,31 @@ export function FindSalePanel({ storeId, payloadToken, tenant }: FindSalePanelPr
       await printReceipt({
         storeName: tenant?.name ?? 'Fundi',
         orderId: order.id,
-        lines: order.lineItems.map((l) => ({
-          name: typeof l.product === 'object' ? l.product.name : `#${l.product}`,
-          quantity: l.quantity,
-          unitPrice: l.unitPrice,
-          lineTotal: l.quantity * l.unitPrice - l.discount,
-        })),
+        lines: [
+          ...order.lineItems.map((l) => ({
+            name: typeof l.product === 'object' ? l.product.name : `#${l.product}`,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+            lineTotal: l.quantity * l.unitPrice - l.discount,
+          })),
+          ...receiptAdjustmentLines({
+            promoCode: order.promoCodeText,
+            promoDiscount: order.promoDiscount,
+            loyaltyPoints: order.loyaltyPointsRedeemed,
+            loyaltyDiscount: order.loyaltyDiscount,
+          }),
+        ],
         taxTotal: order.taxTotal,
         total: order.total,
         tenderType: order.tenderType,
         header: tenant?.receipt_header,
-        footer: tenant?.receipt_footer,
+        footer: tenant
+          ? receiptFooterWithMarketing(tenant.receipt_footer, {
+              whatsappNumber: tenant.whatsapp_number,
+              socialHandles: tenant.social_handles,
+              googleReviewUrl: tenant.google_review_url,
+            })
+          : null,
         unpaidNotice: isUnpaidCredit ? UNPAID_NOTICE : null,
       });
       showToast('Receipt sent to printer', 'success');

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
 import { SettingsForm } from './settings-form';
+import { hasAddon } from '@hardware-pos/business-logic';
 
 interface Tenant {
   id: number;
@@ -10,6 +11,15 @@ interface Tenant {
   receiptFooter: string | null;
   shiftsRequired: boolean | null;
   enforceDiscountCaps: boolean | null;
+  billingStatus?: string | null;
+  addons?: string[] | null;
+  whatsappNumber?: string | null;
+  socialHandles?: string | null;
+  googleReviewUrl?: string | null;
+  loyaltyPointValue?: number | null;
+  shopSlug?: string | null;
+  storefrontEnabled?: boolean | null;
+  storefrontTagline?: string | null;
 }
 
 export default async function SettingsPage() {
@@ -25,7 +35,11 @@ export default async function SettingsPage() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">Settings</h1>
-      <SettingsForm tenant={tenant} />
+      <SettingsForm
+        tenant={tenant}
+        sellOnline={hasAddon(tenant, 'sell_online')}
+        siteUrl={(process.env.NEXT_PUBLIC_SITE_URL || 'https://app.fundipos.co.ke').replace(/\/+$/, '')}
+      />
     </div>
   );
 }

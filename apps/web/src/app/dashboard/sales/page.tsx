@@ -1,5 +1,6 @@
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
+import { receiptFooterWithMarketing } from '@hardware-pos/business-logic';
 import { nairobiDateToUTC } from '@/lib/format-date';
 import { SalesTable } from './sales-table';
 import { DateRangeFilter } from './date-range-filter';
@@ -39,6 +40,9 @@ export type TenantReceiptInfo = {
   name: string;
   receiptHeader: string | null;
   receiptFooter: string | null;
+  whatsappNumber?: string | null;
+  socialHandles?: string | null;
+  googleReviewUrl?: string | null;
 };
 
 export type CreditPayment = {
@@ -120,7 +124,7 @@ export default async function SalesPage({
       ) : null}
       <SalesTable
         orders={orders}
-        tenant={tenant}
+        tenant={{ ...tenant, receiptFooter: receiptFooterWithMarketing(tenant.receiptFooter, tenant) }}
         canSettle={canSettle}
         managers={managers}
         paymentsByOrder={Object.fromEntries(paymentsByOrder)}

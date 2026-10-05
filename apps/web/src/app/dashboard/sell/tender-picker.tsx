@@ -47,14 +47,18 @@ export function TenderPicker({
           </Button>
         ))}
       </div>
-      {value === 'credit' ? (
-        <CustomerPicker
-          customers={customers}
-          value={selectedCustomer}
-          onChange={onSelectCustomer}
-          onCreated={onCustomerCreated}
-        />
+      {/* Required for credit; optional otherwise - attaching a customer is
+          what earns/redeems loyalty points and records "how did you hear
+          about us?", so it's offered on every tender. */}
+      {value !== 'credit' && !selectedCustomer ? (
+        <span className="text-xs text-muted-foreground">Customer (optional - for loyalty points)</span>
       ) : null}
+      <CustomerPicker
+        customers={customers}
+        value={selectedCustomer}
+        onChange={onSelectCustomer}
+        onCreated={onCustomerCreated}
+      />
     </div>
   );
 }

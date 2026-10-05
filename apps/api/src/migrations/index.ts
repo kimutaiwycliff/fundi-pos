@@ -19,6 +19,7 @@ import * as migration_20260921_133639_add_quotations from './20260921_133639_add
 import * as migration_20260921_210756_add_quotation_name from './20260921_210756_add_quotation_name';
 import * as migration_20260922_105821_add_stock_report_indexes from './20260922_105821_add_stock_report_indexes';
 import * as migration_20260923_165015_make_platform_audit_log_tenant_nullable from './20260923_165015_make_platform_audit_log_tenant_nullable';
+import * as migration_20261005_091612_sell_online_addon from './20261005_091612_sell_online_addon';
 
 export const migrations = [
   {
@@ -124,6 +125,11 @@ export const migrations = [
   {
     up: migration_20260923_165015_make_platform_audit_log_tenant_nullable.up,
     down: migration_20260923_165015_make_platform_audit_log_tenant_nullable.down,
-    name: '20260923_165015_make_platform_audit_log_tenant_nullable'
+    name: '20260923_165015_make_platform_audit_log_tenant_nullable',
+  },
+  {
+    up: migration_20261005_091612_sell_online_addon.up,
+    down: migration_20261005_091612_sell_online_addon.down,
+    name: '20261005_091612_sell_online_addon'
   },
 ];

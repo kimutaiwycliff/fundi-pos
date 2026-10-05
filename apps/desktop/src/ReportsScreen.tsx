@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
+import { salesChannelLabel } from '@hardware-pos/business-logic';
 import type { PayloadUser } from './auth';
-import { fetchSalesDaily, fetchSalesSummary, fetchStockValue, type DailyPoint, type Range, type SalesSummary, type StockValue } from './reports';
+import {
+  fetchSalesDaily,
+  fetchSalesSummary,
+  fetchSlowMovers,
+  fetchStockValue,
+  type DailyPoint,
+  type Range,
+  type SalesSummary,
+  type SlowMovers,
+  type StockValue,
+} from './reports';
 
 const RANGES: { value: Range; label: string }[] = [
   { value: 'today', label: 'Today' },
@@ -29,6 +40,7 @@ export function Reports({ user, payloadToken }: { user: PayloadUser; payloadToke
   const [summary, setSummary] = useState<SalesSummary | null>(null);
   const [daily, setDaily] = useState<DailyPoint[]>([]);
   const [stockValue, setStockValue] = useState<StockValue | null>(null);
+  const [slowMovers, setSlowMovers] = useState<SlowMovers | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -45,6 +57,8 @@ export function Reports({ user, payloadToken }: { user: PayloadUser; payloadToke
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
+    // Independent of the range and best-effort - never blocks the report above.
+    fetchSlowMovers(payloadToken, 60).then(setSlowMovers);
   }, [payloadToken, range, trendRange]);
 
   useEffect(() => {
@@ -53,6 +67,7 @@ export function Reports({ user, payloadToken }: { user: PayloadUser; payloadToke
 
   const hasLosses = summary ? summary.voidedCount + summary.refundedCount > 0 : false;
   const maxDaily = Math.max(1, ...daily.map((d) => d.totalSales));
+  const byChannel = Array.isArray(summary?.byChannel) ? summary.byChannel : [];
 
   return (
     <div className="section-shell">
@@ -147,6 +162,49 @@ export function Reports({ user, payloadToken }: { user: PayloadUser; payloadToke
               </table>
             )}
           </div>
+
+          {byChannel.length > 0 ? (
+            <div className="section-card">
+              <h3>Sales by channel</h3>
+              <p className="section-card-hint">Where this period&apos;s sales came from</p>
+              <table className="data-table">
+                <tbody>
+                  {byChannel.map((c) => (
+                    <tr key={c.channel ?? 'walk_in'}>
+                      <td>{salesChannelLabel(c.channel)}</td>
+                      <td className="num">{c.orderCount ?? 0}</td>
+                      <td className="num">{(c.revenue ?? 0).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          {slowMovers ? (
+            <div className="section-card">
+              <h3>Slow-moving stock (60 days)</h3>
+              <p className="section-card-hint">
+                {slowMovers.items.length === 0
+                  ? 'Everything in stock has sold in the last 60 days'
+                  : `In stock but not sold in 60 days - ${slowMovers.totalRetailValue.toFixed(2)} at retail`}
+              </p>
+              {slowMovers.items.length > 0 ? (
+                <table className="data-table">
+                  <tbody>
+                    {slowMovers.items.slice(0, 20).map((item, i) => (
+                      <tr key={`${item.name}-${i}`}>
+                        <td>{item.name}</td>
+                        <td className="num">{item.quantity}</td>
+                        <td>{item.lastSoldAt ? `Last sold ${new Date(item.lastSoldAt).toLocaleDateString()}` : 'Never sold'}</td>
+                        <td className="num">{(item.retailValue ?? 0).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+            </div>
+          ) : null}
 
           {summary.byCashier.length > 0 ? (
             <div className="section-card">

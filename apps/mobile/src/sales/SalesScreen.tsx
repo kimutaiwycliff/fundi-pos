@@ -14,6 +14,7 @@ import { usePullToRefresh } from '../lib/usePullToRefresh';
 import { PaymentModal, type LocalOrder } from '../customers/PaymentModal';
 import { VoidRefundModal, type VoidableOrder } from './VoidRefundModal';
 import { buildReceiptHtml, type ReceiptOrderData, type ReceiptTenantInfo } from './receiptHtml';
+import { receiptFooterWithMarketing } from '@hardware-pos/business-logic';
 import { buildInvoiceHtml } from './invoiceHtml';
 
 interface OrderRow {
@@ -149,7 +150,19 @@ export function SalesScreen({ user, payloadToken, storeId }: { user: PayloadUser
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/tenants/${tenantId}`, { headers: { Authorization: `JWT ${payloadToken}` } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((row) => setTenantInfo(row ? { name: row.name, receiptHeader: row.receiptHeader ?? null, receiptFooter: row.receiptFooter ?? null } : null))
+      .then((row) =>
+        setTenantInfo(
+          row
+            ? {
+                name: row.name,
+                receiptHeader: row.receiptHeader ?? null,
+                // Marketing lines (WhatsApp / socials / review link) ride
+                // inside the footer so every reprint path carries them.
+                receiptFooter: receiptFooterWithMarketing(row.receiptFooter, row),
+              }
+            : null,
+        ),
+      )
       .catch(() => setTenantInfo(null));
   }, [tenantId, payloadToken]);
 

@@ -13,6 +13,7 @@ import {
 import { EmptyState } from '@/components/empty-state';
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
+import { hasAddon } from '@hardware-pos/business-logic';
 import { cn } from '@/lib/utils';
 import { BranchFilter } from '@/components/branch-filter';
 import { PaymentBreakdownChart } from './payment-breakdown-chart';
@@ -20,6 +21,17 @@ import { PeakHoursChart, type HourPoint } from './peak-hours-chart';
 import { ComparisonBadge } from './comparison-badge';
 import { ReportsClient } from './reports-client';
 import type { DailyPoint } from './daily-trend-chart';
+import {
+  NewCustomersBySourceCard,
+  PromoCodesCard,
+  SalesByChannelCard,
+  SLOW_DAYS,
+  SlowMoversCard,
+  type ChannelRow,
+  type PromoRow,
+  type SlowMovers,
+  type SourceRow,
+} from './marketing-sections';
 
 interface SalesSummary {
   totalSales: number;
@@ -39,7 +51,17 @@ interface SalesSummary {
   refundedCount: number;
   refundedTotal: number;
   comparison: { totalSales: number; orderCount: number; profitTotal: number | null } | null;
+  // Marketing fields - optional so an older API build (without them) still
+  // renders; defaulted below.
+  byChannel?: ChannelRow[];
+  byPromo?: PromoRow[];
+  promoDiscountTotal?: number;
+  loyaltyDiscountTotal?: number;
+  newCustomerCount?: number;
+  newCustomersBySource?: SourceRow[];
 }
+
+const EMPTY_SLOW_MOVERS: SlowMovers = { days: 60, items: [], totalRetailValue: 0, totalCostValue: null };
 type Store = { id: number; name: string };
 
 const RANGES = [
@@ -52,24 +74,33 @@ const RANGES = [
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string; store?: string }>;
+  searchParams: Promise<{ range?: string; store?: string; slow?: string }>;
 }) {
-  const { range: rawRange, store: storeId } = await searchParams;
+  const { range: rawRange, store: storeId, slow: rawSlow } = await searchParams;
   const range = rawRange ?? 'today';
   const storeQS = storeId ? `&store=${storeId}` : '';
+  const slowDays = (SLOW_DAYS as readonly number[]).includes(Number(rawSlow)) ? Number(rawSlow) : 60;
+  // Carried on the range links so changing the sales period doesn't reset
+  // the slow-stock window (and vice versa).
+  const slowQS = slowDays !== 60 ? `&slow=${slowDays}` : '';
   // The trend chart shows day-by-day bars, which "today" (one day) and "all
   // time" (could be years) don't meaningfully map to - it defaults to a
   // 30-day window in either case and only narrows to 7 when that's exactly
   // what's selected above it.
   const trendRange = range === '7d' ? '7d' : '30d';
 
-  const [summary, { docs: stores }, me, { days: dailyData }, stockValue] = await Promise.all([
+  const [summary, { docs: stores }, me, { days: dailyData }, stockValue, slowMovers] = await Promise.all([
     payloadFetch<SalesSummary>(`/api/reports/sales-summary?range=${range}${storeQS}`),
     payloadFetch<{ docs: Store[] }>('/api/stores?sort=name&limit=100'),
     getCurrentUser(),
     payloadFetch<{ days: DailyPoint[] }>(`/api/reports/sales-daily?range=${trendRange}${storeQS}`),
     payloadFetch<{ potentialRevenue: number; stockValue: number | null; potentialProfit: number | null }>(
       `/api/reports/stock-value${storeQS ? `?${storeQS.slice(1)}` : ''}`,
+    ),
+    // Best-effort: an API without this endpoint (or a hiccup in it) hides
+    // nothing else on the page - the card just shows empty.
+    payloadFetch<SlowMovers>(`/api/reports/slow-movers?days=${slowDays}${storeQS}`).catch(
+      () => EMPTY_SLOW_MOVERS,
     ),
   ]);
   const storeName = new Map(stores.map((s) => [s.id, s.name]));
@@ -86,7 +117,7 @@ export default async function ReportsPage({
             {RANGES.map((r) => (
               <Link
                 key={r.value}
-                href={`?range=${r.value}${storeQS}`}
+                href={`?range=${r.value}${storeQS}${slowQS}`}
                 className={cn(buttonVariants({ variant: range === r.value ? 'default' : 'ghost' }))}
               >
                 {r.label}
@@ -227,6 +258,31 @@ export default async function ReportsPage({
           </CardContent>
         </Card>
       </div>
+
+      <h2 className="text-lg font-medium">Marketing</h2>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <SalesByChannelCard rows={summary.byChannel ?? []} />
+        <NewCustomersBySourceCard
+          total={summary.newCustomerCount ?? 0}
+          rows={summary.newCustomersBySource ?? []}
+        />
+      </div>
+      <PromoCodesCard
+        rows={summary.byPromo ?? []}
+        promoDiscountTotal={summary.promoDiscountTotal ?? 0}
+        loyaltyDiscountTotal={summary.loyaltyDiscountTotal ?? 0}
+        promoEnabled={typeof me.tenant === 'object' && hasAddon(me.tenant, 'sell_online')}
+      />
+      <SlowMoversCard
+        data={{
+          days: slowMovers.days ?? slowDays,
+          items: slowMovers.items ?? [],
+          totalRetailValue: slowMovers.totalRetailValue ?? 0,
+          totalCostValue: slowMovers.totalCostValue ?? null,
+        }}
+        slowDays={slowDays}
+        hrefForDays={(d) => `?range=${range}${storeQS}${d === 60 ? '' : `&slow=${d}`}`}
+      />
 
       <h2 className="text-lg font-medium">Top products</h2>
       <div className="rounded-md border">

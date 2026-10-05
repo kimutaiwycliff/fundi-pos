@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { ADDON_LABELS, ADDONS, type Addon } from '@hardware-pos/business-logic';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -172,6 +174,54 @@ export function TenantStatusActions({ tenantId, status, name }: { tenantId: numb
           ) : null}
         </>
       )}
+    </div>
+  );
+}
+
+// Paid add-ons, switched on/off per tenant at will - independent of the
+// tier above. Saved immediately on toggle; Tenants.ts audit-logs each change.
+export function TenantAddonsForm({ tenantId, addons }: { tenantId: number; addons: string[] }) {
+  const router = useRouter();
+  const [enabled, setEnabled] = useState<string[]>(addons);
+  const [saving, setSaving] = useState<string | null>(null);
+
+  async function toggle(addon: Addon, on: boolean) {
+    const next = on ? [...new Set([...enabled, addon])] : enabled.filter((a) => a !== addon);
+    setSaving(addon);
+    const response = await fetch(`/api/platform/tenants/${tenantId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ addons: next }),
+    });
+    setSaving(null);
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      toast.error(body?.errors?.[0]?.message ?? 'Failed to update add-ons');
+      return;
+    }
+    setEnabled(next);
+    toast.success(`${ADDON_LABELS[addon]} ${on ? 'switched on' : 'switched off'}`);
+    router.refresh();
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {ADDONS.map((addon) => (
+        <div key={addon} className="flex items-center justify-between gap-4">
+          <div className="flex flex-col">
+            <Label htmlFor={`addon-${addon}`}>{ADDON_LABELS[addon]}</Label>
+            <span className="text-xs text-muted-foreground">
+              Online shop, promo & referral codes. Turning it off keeps the shop&apos;s data; its screens just lock.
+            </span>
+          </div>
+          <Switch
+            id={`addon-${addon}`}
+            checked={enabled.includes(addon)}
+            disabled={saving !== null}
+            onCheckedChange={(on) => toggle(addon, on)}
+          />
+        </div>
+      ))}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { platformFetch, PlatformApiError } from '@/lib/platform-client';
-import { TenantStatusActions, TenantSubscriptionForm } from './tenant-actions';
+import { TenantAddonsForm, TenantStatusActions, TenantSubscriptionForm } from './tenant-actions';
 
 type TenantStatus = 'active' | 'suspended' | 'deleted';
 
@@ -15,6 +15,7 @@ type Tenant = {
   statusReason: string | null;
   subscriptionTier: string;
   billingStatus: string;
+  addons?: string[] | null;
   createdAt: string;
 };
 
@@ -78,6 +79,15 @@ export default async function PlatformTenantDetailPage({ params }: { params: Pro
         </CardHeader>
         <CardContent>
           <TenantSubscriptionForm tenantId={tenant.id} subscriptionTier={tenant.subscriptionTier} billingStatus={tenant.billingStatus} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Add-ons</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TenantAddonsForm tenantId={tenant.id} addons={tenant.addons ?? []} />
         </CardContent>
       </Card>
 

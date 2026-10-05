@@ -3,7 +3,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
+import {
+  computeCheckoutTotals,
+  evaluatePromo,
+  hasAddon,
+  resolveLoyaltyRedemption,
+  type LineInput,
+  type PromoRule,
+  type SalesChannel,
+} from '@hardware-pos/business-logic';
+import { CheckoutExtras } from './checkout-extras';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EmptyState } from '@/components/empty-state';
@@ -75,6 +84,13 @@ export function SellClient({
   const [tenderType, setTenderType] = useState<TenderType>('cash');
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRef | null>(null);
   const [customers, setCustomers] = useState(initialCustomers);
+  // router.refresh() after each sale re-fetches customers server-side;
+  // adopt that list so loyalty balances shown here are never stale (a stale
+  // balance would offer points the server then refuses to redeem).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCustomers(initialCustomers);
+  }, [initialCustomers]);
   const [completing, setCompleting] = useState(false);
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
@@ -149,6 +165,7 @@ export function SellClient({
     setCart([]);
     setSelectedCustomer(null);
     setSuggestions([]);
+    resetCheckoutExtras();
   }
 
   const stockByKey = useMemo(() => {
@@ -169,7 +186,42 @@ export function SellClient({
       })),
     [cart],
   );
-  const totals = useMemo(() => computeOrderTotals(lineInputs), [lineInputs]);
+  // Marketing extras (see checkout-extras.tsx). Promo needs the Sell Online
+  // add-on; channel + loyalty redemption are on every plan. All three are
+  // previews here - Orders.ts re-prices them server-side.
+  const [channel, setChannel] = useState<SalesChannel>('walk_in');
+  const promoEnabled = hasAddon(tenant, 'sell_online');
+  const [promoRule, setPromoRule] = useState<PromoRule | null>(null);
+  const [redeemPoints, setRedeemPoints] = useState(false);
+  const pointValue = tenant.loyaltyPointValue ?? 1;
+  const customerPoints = selectedCustomer?.loyaltyPoints ?? 0;
+
+  const baseTotals = useMemo(() => computeCheckoutTotals(lineInputs), [lineInputs]);
+  const promoEvaluation = promoEnabled && promoRule ? evaluatePromo(promoRule, baseTotals.subtotal) : null;
+  const promoDiscount = promoEvaluation?.ok ? promoEvaluation.discount : 0;
+  const maxRedemption = resolveLoyaltyRedemption({
+    requestedPoints: customerPoints,
+    availablePoints: customerPoints,
+    pointValue,
+    payable: baseTotals.subtotal - promoDiscount,
+  });
+  const redemption = redeemPoints ? maxRedemption : { points: 0, discount: 0 };
+  const totals = useMemo(
+    () => computeCheckoutTotals(lineInputs, { promoDiscount, loyaltyDiscount: redemption.discount }),
+    [lineInputs, promoDiscount, redemption.discount],
+  );
+
+  function resetCheckoutExtras() {
+    setChannel('walk_in');
+    setPromoRule(null);
+    setRedeemPoints(false);
+  }
+
+  function selectCustomer(customer: CustomerRef | null) {
+    setSelectedCustomer(customer);
+    // Points belong to whoever was picked - never carry a toggle over.
+    setRedeemPoints(false);
+  }
 
   function addToCart(product: Product, variantId: string | null) {
     const key = stockKey(product.id, variantId);
@@ -257,6 +309,8 @@ export function SellClient({
     setCart([]);
     setSelectedCustomer(null);
     setSuggestions([]);
+    // A held basket's promo/channel must never leak onto the next customer.
+    resetCheckoutExtras();
     setHeldSales(listHeldSales());
     setMobileCartOpen(false);
     toast.success('Sale held');
@@ -313,6 +367,9 @@ export function SellClient({
           total: totals.total,
           tenderType,
           paymentStatus,
+          channel,
+          ...(promoDiscount > 0 && promoRule ? { promoCodeText: promoRule.code } : {}),
+          ...(redemption.points > 0 ? { loyaltyPointsRedeemed: redemption.points } : {}),
         }),
       });
 
@@ -346,6 +403,7 @@ export function SellClient({
       setCart([]);
       setSelectedCustomer(null);
       setSuggestions([]);
+      resetCheckoutExtras();
       setMobileCartOpen(false);
       router.refresh();
     } catch (err) {
@@ -376,8 +434,21 @@ export function SellClient({
         onChange={setTenderType}
         customers={customers}
         selectedCustomer={selectedCustomer}
-        onSelectCustomer={setSelectedCustomer}
+        onSelectCustomer={selectCustomer}
         onCustomerCreated={(customer) => setCustomers((prev) => [...prev, customer])}
+      />
+      <CheckoutExtras
+        channel={channel}
+        onChannelChange={setChannel}
+        promoEnabled={promoEnabled}
+        promoRule={promoRule}
+        promoEvaluation={promoEvaluation}
+        onPromoRuleChange={setPromoRule}
+        customerPoints={customerPoints}
+        pointValue={pointValue}
+        redeemPoints={redeemPoints}
+        maxRedeemablePoints={maxRedemption.points}
+        onRedeemPointsChange={setRedeemPoints}
       />
       <div className="flex flex-col gap-2">
         <Button type="button" size="lg" disabled={checkoutDisabled} onClick={completeSale}>

@@ -1344,6 +1344,36 @@ label {
 }
 
 /* ---------------------------------------------------------------------
+   Checkout marketing options (sale channel, loyalty points, promo code)
+   --------------------------------------------------------------------- */
+.sale-channel-field,
+.checkout-option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sale-channel-field select,
+.checkout-option-row input {
+  flex: 1;
+  min-width: 0;
+  max-width: 60%;
+}
+.checkout-option-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.checkout-option-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+.checkout-option-hint.is-error {
+  color: var(--danger);
+}
+
+/* ---------------------------------------------------------------------
    Terminal settings drawer
    --------------------------------------------------------------------- */
 .terminal-name-form {

@@ -89,8 +89,37 @@ export async function GET(request: Request) {
     return sum + Math.max(0, total - paid);
   }, 0);
 
+  // "How did you hear about us?" for customers first added in this window -
+  // which marketing is actually bringing new people in. Customers are
+  // tenant-wide (not per store), so the branch filter doesn't apply.
+  const customerWhere: Where = { tenant: { equals: tenantId } };
+  if (since || until) {
+    const createdAt: Record<string, string> = {};
+    if (since) createdAt.greater_than_equal = since.toISOString();
+    if (until) createdAt.less_than = until.toISOString();
+    customerWhere.createdAt = createdAt;
+  }
+  const newCustomers = await payload.find({
+    collection: 'customers',
+    where: customerWhere,
+    pagination: false,
+    depth: 0,
+    select: { source: true },
+    overrideAccess: true,
+  });
+  const sourceCounts = new Map<string, number>();
+  for (const customer of newCustomers.docs) {
+    const source = (customer.source as string | null | undefined) || 'unknown';
+    sourceCounts.set(source, (sourceCounts.get(source) ?? 0) + 1);
+  }
+  const newCustomersBySource = Array.from(sourceCounts.entries())
+    .map(([source, count]) => ({ source, count }))
+    .sort((a, b) => b.count - a.count);
+
   return Response.json({
     ...summary,
+    newCustomerCount: newCustomers.docs.length,
+    newCustomersBySource,
     comparison,
     unpaidCreditCount: unpaidCredit.docs.length,
     unpaidCreditTotal,

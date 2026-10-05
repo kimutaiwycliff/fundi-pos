@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { API_BASE_URL, OFFLINE_MESSAGE, type PayloadUser } from '../lib/auth';
 import { usePullToRefresh } from '../lib/usePullToRefresh';
+import { salesChannelLabel } from '@hardware-pos/business-logic';
 
 type Range = 'today' | '7d' | '30d' | 'all';
 
@@ -56,6 +57,23 @@ interface SalesSummary {
   refundedCount: number;
   refundedTotal: number;
   comparison: Comparison | null;
+  // Added with the marketing reports - absent on an older API, so guarded.
+  byChannel?: ByChannel[];
+}
+interface ByChannel {
+  channel: string;
+  revenue: number;
+  orderCount: number;
+}
+interface SlowMover {
+  name: string;
+  quantity: number;
+  lastSoldAt: string | null;
+  retailValue: number;
+}
+interface SlowMovers {
+  items: SlowMover[];
+  totalRetailValue: number;
 }
 interface DailyPoint {
   date: string;
@@ -181,6 +199,7 @@ export function ReportsScreen({ user, payloadToken }: { user: PayloadUser; paylo
   const [dayLoading, setDayLoading] = useState(false);
   const [stockValue, setStockValue] = useState<StockValue | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [slowMovers, setSlowMovers] = useState<SlowMovers | null>(null);
 
   const trendRange = range === '7d' ? '7d' : '30d';
   const canSeeProfit = user.role === 'owner';
@@ -200,6 +219,12 @@ export function ReportsScreen({ user, payloadToken }: { user: PayloadUser; paylo
       })
       .catch(() => setLoadError(OFFLINE_MESSAGE))
       .finally(() => setLoading(false));
+    // Fetched on its own (not in the Promise.all above) so an older API
+    // without this route, or any failure here, never breaks the main report.
+    fetch(`${API_BASE_URL}/api/reports/slow-movers?days=60`, { headers: { Authorization: `JWT ${payloadToken}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => setSlowMovers(body && Array.isArray(body.items) ? (body as SlowMovers) : null))
+      .catch(() => setSlowMovers(null));
   }, [range, trendRange, payloadToken]);
 
   useEffect(() => {
@@ -324,6 +349,36 @@ export function ReportsScreen({ user, payloadToken }: { user: PayloadUser; paylo
                 summary.byCategory.map((c) => <ListRow key={c.category} left={c.category} mid={String(c.quantity)} right={c.revenue.toFixed(2)} />)
               )}
             </View>
+
+            {Array.isArray(summary.byChannel) && summary.byChannel.length > 0 ? (
+              <View className="gap-1 rounded-lg border border-border bg-card p-3">
+                <Text className="mb-1 text-sm font-medium text-foreground">Sales by channel</Text>
+                {summary.byChannel.map((c) => (
+                  <ListRow key={c.channel} left={salesChannelLabel(c.channel)} mid={String(c.orderCount ?? 0)} right={Number(c.revenue ?? 0).toFixed(2)} />
+                ))}
+              </View>
+            ) : null}
+
+            {slowMovers ? (
+              <View className="gap-1 rounded-lg border border-border bg-card p-3">
+                <Text className="text-sm font-medium text-foreground">Slow-moving stock (60 days)</Text>
+                <Text className="mb-1 text-xs text-muted-foreground">
+                  In stock but not sold in 60 days - {Number(slowMovers.totalRetailValue ?? 0).toFixed(2)} at retail
+                </Text>
+                {slowMovers.items.length === 0 ? (
+                  <EmptySection text="Nothing is sitting on the shelf" />
+                ) : (
+                  slowMovers.items.slice(0, 20).map((item, i) => (
+                    <ListRow
+                      key={`${item.name}-${i}`}
+                      left={`${item.name} · ${item.lastSoldAt ? `last sold ${new Date(item.lastSoldAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'never sold'}`}
+                      mid={String(item.quantity ?? 0)}
+                      right={Number(item.retailValue ?? 0).toFixed(2)}
+                    />
+                  ))
+                )}
+              </View>
+            ) : null}
 
             {summary.byStore.length > 1 ? (
               <View className="gap-1 rounded-lg border border-border bg-card p-3">

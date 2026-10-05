@@ -28,7 +28,9 @@ export function ProductsTable({
   stockLevels,
   archivedView = false,
   mediaUrlById,
+  sellOnline = false,
 }: {
+  sellOnline?: boolean;
   products: Product[];
   canSeeCost: boolean;
   canEditFields: boolean;
@@ -150,6 +152,7 @@ export function ProductsTable({
                       canSeeCost={canSeeCost}
                       canEditFields={canEditFields}
                       mediaUrlById={mediaUrlById}
+                      sellOnline={sellOnline}
                       open={openProductId === product.id}
                       onOpenChange={(o) => setOpenProductId(o ? product.id : null)}
                     />
@@ -226,6 +229,7 @@ export function ProductsTable({
                     canSeeCost={canSeeCost}
                     canEditFields={canEditFields}
                     mediaUrlById={mediaUrlById}
+                    sellOnline={sellOnline}
                     open={openProductId === product.id}
                     onOpenChange={(o) => setOpenProductId(o ? product.id : null)}
                   />

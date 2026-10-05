@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 import {
@@ -222,9 +224,14 @@ export function ProductDialog({
   canSeeCost,
   canEditFields,
   mediaUrlById,
+  sellOnline = false,
   open: openProp,
   onOpenChange: onOpenChangeProp,
 }: {
+  // Sell Online add-on on for this tenant - shows the "Show in online
+  // shop" section. Without it those fields are never sent, so saves are
+  // byte-for-byte what they were before the add-on existed.
+  sellOnline?: boolean;
   product?: Product;
   stores: Store[];
   allProducts: Product[];
@@ -268,6 +275,10 @@ export function ProductDialog({
     reorderPoint: product?.reorderPoint != null ? String(product.reorderPoint) : '0',
     maxDiscountAmount: product?.maxDiscountAmount != null ? String(product.maxDiscountAmount) : '0',
   });
+  const [showOnline, setShowOnline] = useState(product?.showOnline === true);
+  const [onlineDescription, setOnlineDescription] = useState(product?.onlineDescription ?? '');
+  const [seoTitle, setSeoTitle] = useState(product?.seoTitle ?? '');
+  const [seoDescription, setSeoDescription] = useState(product?.seoDescription ?? '');
   const [imageId, setImageId] = useState<number | null>(product?.image ?? null);
   const [imageUrl, setImageUrl] = useState<string | null>(
     product?.image != null ? (mediaUrlById[product.image] ?? null) : null,
@@ -391,6 +402,14 @@ export function ProductDialog({
               image: v.image,
             })),
           relatedProducts,
+          ...(sellOnline
+            ? {
+                showOnline,
+                onlineDescription: onlineDescription.trim() || null,
+                seoTitle: seoTitle.trim() || null,
+                seoDescription: seoDescription.trim() || null,
+              }
+            : {}),
         }),
       });
 
@@ -713,6 +732,63 @@ export function ProductDialog({
               disabled={fieldsDisabled}
             />
           </div>
+
+          {sellOnline ? (
+            <div className="flex flex-col gap-3 border-t pt-4">
+              <div className="flex items-center justify-between gap-4">
+                <Label htmlFor="showOnline" className="flex flex-col items-start gap-1 font-normal">
+                  <span className="font-medium">Show in online shop</span>
+                  <span className="text-xs text-muted-foreground">
+                    Listed on your public shop page with its price, photo and an &quot;Order on WhatsApp&quot; button.
+                  </span>
+                </Label>
+                <Switch id="showOnline" checked={showOnline} disabled={fieldsDisabled} onCheckedChange={setShowOnline} />
+              </div>
+              {showOnline ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="onlineDescription">Online description</Label>
+                  <Textarea
+                    id="onlineDescription"
+                    rows={3}
+                    disabled={fieldsDisabled}
+                    placeholder="e.g. 100% cotton, soft on newborn skin. Sizes 0-3m to 12m."
+                    value={onlineDescription}
+                    onChange={(e) => setOnlineDescription(e.target.value)}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Write it for people: fabric, sizes, who it&apos;s for. Google reads this too.
+                  </span>
+                </div>
+              ) : null}
+              {showOnline ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="productSeoTitle">Search title (optional)</Label>
+                    <Input
+                      id="productSeoTitle"
+                      disabled={fieldsDisabled}
+                      placeholder={`e.g. ${form.name || 'Newborn romper set'} - 100% cotton`}
+                      value={seoTitle}
+                      onChange={(e) => setSeoTitle(e.target.value)}
+                    />
+                    <span className="text-xs text-muted-foreground">{seoTitle.length}/60 · blank = name and price</span>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="productSeoDescription">Search description (optional)</Label>
+                    <Textarea
+                      id="productSeoDescription"
+                      rows={2}
+                      disabled={fieldsDisabled}
+                      placeholder="Shown under the title on Google"
+                      value={seoDescription}
+                      onChange={(e) => setSeoDescription(e.target.value)}
+                    />
+                    <span className="text-xs text-muted-foreground">{seoDescription.length}/155 · blank = online description</span>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">

@@ -1,8 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
+import {
+  computeCheckoutTotals,
+  evaluatePromo,
+  hasAddon,
+  normalizePromoCode,
+  receiptFooterWithMarketing,
+  resolveLoyaltyRedemption,
+  SALES_CHANNELS,
+  SALES_CHANNEL_LABELS,
+  type LineInput,
+  type PromoRule,
+  type SalesChannel,
+} from '@hardware-pos/business-logic';
 import { apiFetch, API_BASE_URL, type PayloadUser } from './auth';
 import { fetchCatalog, fetchStockLevels, stockByKeyMap, stockKey, toLocalVariants, type CatalogProduct } from './catalog';
-import { fetchOrdersForStore, submitOrder, type NewOrder } from './orders';
+import { fetchOrdersForStore, receiptAdjustmentLines, submitOrder, type NewOrder } from './orders';
 import { VoidOrderPanel } from './VoidOrderPanel';
 import { ShiftPanel } from './ShiftPanel';
 import { CashierSwitcher } from './CashierSwitcher';
@@ -50,7 +62,18 @@ interface LocalTenant {
   receipt_footer: string | null;
   shifts_required: number;
   enforce_discount_caps: number;
+  // Paid add-ons (hasAddon) - promo codes need 'sell_online'.
+  addons: string[];
+  billingStatus: string | null;
+  // KES per loyalty point when redeemed. Server default is 1; 0 = redemption off.
+  loyalty_point_value: number;
+  // Receipt marketing lines (receiptFooterWithMarketing).
+  whatsapp_number: string | null;
+  social_handles: string | null;
+  google_review_url: string | null;
 }
+
+const DEFAULT_CHANNEL: SalesChannel = 'walk_in';
 
 interface CartLine {
   product: LocalProduct;
@@ -185,6 +208,19 @@ export function Till({
   const [variantPickerProduct, setVariantPickerProduct] = useState<LocalProduct | null>(null);
   const [tenderType, setTenderType] = useState<(typeof TENDER_OPTIONS)[number]['value']>('cash');
   const [selectedCustomer, setSelectedCustomer] = useState<LocalCustomer | null>(null);
+  // Bumped after every sale so the always-mounted CustomerPicker re-fetches
+  // (a sale changes the customer's loyalty points).
+  const [customerReloadKey, setCustomerReloadKey] = useState(0);
+  // "Sale from" - where this sale came from (Reports -> Sales by channel).
+  const [channel, setChannel] = useState<SalesChannel>(DEFAULT_CHANNEL);
+  // Promo code (Sell Online add-on): the looked-up rule is kept and
+  // re-evaluated locally on every cart change; the server re-validates it.
+  const [promoInput, setPromoInput] = useState('');
+  const [promoRule, setPromoRule] = useState<PromoRule | null>(null);
+  const [promoLookupError, setPromoLookupError] = useState<string | null>(null);
+  const [promoLoading, setPromoLoading] = useState(false);
+  // Loyalty points the cashier asked to redeem (clamped by resolveLoyaltyRedemption).
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
   const [completing, setCompleting] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [todayStats, setTodayStats] = useState({ salesTotal: 0, unpaidCreditCount: 0, unpaidCreditTotal: 0 });
@@ -242,6 +278,12 @@ export function Till({
           receipt_footer: body.receiptFooter ?? null,
           shifts_required: body.shiftsRequired === false ? 0 : 1,
           enforce_discount_caps: body.enforceDiscountCaps === false ? 0 : 1,
+          addons: Array.isArray(body.addons) ? (body.addons as string[]) : [],
+          billingStatus: body.billingStatus ?? null,
+          loyalty_point_value: typeof body.loyaltyPointValue === 'number' ? body.loyaltyPointValue : 1,
+          whatsapp_number: body.whatsappNumber ?? null,
+          social_handles: body.socialHandles ?? null,
+          google_review_url: body.googleReviewUrl ?? null,
         });
       })
       .catch(() => {
@@ -312,12 +354,31 @@ export function Till({
     setCart([]);
     setSelectedCustomer(null);
     setQuery('');
+    resetMarketingOptions();
   }, [storeId]);
+
+  // Points belong to one customer - never carry a redemption over to another.
+  useEffect(() => {
+    setPointsToRedeem(0);
+  }, [selectedCustomer?.id]);
+
+  /** Back to a plain walk-in sale: no promo, no points, channel walk-in. */
+  function resetMarketingOptions() {
+    setChannel(DEFAULT_CHANNEL);
+    setPromoInput('');
+    setPromoRule(null);
+    setPromoLookupError(null);
+    setPointsToRedeem(0);
+  }
 
   async function handleHoldSale() {
     if (cart.length === 0) return;
     await holdSale(JSON.stringify(cart));
     setCart([]);
+    // A held basket only keeps its lines - its customer/promo/points/channel
+    // must not leak into the next, unrelated sale.
+    setSelectedCustomer(null);
+    resetMarketingOptions();
     await refreshHeldSales();
     showToast('Sale held', 'success');
   }
@@ -473,7 +534,69 @@ export function Till({
       })),
     [cart],
   );
-  const totals = useMemo(() => computeOrderTotals(lineInputs), [lineInputs]);
+  const sellOnline = hasAddon(tenant, 'sell_online');
+  // Subtotal after per-line discounts, before any order-level discount -
+  // what promo minimum-spend and percentage are measured against.
+  const baseSubtotal = useMemo(() => computeCheckoutTotals(lineInputs).subtotal, [lineInputs]);
+  const promoEvaluation = useMemo(
+    () => (sellOnline && promoRule ? evaluatePromo(promoRule, baseSubtotal) : null),
+    [sellOnline, promoRule, baseSubtotal],
+  );
+  const promoDiscount = promoEvaluation?.ok ? promoEvaluation.discount : 0;
+  const loyaltyPointValue = tenant?.loyalty_point_value ?? 1;
+  const availablePoints = selectedCustomer?.loyaltyPoints ?? 0;
+  const loyaltyAvailable = selectedCustomer != null && availablePoints > 0 && loyaltyPointValue > 0;
+  const redemption = useMemo(
+    () =>
+      loyaltyAvailable
+        ? resolveLoyaltyRedemption({
+            requestedPoints: pointsToRedeem,
+            availablePoints,
+            pointValue: loyaltyPointValue,
+            payable: baseSubtotal - promoDiscount,
+          })
+        : { points: 0, discount: 0 },
+    [loyaltyAvailable, pointsToRedeem, availablePoints, loyaltyPointValue, baseSubtotal, promoDiscount],
+  );
+  // Identical to computeOrderTotals when there's no promo/points discount.
+  const totals = useMemo(
+    () => computeCheckoutTotals(lineInputs, { promoDiscount, loyaltyDiscount: redemption.discount }),
+    [lineInputs, promoDiscount, redemption.discount],
+  );
+
+  async function applyPromoCode() {
+    const code = normalizePromoCode(promoInput);
+    if (!code) return;
+    setPromoLoading(true);
+    setPromoLookupError(null);
+    try {
+      const params = new URLSearchParams({ 'where[code][equals]': code, limit: '1', depth: '0' });
+      const res = await apiFetch(`${API_BASE_URL}/api/promo-codes?${params.toString()}`, {
+        headers: { Authorization: `JWT ${payloadToken}` },
+      });
+      if (!res.ok) throw new Error(`Could not check promo code (HTTP ${res.status})`);
+      const body = await res.json().catch(() => null);
+      const doc = body?.docs?.[0] as PromoRule | undefined;
+      if (!doc) {
+        setPromoRule(null);
+        setPromoLookupError(`Promo code ${code} doesn't exist.`);
+        return;
+      }
+      setPromoRule(doc);
+      setPromoInput(code);
+    } catch (err) {
+      setPromoRule(null);
+      setPromoLookupError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPromoLoading(false);
+    }
+  }
+
+  function removePromoCode() {
+    setPromoRule(null);
+    setPromoInput('');
+    setPromoLookupError(null);
+  }
 
   // The till only knows about stock from its last catalog/stock-level fetch
   // (product.stock_on_hand is a snapshot, not re-queried live on every
@@ -596,6 +719,11 @@ export function Till({
       paymentStatus,
       status: 'completed',
       createdOffline: false,
+      channel,
+      // Only sent when they actually apply - the server re-validates both
+      // and recomputes every total itself.
+      ...(promoRule && promoEvaluation?.ok ? { promoCodeText: normalizePromoCode(promoRule.code) } : {}),
+      ...(redemption.points > 0 ? { loyaltyPointsRedeemed: redemption.points } : {}),
     };
 
     try {
@@ -620,17 +748,31 @@ export function Till({
       printReceipt({
         storeName: tenant?.name ?? 'Fundi',
         orderId,
-        lines: cart.map((line) => ({
-          name: lineDisplayLabel(line),
-          quantity: line.quantity,
-          unitPrice: lineUnitPrice(line),
-          lineTotal: line.quantity * lineUnitPrice(line) - lineDiscountAmount(line),
-        })),
+        lines: [
+          ...cart.map((line) => ({
+            name: lineDisplayLabel(line),
+            quantity: line.quantity,
+            unitPrice: lineUnitPrice(line),
+            lineTotal: line.quantity * lineUnitPrice(line) - lineDiscountAmount(line),
+          })),
+          ...receiptAdjustmentLines({
+            promoCode: order.promoCodeText,
+            promoDiscount: order.promoCodeText ? totals.promoDiscount : 0,
+            loyaltyPoints: redemption.points,
+            loyaltyDiscount: totals.loyaltyDiscount,
+          }),
+        ],
         taxTotal: totals.taxTotal,
         total: totals.total,
         tenderType,
         header: tenant?.receipt_header,
-        footer: tenant?.receipt_footer,
+        footer: tenant
+          ? receiptFooterWithMarketing(tenant.receipt_footer, {
+              whatsappNumber: tenant.whatsapp_number,
+              socialHandles: tenant.social_handles,
+              googleReviewUrl: tenant.google_review_url,
+            })
+          : null,
         unpaidNotice: tenderType === 'credit' ? 'UNPAID - PAY LATER' : null,
       }).catch((err) => {
         showToast(`Receipt print failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
@@ -638,6 +780,8 @@ export function Till({
 
       setCart([]);
       setSelectedCustomer(null);
+      resetMarketingOptions();
+      setCustomerReloadKey((k) => k + 1);
     } catch (err) {
       // Deliberately does NOT clear the cart - a network failure (or a
       // rejected request) must leave the sale exactly as the cashier built
@@ -911,10 +1055,22 @@ export function Till({
                 <span>Tax</span>
                 <span>{totals.taxTotal.toFixed(2)}</span>
               </div>
-              {totals.discountTotal > 0 && (
+              {totals.lineDiscountTotal > 0 && (
                 <div className="totals-row">
                   <span>Discount</span>
-                  <span>-{totals.discountTotal.toFixed(2)}</span>
+                  <span>-{totals.lineDiscountTotal.toFixed(2)}</span>
+                </div>
+              )}
+              {totals.promoDiscount > 0 && (
+                <div className="totals-row">
+                  <span>Promo{promoRule ? ` (${normalizePromoCode(promoRule.code)})` : ''}</span>
+                  <span>-{totals.promoDiscount.toFixed(2)}</span>
+                </div>
+              )}
+              {totals.loyaltyDiscount > 0 && (
+                <div className="totals-row">
+                  <span>Points ({redemption.points} pts)</span>
+                  <span>-{totals.loyaltyDiscount.toFixed(2)}</span>
                 </div>
               )}
               <div className="totals-row total">
@@ -935,13 +1091,85 @@ export function Till({
                 </button>
               ))}
             </div>
-            {tenderType === 'credit' && tenantId != null && (
+            <label className="sale-channel-field">
+              <span className="field-label">Sale from</span>
+              <select value={channel} onChange={(e) => setChannel(e.currentTarget.value as SalesChannel)}>
+                {SALES_CHANNELS.map((c) => (
+                  <option key={c} value={c}>
+                    {SALES_CHANNEL_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {tenantId != null && (
               <CustomerPicker
                 tenantId={tenantId}
                 payloadToken={payloadToken}
                 value={selectedCustomer}
                 onChange={setSelectedCustomer}
+                reloadKey={customerReloadKey}
               />
+            )}
+            {loyaltyAvailable && (
+              <label className="checkout-option-row">
+                <span className="field-label">Redeem points (max {availablePoints})</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={availablePoints}
+                  step={1}
+                  placeholder="0"
+                  value={pointsToRedeem === 0 ? '' : pointsToRedeem}
+                  onChange={(e) => {
+                    const raw = Math.floor(Number(e.currentTarget.value) || 0);
+                    setPointsToRedeem(Math.min(Math.max(raw, 0), availablePoints));
+                  }}
+                />
+              </label>
+            )}
+            {loyaltyAvailable && pointsToRedeem > 0 && redemption.points < pointsToRedeem && (
+              <p className="checkout-option-hint">Only {redemption.points} pts can be used on this bill.</p>
+            )}
+            {sellOnline && (
+              <div className="checkout-option-block">
+                {promoRule ? (
+                  <div className="checkout-option-row">
+                    <span className="field-label">Promo {normalizePromoCode(promoRule.code)}</span>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={removePromoCode}>
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <form
+                    className="checkout-option-row"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      applyPromoCode();
+                    }}
+                  >
+                    <input
+                      placeholder="Promo code"
+                      value={promoInput}
+                      onChange={(e) => {
+                        setPromoInput(e.currentTarget.value);
+                        setPromoLookupError(null);
+                      }}
+                    />
+                    <button type="submit" className="btn btn-secondary btn-sm" disabled={promoLoading || !normalizePromoCode(promoInput)}>
+                      {promoLoading ? 'Checking...' : 'Apply'}
+                    </button>
+                  </form>
+                )}
+                {promoLookupError ? <p className="checkout-option-hint is-error">{promoLookupError}</p> : null}
+                {promoEvaluation ? (
+                  promoEvaluation.ok ? (
+                    <p className="checkout-option-hint">Promo applied: -{promoEvaluation.discount.toFixed(2)}</p>
+                  ) : (
+                    <p className="checkout-option-hint is-error">{promoEvaluation.reason}</p>
+                  )
+                ) : null}
+              </div>
             )}
 
             <div className="cart-actions">

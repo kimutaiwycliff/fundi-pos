@@ -18,6 +18,7 @@ import { LogoutButton } from '@/components/logout-button';
 import { LogoMark } from '@/components/marketing/logo-mark';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { getCurrentUser } from '@/lib/current-user';
+import { hasAddon } from '@hardware-pos/business-logic';
 import { NavItems } from './nav-items';
 import { PageTitle } from './page-title';
 import { UserMenu } from './user-menu';
@@ -55,6 +56,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
     ...NAV_ITEMS,
     ...(me.role === 'manager' || me.role === 'owner' ? [{ href: '/dashboard/audit-log', label: 'Audit Log' }] : []),
     ...(me.role === 'manager' || me.role === 'owner' ? [{ href: '/dashboard/quotations', label: 'Quotations' }] : []),
+    // Sell Online add-on - only listed once a platform admin switches it on.
+    ...((me.role === 'manager' || me.role === 'owner') && typeof me.tenant === 'object' && hasAddon(me.tenant, 'sell_online')
+      ? [{ href: '/dashboard/promo-codes', label: 'Promo Codes' }]
+      : []),
     ...(me.role === 'owner' ? [{ href: '/dashboard/settings', label: 'Settings' }] : []),
   ];
 

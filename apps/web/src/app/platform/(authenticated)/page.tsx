@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { platformFetch } from '@/lib/platform-client';
 import { TenantStatusFilter } from './status-filter';
+import { ADDON_LABELS, type Addon } from '@hardware-pos/business-logic';
 
 type Tenant = {
   id: number;
@@ -10,6 +11,7 @@ type Tenant = {
   status: 'active' | 'suspended' | 'deleted';
   subscriptionTier: string;
   billingStatus: string;
+  addons?: string[] | null;
   createdAt: string;
 };
 
@@ -45,6 +47,7 @@ export default async function PlatformTenantsPage({
               <TableHead>Status</TableHead>
               <TableHead>Subscription</TableHead>
               <TableHead>Billing</TableHead>
+              <TableHead>Add-ons</TableHead>
               <TableHead>Created</TableHead>
             </TableRow>
           </TableHeader>
@@ -63,6 +66,17 @@ export default async function PlatformTenantsPage({
                 </TableCell>
                 <TableCell className="capitalize">{tenant.subscriptionTier}</TableCell>
                 <TableCell className="capitalize">{tenant.billingStatus.replace('_', ' ')}</TableCell>
+                <TableCell>
+                  {(tenant.addons ?? []).length === 0 ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    (tenant.addons ?? []).map((addon) => (
+                      <Badge key={addon} variant="outline" className="mr-1">
+                        {ADDON_LABELS[addon as Addon] ?? addon}
+                      </Badge>
+                    ))
+                  )}
+                </TableCell>
                 <TableCell>{new Date(tenant.createdAt).toLocaleDateString()}</TableCell>
               </TableRow>
             ))}

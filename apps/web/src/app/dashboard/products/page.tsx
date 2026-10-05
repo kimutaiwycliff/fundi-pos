@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
+import { hasAddon } from '@hardware-pos/business-logic';
 import { BranchFilter } from '@/components/branch-filter';
 import { ProductDialog } from './product-dialog';
 import { ProductsTable } from './products-table';
@@ -45,6 +46,11 @@ export type Product = {
   // Fetched at depth=0 below, so relations come back as bare ids, not
   // populated docs - keeps a 500-product catalog fetch cheap.
   relatedProducts: number[];
+  // Sell Online add-on (Products.ts) - absent on tenants that never used it.
+  showOnline?: boolean | null;
+  onlineDescription?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
 };
 
 export interface StockLevel {
@@ -80,6 +86,7 @@ export default async function ProductsPage({
   // a cashier can still change a product's photo, nothing else.
   const canEditFields = me.role === 'owner' || me.role === 'manager';
   const mediaUrlById: Record<number, string> = Object.fromEntries(mediaDocs.map((m) => [m.id, m.url]));
+  const sellOnline = typeof me.tenant === 'object' && hasAddon(me.tenant, 'sell_online');
 
   // Products are tenant-wide, not store-owned - a branch toggle here can't
   // filter the catalog itself, only annotate each row with that branch's
@@ -115,6 +122,7 @@ export default async function ProductsPage({
             canSeeCost={canSeeCost}
             canEditFields={canEditFields}
             mediaUrlById={mediaUrlById}
+            sellOnline={sellOnline}
           />
         </div>
       </div>
@@ -129,6 +137,7 @@ export default async function ProductsPage({
         stockLevels={stockLevels}
         archivedView={archived}
         mediaUrlById={mediaUrlById}
+        sellOnline={sellOnline}
       />
     </div>
   );

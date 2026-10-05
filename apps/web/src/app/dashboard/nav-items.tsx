@@ -16,6 +16,7 @@ import {
   Store,
   Users,
   UserCog,
+  TicketPercent,
   type LucideIcon,
 } from 'lucide-react';
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@/components/ui/sidebar';
@@ -33,6 +34,7 @@ const ICONS: Record<string, LucideIcon> = {
   '/dashboard/staff': UserCog,
   '/dashboard/audit-log': ScrollText,
   '/dashboard/quotations': FileText,
+  '/dashboard/promo-codes': TicketPercent,
   '/dashboard/settings': SettingsIcon,
 };
 

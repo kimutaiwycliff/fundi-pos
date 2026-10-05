@@ -2,16 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import Fuse from 'fuse.js';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, Platform, ScrollView } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { API_BASE_URL, apiFetch } from '../lib/auth';
 import { showAlert } from '../components/AppNotice';
+import { CUSTOMER_SOURCES, CUSTOMER_SOURCE_LABELS, type CustomerSource } from '@hardware-pos/business-logic';
 
 export interface LocalCustomer {
   id: string;
   name: string;
   phone: string | null;
   email: string | null;
+  loyaltyPoints: number;
 }
 
 interface RawCustomer {
@@ -19,10 +21,11 @@ interface RawCustomer {
   name: string;
   phone: string | null;
   email: string | null;
+  loyaltyPoints?: number | null;
 }
 
 function mapCustomer(c: RawCustomer): LocalCustomer {
-  return { id: String(c.id), name: c.name, phone: c.phone ?? null, email: c.email ?? null };
+  return { id: String(c.id), name: c.name, phone: c.phone ?? null, email: c.email ?? null, loyaltyPoints: Number(c.loyaltyPoints ?? 0) || 0 };
 }
 
 // Credit ("pay later") sales must be tied to a known customer. Existing
@@ -49,6 +52,7 @@ export function CustomerPicker({
   const [creating, setCreating] = useState(false);
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newSource, setNewSource] = useState<CustomerSource | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [catalog, setCatalog] = useState<LocalCustomer[]>([]);
@@ -89,18 +93,26 @@ export function CustomerPicker({
       const res = await apiFetch(`${API_BASE_URL}/api/customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `JWT ${payloadToken}` },
-        body: JSON.stringify({ tenant: tenantId, name: query.trim(), phone: newPhone.trim(), email: newEmail.trim() || null, loyaltyPoints: 0 }),
+        body: JSON.stringify({
+          tenant: tenantId,
+          name: query.trim(),
+          phone: newPhone.trim(),
+          email: newEmail.trim() || null,
+          loyaltyPoints: 0,
+          ...(newSource ? { source: newSource } : {}),
+        }),
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(body?.errors?.[0]?.message ?? 'Failed to add customer');
       }
-      const doc = body.doc as { id: number; name: string; phone: string | null; email: string | null };
-      onChange({ id: String(doc.id), name: doc.name, phone: doc.phone, email: doc.email });
+      const doc = body.doc as RawCustomer;
+      onChange(mapCustomer(doc));
       setCreating(false);
       setQuery('');
       setNewPhone('');
       setNewEmail('');
+      setNewSource(null);
     } catch (err) {
       showAlert('Failed to add customer', err instanceof Error ? err.message : String(err));
     } finally {
@@ -114,6 +126,7 @@ export function CustomerPicker({
         <Text className="flex-1 text-sm text-foreground">
           Customer: <Text className="font-semibold">{value.name}</Text>
           {value.phone ? ` · ${value.phone}` : ''}
+          {value.loyaltyPoints > 0 ? ` · ${value.loyaltyPoints} pts` : ''}
         </Text>
         <Pressable android_ripple={{}} onPress={() => onChange(null)}>
           <Text className="text-sm text-muted-foreground">Change</Text>
@@ -147,19 +160,18 @@ export function CustomerPicker({
       />
       {results.length > 0 ? (
         <View className="rounded-lg border border-border">
-          <FlatList
-            data={results}
-            keyExtractor={(c) => c.id}
-            renderItem={({ item }) => (
-              <Animated.View entering={FadeInDown.duration(180)}>
+          {/* Plain map (max 10 results), not a FlatList - this picker now
+              sits inside SellScreen's checkout ScrollView, and a nested
+              VirtualizedList there is an RN error/warning. */}
+          {results.map((item) => (
+            <Animated.View key={item.id} entering={FadeInDown.duration(180)}>
               <Pressable android_ripple={{}} className="px-3 py-2 active:bg-muted" onPress={() => onChange(item)}>
                 <Text className="text-sm text-foreground">
                   {item.name} {item.phone ? `(${item.phone})` : ''}
                 </Text>
               </Pressable>
-              </Animated.View>
-            )}
-          />
+            </Animated.View>
+          ))}
         </View>
       ) : null}
       {trimmed && results.length === 0 && !creating ? (
@@ -186,6 +198,22 @@ export function CustomerPicker({
             value={newEmail}
             onChangeText={setNewEmail}
           />
+          <Text className="text-xs text-muted-foreground">How did you hear about us? (optional)</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerClassName="gap-1.5">
+            {CUSTOMER_SOURCES.map((source) => {
+              const active = newSource === source;
+              return (
+                <Pressable
+                  android_ripple={{}}
+                  key={source}
+                  className={`rounded-full border px-3 py-1 ${active ? 'border-primary bg-primary' : 'border-border'}`}
+                  onPress={() => setNewSource(active ? null : source)}
+                >
+                  <Text className={active ? 'text-xs font-medium text-primary-foreground' : 'text-xs text-foreground'}>{CUSTOMER_SOURCE_LABELS[source]}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
           <Pressable android_ripple={{ color: '#ffffff40' }}
             className={`items-center rounded-md bg-primary py-2 ${saving || !newPhone.trim() ? 'opacity-50' : 'active:opacity-80'}`}
             onPress={handleCreate}

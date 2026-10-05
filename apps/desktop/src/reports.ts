@@ -56,6 +56,23 @@ export interface SalesSummary {
   refundedCount: number;
   refundedTotal: number;
   comparison: Comparison | null;
+  /** Newer API only - absent on older servers, so always guard. */
+  byChannel?: ByChannel[];
+}
+export interface ByChannel {
+  channel: string;
+  revenue: number;
+  orderCount: number;
+}
+export interface SlowMover {
+  name: string;
+  quantity: number;
+  lastSoldAt: string | null;
+  retailValue: number;
+}
+export interface SlowMovers {
+  items: SlowMover[];
+  totalRetailValue: number;
 }
 export interface DailyPoint {
   date: string;
@@ -90,4 +107,19 @@ export async function fetchStockValue(payloadToken: string): Promise<StockValue>
     headers: { Authorization: `JWT ${payloadToken}` },
   });
   return res.json();
+}
+
+/** Stock that hasn't sold in `days` days. Returns null (rather than throwing) on any failure - an optional card. */
+export async function fetchSlowMovers(payloadToken: string, days: 30 | 60 | 90 = 60): Promise<SlowMovers | null> {
+  try {
+    const res = await apiFetch(`${API_BASE_URL}/api/reports/slow-movers?days=${days}`, {
+      headers: { Authorization: `JWT ${payloadToken}` },
+    });
+    if (!res.ok) return null;
+    const body = await res.json().catch(() => null);
+    if (!body || !Array.isArray(body.items)) return null;
+    return { items: body.items as SlowMover[], totalRetailValue: Number(body.totalRetailValue ?? 0) || 0 };
+  } catch {
+    return null;
+  }
 }

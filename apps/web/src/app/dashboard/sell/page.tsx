@@ -1,6 +1,7 @@
 import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
 import { SellClient } from './sell-client';
+import { receiptFooterWithMarketing } from '@hardware-pos/business-logic';
 
 export type Variant = {
   id?: string;
@@ -28,7 +29,14 @@ export type Product = {
 };
 
 export type StoreRef = { id: number; name: string };
-export type CustomerRef = { id: number; name: string; phone: string | null; email: string | null };
+export type CustomerRef = {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  loyaltyPoints?: number | null;
+  source?: string | null;
+};
 
 export type TenantReceiptInfo = {
   name: string;
@@ -36,6 +44,12 @@ export type TenantReceiptInfo = {
   receiptFooter: string | null;
   shiftsRequired: boolean;
   enforceDiscountCaps: boolean;
+  addons?: string[] | null;
+  billingStatus?: string | null;
+  loyaltyPointValue?: number | null;
+  whatsappNumber?: string | null;
+  socialHandles?: string | null;
+  googleReviewUrl?: string | null;
 };
 
 export interface StockLevel {
@@ -69,7 +83,9 @@ export default async function SellPage() {
       me={me}
       products={products}
       stores={stores}
-      tenant={tenant}
+      // Marketing lines (WhatsApp / socials / review link) ride inside the
+      // footer, so every receipt + invoice path below picks them up as-is.
+      tenant={{ ...tenant, receiptFooter: receiptFooterWithMarketing(tenant.receiptFooter, tenant) }}
       customers={customers}
       stockLevels={stockLevels}
       mediaUrlById={mediaUrlById}

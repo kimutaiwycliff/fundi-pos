@@ -83,6 +83,7 @@ export interface Config {
     suppliers: Supplier;
     'stock-transfers': StockTransfer;
     customers: Customer;
+    'promo-codes': PromoCode;
     'sync-log': SyncLog;
     shifts: Shift;
     'audit-log': AuditLog;
@@ -111,6 +112,7 @@ export interface Config {
     suppliers: SuppliersSelect<false> | SuppliersSelect<true>;
     'stock-transfers': StockTransfersSelect<false> | StockTransfersSelect<true>;
     customers: CustomersSelect<false> | CustomersSelect<true>;
+    'promo-codes': PromoCodesSelect<false> | PromoCodesSelect<true>;
     'sync-log': SyncLogSelect<false> | SyncLogSelect<true>;
     shifts: ShiftsSelect<false> | ShiftsSelect<true>;
     'audit-log': AuditLogSelect<false> | AuditLogSelect<true>;
@@ -218,6 +220,8 @@ export interface Tenant {
   statusReason?: string | null;
   subscriptionTier: 'trial' | 'starter' | 'growth' | 'enterprise';
   billingStatus: 'active' | 'trialing' | 'past_due' | 'canceled';
+  addons?: 'sell_online'[] | null;
+  addonsChangedAt?: string | null;
   /**
    * Printed at the top of every receipt, below the business name (e.g. address, phone).
    */
@@ -234,8 +238,77 @@ export interface Tenant {
    * Limit staff (not owners) to each product's Max discount amount at the till. Turn off to let staff discount freely - a sale can still never go below a product's cost.
    */
   enforceDiscountCaps?: boolean | null;
+  /**
+   * Shop WhatsApp number customers order on, e.g. 0712345678.
+   */
+  whatsappNumber?: string | null;
+  /**
+   * e.g. "IG/TikTok @babyshop.ke" - printed on receipts.
+   */
+  socialHandles?: string | null;
+  /**
+   * Your Google review link - printed on receipts.
+   */
+  googleReviewUrl?: string | null;
+  /**
+   * KES value of one loyalty point when a customer redeems it. 0 turns redemption off.
+   */
+  loyaltyPointValue?: number | null;
+  /**
+   * Your online shop address: /shop/<this>.
+   */
+  shopSlug?: string | null;
+  storefrontEnabled?: boolean | null;
+  storefrontTagline?: string | null;
+  /**
+   * Google result title for the shop page (~60 characters).
+   */
+  seoTitle?: string | null;
+  /**
+   * Google result snippet (~155 characters).
+   */
+  seoDescription?: string | null;
+  /**
+   * Image shown when the shop link is shared.
+   */
+  seoImage?: (number | null) | Media;
+  /**
+   * Town / area, e.g. "Westlands, Nairobi" - helps local search.
+   */
+  storefrontCity?: string | null;
+  /**
+   * Allow Google to list the shop.
+   */
+  storefrontIndexable?: boolean | null;
+  /**
+   * Google Search Console HTML-tag verification code.
+   */
+  googleSiteVerification?: string | null;
   updatedAt: string;
   createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "media".
+ */
+export interface Media {
+  id: number;
+  tenant: number | Tenant;
+  /**
+   * Optional - describes the image for accessibility.
+   */
+  alt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -355,31 +428,12 @@ export interface Product {
       }[]
     | null;
   relatedProducts?: (number | Product)[] | null;
+  showOnline?: boolean | null;
+  onlineDescription?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
   updatedAt: string;
   createdAt: string;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "media".
- */
-export interface Media {
-  id: number;
-  tenant: number | Tenant;
-  /**
-   * Optional - describes the image for accessibility.
-   */
-  alt?: string | null;
-  updatedAt: string;
-  createdAt: string;
-  url?: string | null;
-  thumbnailURL?: string | null;
-  filename?: string | null;
-  mimeType?: string | null;
-  filesize?: number | null;
-  width?: number | null;
-  height?: number | null;
-  focalX?: number | null;
-  focalY?: number | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -434,6 +488,13 @@ export interface Order {
    * 1 point per 100 spent, server-computed at sale time. Stored (not recomputed) so a refund/void reverses exactly what was earned.
    */
   loyaltyPointsEarned?: number | null;
+  channel?: ('walk_in' | 'whatsapp' | 'instagram' | 'tiktok' | 'facebook' | 'online_shop' | 'phone' | 'other') | null;
+  promoCodeText?: string | null;
+  promoCode?: (number | null) | PromoCode;
+  promoDiscount?: number | null;
+  loyaltyPointsRedeemed?: number | null;
+  loyaltyDiscount?: number | null;
+  referrerPointsAwarded?: number | null;
   lineItems: {
     product: number | Product;
     variant?: string | null;
@@ -474,6 +535,57 @@ export interface Customer {
   phone?: string | null;
   email?: string | null;
   loyaltyPoints: number;
+  source?:
+    | (
+        | 'walk_by'
+        | 'referral'
+        | 'tiktok'
+        | 'instagram'
+        | 'facebook'
+        | 'whatsapp'
+        | 'google'
+        | 'influencer'
+        | 'ad'
+        | 'other'
+      )
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "promo-codes".
+ */
+export interface PromoCode {
+  id: number;
+  tenant: number | Tenant;
+  code: string;
+  /**
+   * Who/what this is for, e.g. "Black Friday" or "Jane (influencer)".
+   */
+  label?: string | null;
+  kind: 'percentage' | 'flat';
+  /**
+   * Percent off (0-100) or KES off.
+   */
+  value: number;
+  /**
+   * Optional minimum basket value in KES.
+   */
+  minSpend?: number | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  /**
+   * Optional cap on total uses. Empty or 0 = unlimited.
+   */
+  maxUses?: number | null;
+  usesCount?: number | null;
+  active?: boolean | null;
+  /**
+   * Referral code: this customer earns points each time someone else uses it.
+   */
+  referrerCustomer?: (number | null) | Customer;
+  referrerRewardPoints?: number | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -661,7 +773,12 @@ export interface PlatformAuditLog {
   tenant?: (number | null) | Tenant;
   actor: number | PlatformAdmin;
   action:
-    'tenant_suspended' | 'tenant_reactivated' | 'tenant_soft_deleted' | 'tenant_restored' | 'subscription_changed';
+    | 'tenant_suspended'
+    | 'tenant_reactivated'
+    | 'tenant_soft_deleted'
+    | 'tenant_restored'
+    | 'subscription_changed'
+    | 'addon_changed';
   summary: string;
   metadata?:
     | {
@@ -829,6 +946,10 @@ export interface PayloadLockedDocument {
         value: number | Customer;
       } | null)
     | ({
+        relationTo: 'promo-codes';
+        value: number | PromoCode;
+      } | null)
+    | ({
         relationTo: 'sync-log';
         value: number | SyncLog;
       } | null)
@@ -938,10 +1059,25 @@ export interface TenantsSelect<T extends boolean = true> {
   statusReason?: T;
   subscriptionTier?: T;
   billingStatus?: T;
+  addons?: T;
+  addonsChangedAt?: T;
   receiptHeader?: T;
   receiptFooter?: T;
   shiftsRequired?: T;
   enforceDiscountCaps?: T;
+  whatsappNumber?: T;
+  socialHandles?: T;
+  googleReviewUrl?: T;
+  loyaltyPointValue?: T;
+  shopSlug?: T;
+  storefrontEnabled?: T;
+  storefrontTagline?: T;
+  seoTitle?: T;
+  seoDescription?: T;
+  seoImage?: T;
+  storefrontCity?: T;
+  storefrontIndexable?: T;
+  googleSiteVerification?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1025,6 +1161,10 @@ export interface ProductsSelect<T extends boolean = true> {
         id?: T;
       };
   relatedProducts?: T;
+  showOnline?: T;
+  onlineDescription?: T;
+  seoTitle?: T;
+  seoDescription?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1093,6 +1233,13 @@ export interface OrdersSelect<T extends boolean = true> {
   cashier?: T;
   customer?: T;
   loyaltyPointsEarned?: T;
+  channel?: T;
+  promoCodeText?: T;
+  promoCode?: T;
+  promoDiscount?: T;
+  loyaltyPointsRedeemed?: T;
+  loyaltyDiscount?: T;
+  referrerPointsAwarded?: T;
   lineItems?:
     | T
     | {
@@ -1228,6 +1375,28 @@ export interface CustomersSelect<T extends boolean = true> {
   phone?: T;
   email?: T;
   loyaltyPoints?: T;
+  source?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "promo-codes_select".
+ */
+export interface PromoCodesSelect<T extends boolean = true> {
+  tenant?: T;
+  code?: T;
+  label?: T;
+  kind?: T;
+  value?: T;
+  minSpend?: T;
+  startsAt?: T;
+  endsAt?: T;
+  maxUses?: T;
+  usesCount?: T;
+  active?: T;
+  referrerCustomer?: T;
+  referrerRewardPoints?: T;
   updatedAt?: T;
   createdAt?: T;
 }

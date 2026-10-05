@@ -1,6 +1,17 @@
 import type { CollectionConfig } from 'payload';
 import { APIError } from 'payload';
-import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
+import {
+  computeCheckoutTotals,
+  evaluatePromo,
+  hasAddon,
+  loyaltyPointsEarnedFor,
+  normalizePromoCode,
+  resolveLoyaltyRedemption,
+  SALES_CHANNEL_LABELS,
+  SALES_CHANNELS,
+  type LineInput,
+  type PromoRule,
+} from '@hardware-pos/business-logic';
 import { isAuthenticated, managerOrOwner, neverDelete, ownTenantOnly } from '../access/index.ts';
 import { isTenantUser, toID } from '../lib/relations.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
@@ -44,6 +55,32 @@ export const Orders: CollectionConfig = {
         readOnly: true,
         description: '1 point per 100 spent, server-computed at sale time. Stored (not recomputed) so a refund/void reverses exactly what was earned.',
       },
+    },
+    {
+      // Where the sale came from (walk-in, WhatsApp, TikTok...) - picked at
+      // checkout, drives Reports -> Sales by channel. Orders from before
+      // this existed (or from an un-updated till) default to walk-in.
+      name: 'channel',
+      type: 'select',
+      defaultValue: 'walk_in',
+      options: SALES_CHANNELS.map((value) => ({ value, label: SALES_CHANNEL_LABELS[value] })),
+    },
+    // Order-level discounts, both resolved and priced server-side in the
+    // beforeChange hook below - a client only ever sends the code text and
+    // how many points to redeem, never an amount. Frozen after creation.
+    { name: 'promoCodeText', type: 'text', access: { update: () => false } },
+    { name: 'promoCode', type: 'relationship', relationTo: 'promo-codes', access: { update: () => false } },
+    { name: 'promoDiscount', type: 'number', defaultValue: 0, access: { update: () => false }, admin: { readOnly: true, step: 0.01 } },
+    { name: 'loyaltyPointsRedeemed', type: 'number', defaultValue: 0, min: 0, access: { update: () => false } },
+    { name: 'loyaltyDiscount', type: 'number', defaultValue: 0, access: { update: () => false }, admin: { readOnly: true, step: 0.01 } },
+    {
+      // Points credited to the promo code's referrer for this sale - stored
+      // so a refund/void takes back exactly what was given.
+      name: 'referrerPointsAwarded',
+      type: 'number',
+      defaultValue: 0,
+      access: { update: () => false },
+      admin: { readOnly: true },
     },
     {
       name: 'lineItems',
@@ -198,11 +235,81 @@ export const Orders: CollectionConfig = {
           taxRate: taxRateByProductId.get(Number(line.product)) ?? 0,
         }));
 
-        const totals = computeOrderTotals(lines);
+        const subtotal = computeCheckoutTotals(lines).subtotal;
+
+        // Promo code (Sell Online add-on) - looked up by its text within
+        // this tenant, evaluated with the same evaluatePromo() the till's
+        // preview used. Never trust a client-sent amount or promo id.
+        let promoDiscount = 0;
+        data.promoCode = null;
+        data.referrerPointsAwarded = 0;
+        const promoText = normalizePromoCode(data.promoCodeText as string | undefined);
+        data.promoCodeText = promoText || null;
+        if (promoText) {
+          if (!hasAddon(tenant, 'sell_online')) {
+            // Deliberately neutral - a shop without the add-on shouldn't learn it exists.
+            throw new APIError("Promo codes aren't available for this shop.", 403);
+          }
+          const found = await req.payload.find({
+            collection: 'promo-codes',
+            where: { tenant: { equals: Number(data.tenant) }, code: { equals: promoText } },
+            limit: 1,
+            depth: 0,
+            overrideAccess: true,
+            req,
+          });
+          const promo = found.docs[0];
+          if (!promo) throw new APIError(`Promo code ${promoText} doesn't exist.`, 400);
+          const result = evaluatePromo(promo as unknown as PromoRule, subtotal);
+          if (!result.ok) throw new APIError(result.reason, 400);
+          promoDiscount = result.discount;
+          data.promoCode = promo.id;
+          const referrerId = promo.referrerCustomer ? toID(promo.referrerCustomer) : null;
+          const reward = Number(promo.referrerRewardPoints ?? 0);
+          // No reward for using your own referral code.
+          if (referrerId != null && reward > 0 && String(referrerId) !== String(data.customer ? toID(data.customer) : '')) {
+            data.referrerPointsAwarded = Math.floor(reward);
+          }
+        }
+
+        // Loyalty redemption (every plan) - needs a customer, whole points,
+        // never more than they hold. Capped to what brings the bill to zero.
+        let loyaltyDiscount = 0;
+        const requestedPoints = Math.floor(Number(data.loyaltyPointsRedeemed ?? 0));
+        data.loyaltyPointsRedeemed = 0;
+        if (requestedPoints > 0) {
+          if (!data.customer) throw new APIError('Pick the customer whose loyalty points are being redeemed.', 400);
+          const customer = await req.payload.findByID({
+            collection: 'customers',
+            id: toID(data.customer),
+            overrideAccess: true,
+            depth: 0,
+            req,
+          });
+          if (String(toID(customer.tenant)) !== String(data.tenant)) throw new APIError('Unknown customer.', 400);
+          const available = Number(customer.loyaltyPoints ?? 0);
+          if (requestedPoints > available) {
+            throw new APIError(`${String(customer.name)} only has ${available} loyalty points.`, 400);
+          }
+          const pointValue = Number(tenant.loyaltyPointValue ?? 1);
+          if (!(pointValue > 0)) throw new APIError('Loyalty point redemption is turned off for this shop.', 400);
+          const redemption = resolveLoyaltyRedemption({
+            requestedPoints,
+            availablePoints: available,
+            pointValue,
+            payable: subtotal - promoDiscount,
+          });
+          data.loyaltyPointsRedeemed = redemption.points;
+          loyaltyDiscount = redemption.discount;
+        }
+
+        const totals = computeCheckoutTotals(lines, { promoDiscount, loyaltyDiscount });
         data.taxTotal = totals.taxTotal;
         data.discountTotal = totals.discountTotal;
         data.total = totals.total;
-        data.loyaltyPointsEarned = data.customer ? Math.floor(totals.total / 100) : 0;
+        data.promoDiscount = totals.promoDiscount;
+        data.loyaltyDiscount = totals.loyaltyDiscount;
+        data.loyaltyPointsEarned = data.customer ? loyaltyPointsEarnedFor(totals.total) : 0;
 
         // See lineItems.tenantId/storeId's own comment above - orders are
         // create-only from every client's perspective, so this only ever
@@ -296,7 +403,11 @@ export const Orders: CollectionConfig = {
 
         if (!justCompleted && !justReversed) return doc;
 
-        const delta = justReversed ? -(doc.loyaltyPointsEarned as number) : (doc.loyaltyPointsEarned as number);
+        // Net movement = earned minus redeemed; a reversal is its exact mirror
+        // (earned taken back, redeemed points returned).
+        const earned = Number(doc.loyaltyPointsEarned ?? 0);
+        const redeemed = Number(doc.loyaltyPointsRedeemed ?? 0);
+        const delta = justReversed ? redeemed - earned : earned - redeemed;
         if (!delta) return doc;
 
         const customer = await req.payload.findByID({
@@ -313,6 +424,49 @@ export const Orders: CollectionConfig = {
           req,
         });
 
+        return doc;
+      },
+      // Promo usage counter and referral reward - same earn-on-sale /
+      // mirror-on-reversal shape as the loyalty hook above.
+      async ({ doc, operation, req, previousDoc }) => {
+        if (!doc.promoCode) return doc;
+        const justCompleted = operation === 'create' && doc.status === 'completed';
+        const justReversed =
+          operation === 'update' && REVERSAL_STATUSES.has(doc.status) && !REVERSAL_STATUSES.has(previousDoc?.status ?? '');
+        if (!justCompleted && !justReversed) return doc;
+
+        const promo = await req.payload.findByID({
+          collection: 'promo-codes',
+          id: toID(doc.promoCode),
+          overrideAccess: true,
+          depth: 0,
+          req,
+        });
+        await req.payload.update({
+          collection: 'promo-codes',
+          id: promo.id,
+          data: { usesCount: Math.max(0, Number(promo.usesCount ?? 0) + (justReversed ? -1 : 1)) },
+          overrideAccess: true,
+          req,
+        });
+
+        const reward = Number(doc.referrerPointsAwarded ?? 0);
+        if (reward > 0 && promo.referrerCustomer) {
+          const referrer = await req.payload.findByID({
+            collection: 'customers',
+            id: toID(promo.referrerCustomer),
+            overrideAccess: true,
+            depth: 0,
+            req,
+          });
+          await req.payload.update({
+            collection: 'customers',
+            id: referrer.id,
+            data: { loyaltyPoints: Math.max(0, Number(referrer.loyaltyPoints ?? 0) + (justReversed ? -reward : reward)) },
+            overrideAccess: true,
+            req,
+          });
+        }
         return doc;
       },
       // Multi-staff accountability: who actually approved this void/refund,

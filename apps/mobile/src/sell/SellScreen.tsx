@@ -4,12 +4,24 @@ import Fuse from 'fuse.js';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useMutedPlaceholderColor } from '../lib/theme';
-import { View, Text, TextInput, Pressable, FlatList, Image, Platform, RefreshControl } from 'react-native';
+import { View, Text, TextInput, Pressable, FlatList, Image, Platform, RefreshControl, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert, showToast } from '../components/AppNotice';
-import { computeOrderTotals, type LineInput } from '@hardware-pos/business-logic';
+import {
+  computeCheckoutTotals,
+  evaluatePromo,
+  hasAddon,
+  normalizePromoCode,
+  receiptFooterWithMarketing,
+  resolveLoyaltyRedemption,
+  SALES_CHANNELS,
+  SALES_CHANNEL_LABELS,
+  type LineInput,
+  type PromoRule,
+  type SalesChannel,
+} from '@hardware-pos/business-logic';
 import { API_BASE_URL, apiFetch } from '../lib/auth';
 import { fetchCatalog, fetchStockLevels, stockKey as apiStockKey, stockByKeyMap, type CatalogProduct } from '../lib/catalog';
 import { usePullToRefresh } from '../lib/usePullToRefresh';
@@ -60,6 +72,15 @@ interface OrderHistoryRow {
 interface TenantFlags {
   shiftsRequired: boolean;
   enforceDiscountCaps: boolean;
+}
+
+// Marketing-related tenant fields, read from the same GET /api/tenants/{id}
+// response as TenantFlags. `addons`/`billingStatus` gate the promo-code box
+// (Sell Online add-on); loyaltyPointValue is KES per point (0 = off).
+interface TenantMarketing {
+  addons: string[] | null;
+  billingStatus: string | null;
+  loyaltyPointValue: number;
 }
 
 function lineKey(line: Pick<CartLine, 'product' | 'variant'>): string {
@@ -125,6 +146,13 @@ export function SellScreen({
   const [cart, setCart] = useState<CartLine[]>([]);
   const [tenderType, setTenderType] = useState<TenderType>('cash');
   const [selectedCustomer, setSelectedCustomer] = useState<LocalCustomer | null>(null);
+  const [tenantMarketing, setTenantMarketing] = useState<TenantMarketing | null>(null);
+  const [channel, setChannel] = useState<SalesChannel>('walk_in');
+  const [redeemPoints, setRedeemPoints] = useState(false);
+  const [promoInput, setPromoInput] = useState('');
+  const [promoRule, setPromoRule] = useState<PromoRule | null>(null);
+  const [promoNotFound, setPromoNotFound] = useState(false);
+  const [promoLoading, setPromoLoading] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
   const [heldSales, setHeldSales] = useState<HeldSale[]>([]);
@@ -161,6 +189,7 @@ export function SellScreen({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCart([]);
     setSelectedCustomer(null);
+    setRedeemPoints(false);
     setQuery('');
   }, [storeId]);
 
@@ -186,7 +215,18 @@ export function SellScreen({
         shiftsRequired: tenant.shiftsRequired !== false,
         enforceDiscountCaps: tenant.enforceDiscountCaps !== false,
       });
-      setTenantInfo({ name: tenant.name, receiptHeader: tenant.receiptHeader ?? null, receiptFooter: tenant.receiptFooter ?? null });
+      setTenantInfo({
+        name: tenant.name,
+        receiptHeader: tenant.receiptHeader ?? null,
+        // WhatsApp / socials / review link appended under the footer.
+        receiptFooter: receiptFooterWithMarketing(tenant.receiptFooter, tenant),
+      });
+      const rawPointValue = Number(tenant.loyaltyPointValue ?? 1);
+      setTenantMarketing({
+        addons: Array.isArray(tenant.addons) ? tenant.addons : null,
+        billingStatus: tenant.billingStatus ?? null,
+        loyaltyPointValue: Number.isFinite(rawPointValue) && rawPointValue > 0 ? rawPointValue : 0,
+      });
     }
     if (storeId != null) {
       const res = await fetch(
@@ -330,7 +370,80 @@ export function SellScreen({
       })),
     [cart],
   );
-  const totals = useMemo(() => computeOrderTotals(lineInputs), [lineInputs]);
+  const sellOnline = hasAddon(tenantMarketing, 'sell_online');
+  const pointValue = tenantMarketing?.loyaltyPointValue ?? 1;
+  const availablePoints = selectedCustomer?.loyaltyPoints ?? 0;
+  const canRedeem = selectedCustomer != null && availablePoints > 0 && pointValue > 0;
+
+  // Order-level discounts, previewed locally with the exact same shared
+  // functions Orders.ts's beforeChange uses (the server recomputes and is
+  // authoritative - only the code text and points count are sent). With no
+  // promo and no redemption this is identical to computeOrderTotals.
+  const baseSubtotal = useMemo(() => computeCheckoutTotals(lineInputs).subtotal, [lineInputs]);
+  const promoEvaluation = useMemo(
+    () => (sellOnline && promoRule ? evaluatePromo(promoRule, baseSubtotal) : null),
+    [sellOnline, promoRule, baseSubtotal],
+  );
+  const promoDiscount = promoEvaluation?.ok ? promoEvaluation.discount : 0;
+  const loyaltyRedemption = useMemo(
+    () =>
+      redeemPoints && canRedeem
+        ? resolveLoyaltyRedemption({ requestedPoints: availablePoints, availablePoints, pointValue, payable: baseSubtotal - promoDiscount })
+        : { points: 0, discount: 0 },
+    [redeemPoints, canRedeem, availablePoints, pointValue, baseSubtotal, promoDiscount],
+  );
+  const totals = useMemo(
+    () => computeCheckoutTotals(lineInputs, { promoDiscount, loyaltyDiscount: loyaltyRedemption.discount }),
+    [lineInputs, promoDiscount, loyaltyRedemption.discount],
+  );
+  // What redeeming everything would be worth on this bill, for the toggle's label.
+  const loyaltyPreview = useMemo(
+    () =>
+      canRedeem
+        ? resolveLoyaltyRedemption({ requestedPoints: availablePoints, availablePoints, pointValue, payable: baseSubtotal - promoDiscount })
+        : { points: 0, discount: 0 },
+    [canRedeem, availablePoints, pointValue, baseSubtotal, promoDiscount],
+  );
+
+  function handleCustomerChange(customer: LocalCustomer | null) {
+    setSelectedCustomer(customer);
+    setRedeemPoints(false);
+  }
+
+  function clearPromo() {
+    setPromoInput('');
+    setPromoRule(null);
+    setPromoNotFound(false);
+  }
+
+  async function applyPromo() {
+    const code = normalizePromoCode(promoInput);
+    if (!code) return;
+    setPromoLoading(true);
+    setPromoNotFound(false);
+    try {
+      const res = await apiFetch(`${API_BASE_URL}/api/promo-codes?where[code][equals]=${encodeURIComponent(code)}&limit=1&depth=0`, {
+        headers: { Authorization: `JWT ${payloadToken}` },
+      });
+      const body = res.ok ? await res.json().catch(() => null) : null;
+      if (!res.ok) {
+        showAlert('Could not check promo code', `Request failed (HTTP ${res.status})`);
+        return;
+      }
+      const doc = (body?.docs ?? [])[0] as PromoRule | undefined;
+      if (!doc) {
+        setPromoRule(null);
+        setPromoNotFound(true);
+        return;
+      }
+      setPromoRule(doc);
+      setPromoInput(code);
+    } catch (err) {
+      showAlert('Could not check promo code', err instanceof Error ? err.message : String(err));
+    } finally {
+      setPromoLoading(false);
+    }
+  }
 
   // Variants for whichever product the picker currently has open - looked
   // up from the already-fetched catalog (which already carries each
@@ -411,7 +524,12 @@ export function SellScreen({
     if (cart.length === 0) return;
     await holdSale(JSON.stringify(cart));
     setCart([]);
+    // Promo, channel, customer and redemption belong to this basket only -
+    // held sales store just the cart, so none of them leak into the next sale.
     setSelectedCustomer(null);
+    setRedeemPoints(false);
+    setChannel('walk_in');
+    clearPromo();
     await refreshHeldSales();
     setCartOpen(false);
   }
@@ -449,6 +567,10 @@ export function SellScreen({
     setCompleting(true);
     const orderId = uuid();
     const paymentStatus = tenderType === 'credit' ? 'pending' : 'paid';
+    // Only sent while the local preview says the code applies - the server
+    // re-evaluates it anyway and rejects (errors[0].message) if it doesn't.
+    const promoCodeText = promoEvaluation?.ok && promoRule ? normalizePromoCode(promoRule.code) : null;
+    const loyaltyPointsRedeemed = loyaltyRedemption.points;
     const body = {
       id: orderId,
       tenant: tenantId,
@@ -471,6 +593,9 @@ export function SellScreen({
       paymentStatus,
       status: 'completed',
       createdOffline: false,
+      channel,
+      ...(promoCodeText ? { promoCodeText } : {}),
+      ...(loyaltyPointsRedeemed > 0 ? { loyaltyPointsRedeemed } : {}),
     };
 
     try {
@@ -507,6 +632,10 @@ export function SellScreen({
         taxTotal: totals.taxTotal,
         total: totals.total,
         tenderType,
+        discounts: [
+          ...(totals.promoDiscount > 0 && promoCodeText ? [{ label: `Promo ${promoCodeText}`, amount: totals.promoDiscount }] : []),
+          ...(totals.loyaltyDiscount > 0 ? [{ label: `Loyalty (${loyaltyPointsRedeemed} pts)`, amount: totals.loyaltyDiscount }] : []),
+        ],
         header: tenantInfo?.receiptHeader ?? null,
         footer: tenantInfo?.receiptFooter ?? null,
         unpaidNotice: tenderType === 'credit' ? 'UNPAID - PAY LATER' : null,
@@ -514,6 +643,9 @@ export function SellScreen({
 
       setCart([]);
       setSelectedCustomer(null);
+      setRedeemPoints(false);
+      setChannel('walk_in');
+      clearPromo();
       setCartOpen(false);
       refresh();
     } catch (err) {
@@ -690,7 +822,9 @@ export function SellScreen({
                 // itself a definite size, so a flex-grow (or unsized) child
                 // here is the same ambiguous Yoga case that can measure to
                 // zero height and render nothing.
-                style={{ maxHeight: 240 }}
+                // flexShrink lets the list give up height (it scrolls) when
+                // the checkout options below need room on a short screen.
+                style={{ maxHeight: 240, flexShrink: 1 }}
                 contentContainerClassName="gap-2 p-4"
                 data={cart}
                 keyExtractor={(l) => lineKey(l)}
@@ -735,7 +869,15 @@ export function SellScreen({
               />
             )}
 
-            <View className="gap-3 border-t border-border p-4">
+            {/* Totals + checkout options scroll (and shrink) on short screens;
+                Complete / Hold stay pinned below, always visible. */}
+            <ScrollView
+              style={{ flexShrink: 1 }}
+              className="border-t border-border"
+              contentContainerClassName="gap-3 p-4"
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+            >
               <View className="gap-1">
                 <View className="flex-row justify-between">
                   <Text className="text-muted-foreground">Tax</Text>
@@ -745,6 +887,18 @@ export function SellScreen({
                   <View className="flex-row justify-between">
                     <Text className="text-muted-foreground">Discount</Text>
                     <Text className="text-foreground">-{totals.discountTotal.toFixed(2)}</Text>
+                  </View>
+                ) : null}
+                {totals.promoDiscount > 0 ? (
+                  <View className="flex-row justify-between pl-3">
+                    <Text className="text-xs text-muted-foreground">incl. promo {promoRule?.code ?? ''}</Text>
+                    <Text className="text-xs text-muted-foreground">-{totals.promoDiscount.toFixed(2)}</Text>
+                  </View>
+                ) : null}
+                {totals.loyaltyDiscount > 0 ? (
+                  <View className="flex-row justify-between pl-3">
+                    <Text className="text-xs text-muted-foreground">incl. loyalty ({loyaltyRedemption.points} pts)</Text>
+                    <Text className="text-xs text-muted-foreground">-{totals.loyaltyDiscount.toFixed(2)}</Text>
                   </View>
                 ) : null}
                 <View className="flex-row justify-between">
@@ -765,10 +919,87 @@ export function SellScreen({
                 ))}
               </View>
 
-              {tenderType === 'credit' ? (
-                <CustomerPicker payloadToken={payloadToken} tenantId={tenantId} value={selectedCustomer} onChange={setSelectedCustomer} />
+              <View className="flex-row items-center gap-2">
+                <Text className="text-xs text-muted-foreground">Sale from</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerClassName="gap-1.5">
+                  {SALES_CHANNELS.map((value) => (
+                    <Pressable
+                      android_ripple={{}}
+                      key={value}
+                      className={`rounded-full border px-3 py-1 ${channel === value ? 'border-primary bg-primary' : 'border-border'}`}
+                      onPress={() => setChannel(value)}
+                    >
+                      <Text className={channel === value ? 'text-xs font-medium text-primary-foreground' : 'text-xs text-foreground'}>
+                        {SALES_CHANNEL_LABELS[value]}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Optional for every tender (earns/redeems loyalty points),
+                  still required for credit - see checkoutDisabled below. */}
+              <CustomerPicker payloadToken={payloadToken} tenantId={tenantId} value={selectedCustomer} onChange={handleCustomerChange} />
+
+              {canRedeem && loyaltyPreview.points > 0 ? (
+                <Pressable
+                  android_ripple={{}}
+                  className={`flex-row items-center justify-between rounded-lg border px-3 py-2 ${redeemPoints ? 'border-primary' : 'border-border'}`}
+                  onPress={() => setRedeemPoints((on) => !on)}
+                >
+                  <Text className="text-sm text-foreground">
+                    Redeem points: use {loyaltyPreview.points} pts = KES {loyaltyPreview.discount.toFixed(2)}
+                  </Text>
+                  <Ionicons name={redeemPoints ? 'checkbox' : 'square-outline'} size={20} color={redeemPoints ? '#df5102' : '#71717a'} />
+                </Pressable>
               ) : null}
 
+              {sellOnline ? (
+                <View className="gap-1">
+                  <View className="flex-row items-center gap-2">
+                    <TextInput
+                      className="h-9 flex-1 rounded-md border border-border bg-card px-3 text-sm text-foreground"
+                      placeholder="Promo code"
+                      placeholderTextColor={placeholderColor}
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      editable={!promoRule}
+                      value={promoInput}
+                      onChangeText={(text) => {
+                        setPromoInput(text);
+                        setPromoNotFound(false);
+                      }}
+                    />
+                    {promoRule ? (
+                      <Pressable android_ripple={{}} className="h-9 justify-center rounded-md border border-border px-3 active:opacity-70" onPress={clearPromo}>
+                        <Text className="text-sm text-foreground">Remove</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable
+                        android_ripple={{}}
+                        className={`h-9 justify-center rounded-md border border-border px-3 ${promoLoading || !promoInput.trim() ? 'opacity-50' : 'active:opacity-70'}`}
+                        disabled={promoLoading || !promoInput.trim()}
+                        onPress={applyPromo}
+                      >
+                        <Text className="text-sm text-foreground">{promoLoading ? 'Checking...' : 'Apply'}</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                  {promoNotFound ? <Text className="text-xs text-destructive">Code not found</Text> : null}
+                  {promoEvaluation ? (
+                    promoEvaluation.ok ? (
+                      <Text className="text-xs text-primary">
+                        {promoRule?.code} applied: -{promoEvaluation.discount.toFixed(2)}
+                      </Text>
+                    ) : (
+                      <Text className="text-xs text-destructive">{promoEvaluation.reason}</Text>
+                    )
+                  ) : null}
+                </View>
+              ) : null}
+            </ScrollView>
+
+            <View className="gap-2 border-t border-border px-4 pb-4 pt-3">
               <Pressable android_ripple={{ color: '#ffffff40' }}
                 className={`items-center rounded-lg bg-primary py-3 ${checkoutDisabled ? 'opacity-50' : 'active:opacity-80'}`}
                 disabled={checkoutDisabled}
