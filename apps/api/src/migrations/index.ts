@@ -21,6 +21,7 @@ import * as migration_20260922_105821_add_stock_report_indexes from './20260922_
 import * as migration_20260923_165015_make_platform_audit_log_tenant_nullable from './20260923_165015_make_platform_audit_log_tenant_nullable';
 import * as migration_20261005_091612_sell_online_addon from './20261005_091612_sell_online_addon';
 import * as migration_20261005_115009_storefront_delivery from './20261005_115009_storefront_delivery';
+import * as migration_20261005_131142_platform_billing from './20261005_131142_platform_billing';
 
 export const migrations = [
   {
@@ -136,6 +137,11 @@ export const migrations = [
   {
     up: migration_20261005_115009_storefront_delivery.up,
     down: migration_20261005_115009_storefront_delivery.down,
-    name: '20261005_115009_storefront_delivery'
+    name: '20261005_115009_storefront_delivery',
+  },
+  {
+    up: migration_20261005_131142_platform_billing.up,
+    down: migration_20261005_131142_platform_billing.down,
+    name: '20261005_131142_platform_billing'
   },
 ];

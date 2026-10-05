@@ -30,7 +30,7 @@ export const PlatformAuditLog: CollectionConfig = {
       name: 'action',
       type: 'select',
       required: true,
-      options: ['tenant_suspended', 'tenant_reactivated', 'tenant_soft_deleted', 'tenant_restored', 'subscription_changed', 'addon_changed'],
+      options: ['tenant_suspended', 'tenant_reactivated', 'tenant_soft_deleted', 'tenant_restored', 'subscription_changed', 'addon_changed', 'payment_recorded', 'payment_deleted', 'billing_updated'],
     },
     { name: 'summary', type: 'text', required: true },
     { name: 'metadata', type: 'json' },

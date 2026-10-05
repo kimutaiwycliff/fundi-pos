@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { ADDON_LABELS, ADDONS, type Addon } from '@hardware-pos/business-logic';
 import {
@@ -65,7 +64,7 @@ export function TenantStatusActions({ tenantId, status, name }: { tenantId: numb
       return;
     }
     toast.success(`${name} permanently deleted`);
-    router.push('/platform');
+    router.push('/platform/tenants');
   }
 
   return (
@@ -222,82 +221,6 @@ export function TenantAddonsForm({ tenantId, addons }: { tenantId: number; addon
           />
         </div>
       ))}
-    </div>
-  );
-}
-
-const SUBSCRIPTION_TIERS = ['trial', 'starter', 'growth', 'enterprise'];
-const BILLING_STATUSES = ['active', 'trialing', 'past_due', 'canceled'];
-
-export function TenantSubscriptionForm({
-  tenantId,
-  subscriptionTier,
-  billingStatus,
-}: {
-  tenantId: number;
-  subscriptionTier: string;
-  billingStatus: string;
-}) {
-  const router = useRouter();
-  const [tier, setTier] = useState(subscriptionTier);
-  const [billing, setBilling] = useState(billingStatus);
-  const [saving, setSaving] = useState(false);
-
-  const dirty = tier !== subscriptionTier || billing !== billingStatus;
-
-  async function handleSave() {
-    setSaving(true);
-    const response = await fetch(`/api/platform/tenants/${tenantId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscriptionTier: tier, billingStatus: billing }),
-    });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      toast.error(body?.errors?.[0]?.message ?? 'Failed to update subscription');
-      setSaving(false);
-      return;
-    }
-    toast.success('Subscription updated');
-    setSaving(false);
-    router.refresh();
-  }
-
-  return (
-    <div className="flex flex-wrap items-end gap-3">
-      <div className="flex flex-col gap-2">
-        <Label>Subscription tier</Label>
-        <Select value={tier} onValueChange={setTier}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SUBSCRIPTION_TIERS.map((option) => (
-              <SelectItem key={option} value={option} className="capitalize">
-                {option}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label>Billing status</Label>
-        <Select value={billing} onValueChange={setBilling}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {BILLING_STATUSES.map((option) => (
-              <SelectItem key={option} value={option} className="capitalize">
-                {option.replace('_', ' ')}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <Button onClick={handleSave} disabled={!dirty || saving}>
-        {saving ? 'Saving…' : 'Save'}
-      </Button>
     </div>
   );
 }

@@ -58,8 +58,8 @@ function PausedShop({ shop }: { shop: StorefrontShop }) {
   return (
     <ShopShell>
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center px-4 py-20 text-center">
-        <p className="text-sm text-(--sf-muted)">{shop.name}</p>
-        <h1 className="mt-3 text-3xl font-light">This shop is taking a short break</h1>
+        <p className="max-w-full text-sm break-words text-(--sf-muted)">{shop.name}</p>
+        <h1 className="mt-3 text-[clamp(1.75rem,8vw,1.875rem)] leading-tight font-light text-balance">This shop is taking a short break</h1>
         <p className="mt-3 text-[15px] text-(--sf-muted)">
           {orderLink
             ? "Our online catalogue is resting for now, but we're still taking orders. WhatsApp us and we'll help you right away."
@@ -113,8 +113,8 @@ export default async function ShopPage({ params }: { params: Params }) {
       <ShopTopBar shop={shop} products={data.products} />
 
       {/* The one bold move: the shop's name, set large, light and open. */}
-      <section className="mx-auto w-full max-w-6xl px-4 pt-12 pb-8 sm:pt-20 sm:pb-12">
-        <h1 className="text-[clamp(2.6rem,11vw,6.5rem)] leading-[0.95] font-light tracking-[0.04em] break-words">{shop.name}</h1>
+      <section className="mx-auto w-full max-w-6xl px-4 pt-10 pb-8 sm:pt-16 md:pt-20 md:pb-12">
+        <h1 className="text-[clamp(2.25rem,11vw,6.5rem)] leading-[0.95] font-light tracking-[0.04em] break-words hyphens-auto">{shop.name}</h1>
         <div className="mt-5 flex flex-col gap-1 text-[15px] text-(--sf-muted) sm:flex-row sm:items-baseline sm:gap-4">
           {shop.tagline ? <p className="text-(--sf-ink)">{shop.tagline}</p> : null}
           {shop.seo?.city ? <p>{shop.seo.city}</p> : null}

@@ -1,7 +1,18 @@
-import type { CollectionConfig } from 'payload';
+import type { CollectionConfig, FieldAccess } from 'payload';
 import { APIError } from 'payload';
-import { ADDON_LABELS, ADDONS, normalizeKenyanPhone, normalizeShopSlug, parseCutoff, type Addon } from '@hardware-pos/business-logic';
+import {
+  ADDON_LABELS,
+  ADDONS,
+  BILLING_CYCLES,
+  normalizeKenyanPhone,
+  normalizeShopSlug,
+  parseCutoff,
+  TRIAL_DAYS,
+  type Addon,
+} from '@hardware-pos/business-logic';
 import { toID } from '../lib/relations.ts';
+
+const platformAdminOnly: FieldAccess = ({ req }) => req.user?.collection === 'platform-admins';
 
 function sameAddons(a: unknown, b: unknown): boolean {
   const left = [...((a as string[] | null) ?? [])].sort().join(',');
@@ -95,6 +106,36 @@ export const Tenants: CollectionConfig = {
       access: { update: ({ req }) => req.user?.collection === 'platform-admins' },
     },
     { name: 'addonsChangedAt', type: 'date', admin: { readOnly: true } },
+    // Platform billing (the SaaS operator tracking what each tenant pays) -
+    // platform-admin-only to change. paidUntil is maintained by
+    // SubscriptionPayments (recording a payment extends it); the /platform
+    // UI turns these into paid / due soon / overdue via business-logic's
+    // subscriptionState().
+    {
+      name: 'billingCycle',
+      type: 'select',
+      defaultValue: 'monthly',
+      options: [...BILLING_CYCLES],
+      access: { update: platformAdminOnly },
+    },
+    {
+      name: 'planPrice',
+      type: 'number',
+      min: 0,
+      access: { update: platformAdminOnly },
+      admin: { description: 'KES per billing cycle (negotiated price). Empty = list price for the tier.' },
+    },
+    { name: 'paidUntil', type: 'date', access: { update: platformAdminOnly } },
+    { name: 'trialEndsAt', type: 'date', access: { update: platformAdminOnly } },
+    { name: 'billingContactName', type: 'text', access: { update: platformAdminOnly } },
+    { name: 'billingContactPhone', type: 'text', access: { update: platformAdminOnly } },
+    { name: 'billingContactEmail', type: 'email', access: { update: platformAdminOnly } },
+    {
+      // Internal only - never shown to (or readable by) the tenant.
+      name: 'platformNotes',
+      type: 'textarea',
+      access: { read: platformAdminOnly, update: platformAdminOnly },
+    },
     {
       // Printed on every receipt, above the line items - typically a
       // physical address/phone/KRA PIN, since `name` alone is already the
@@ -198,6 +239,10 @@ export const Tenants: CollectionConfig = {
   hooks: {
     beforeChange: [
       ({ data, originalDoc, operation }) => {
+        // Every new tenant starts a 14-day trial clock (signup or admin-created).
+        if (operation === 'create' && !data.trialEndsAt) {
+          data.trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+        }
         if (operation === 'update' && data.status && originalDoc && data.status !== originalDoc.status) {
           data.statusChangedAt = new Date().toISOString();
         }
@@ -244,6 +289,8 @@ export const Tenants: CollectionConfig = {
       // platform actions - never for a tenant owner's own Settings edits.
       async ({ doc, previousDoc, operation, req }) => {
         if (operation !== 'update' || !previousDoc || req.user?.collection !== 'platform-admins') return doc;
+        // SubscriptionPayments' paidUntil bookkeeping logs its own entry.
+        if (req.context?.skipPlatformAudit) return doc;
 
         const statusChanged = doc.status !== previousDoc.status;
         const subscriptionChanged = doc.subscriptionTier !== previousDoc.subscriptionTier || doc.billingStatus !== previousDoc.billingStatus;
@@ -264,6 +311,37 @@ export const Tenants: CollectionConfig = {
               action: 'addon_changed',
               summary: `${doc.name}: ${parts.filter(Boolean).join('; ')}`,
               metadata: { enabled, disabled },
+            },
+            req,
+          });
+        }
+        // Billing details edited by hand on /platform (price, cycle, dates,
+        // contact, notes) - field names only, never the notes' content.
+        const BILLING_FIELDS: Record<string, string> = {
+          planPrice: 'price',
+          billingCycle: 'billing cycle',
+          trialEndsAt: 'trial end',
+          paidUntil: 'paid until',
+          billingContactName: 'billing contact name',
+          billingContactPhone: 'billing contact phone',
+          billingContactEmail: 'billing contact email',
+          platformNotes: 'internal notes',
+        };
+        const changedBilling = Object.keys(BILLING_FIELDS).filter((key) => (doc[key] ?? null) !== (previousDoc[key] ?? null));
+        if (changedBilling.length > 0) {
+          await req.payload.create({
+            collection: 'platform-audit-log',
+            overrideAccess: true,
+            data: {
+              tenant: Number(doc.id),
+              actor: Number(req.user.id),
+              action: 'billing_updated',
+              summary: `${doc.name}: updated ${changedBilling.map((k) => BILLING_FIELDS[k]).join(', ')}`,
+              metadata: Object.fromEntries(
+                changedBilling
+                  .filter((k) => k !== 'platformNotes')
+                  .map((k) => [k, { from: previousDoc[k] ?? null, to: doc[k] ?? null }]),
+              ),
             },
             req,
           });

@@ -7,7 +7,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -169,4 +169,88 @@
 }
 .prose-content strong {
   @apply text-foreground font-semibold;
+}
+/* ---------------------------------------------------------------------
+   Public storefront (/shop/*) palette. Scoped to .sf-root (ShopShell) so
+   it never touches the dashboard's shadcn tokens. Follows the visitor's
+   system setting by default; an explicit choice from the shop's theme
+   toggle sets data-sf-theme="light|dark" on <html> (inline script in
+   app/shop/layout.tsx, before first paint) and wins over the system.
+   --------------------------------------------------------------------- */
+.sf-root {
+  --sf-bg: #ffffff; /* page */
+  --sf-surface: #ffffff; /* drawers, selects, badges */
+  --sf-shell: #f4f2f8; /* image wells, panels, footer */
+  --sf-line: #e4e1ec; /* hairlines */
+  --sf-ink: #1c2541; /* text, primary buttons */
+  --sf-on-ink: #ffffff; /* text on ink-filled buttons */
+  --sf-muted: #5e6378; /* secondary text */
+  --sf-faint: #b6b1c6; /* decorative placeholder initial */
+  --sf-petal: #bc4a62; /* wishlist heart, "only a few left" */
+  --sf-on-petal: #ffffff;
+  --sf-wa: #0f8048; /* WhatsApp fills (white text) */
+  --sf-wa-hover: #0b6b3b;
+  --sf-wa-text: #0f8048; /* WhatsApp-green text/dots on the page bg */
+  color-scheme: light;
+  background-color: var(--sf-bg);
+  color: var(--sf-ink);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-sf-theme="light"]) .sf-root {
+    --sf-bg: #0f1424;
+    --sf-surface: #161c30;
+    --sf-shell: #1c2338;
+    --sf-line: #2a3250;
+    --sf-ink: #e8eaf4;
+    --sf-on-ink: #0f1424;
+    --sf-muted: #a3a8bf;
+    --sf-faint: #4a5274;
+    --sf-petal: #f08fa2;
+    --sf-on-petal: #0f1424;
+    --sf-wa: #0f8048;
+    --sf-wa-hover: #0b6b3b;
+    --sf-wa-text: #3dc27e;
+    color-scheme: dark;
+  }
+}
+:root[data-sf-theme="dark"] .sf-root {
+  --sf-bg: #0f1424;
+  --sf-surface: #161c30;
+  --sf-shell: #1c2338;
+  --sf-line: #2a3250;
+  --sf-ink: #e8eaf4;
+  --sf-on-ink: #0f1424;
+  --sf-muted: #a3a8bf;
+  --sf-faint: #4a5274;
+  --sf-petal: #f08fa2;
+  --sf-on-petal: #0f1424;
+  --sf-wa: #0f8048;
+  --sf-wa-hover: #0b6b3b;
+  --sf-wa-text: #3dc27e;
+  color-scheme: dark;
+}
+/* Native <option> lists don't inherit from the select in every browser. */
+.sf-root option {
+  background-color: var(--sf-surface);
+  color: var(--sf-ink);
+}
+/* Page canvas + scrollbars while a shop page is mounted (overscroll, the
+   strip behind the mobile URL bar). !important beats the inline
+   color-scheme next-themes puts on <html> for the dashboard theme. */
+html:has(.sf-root) {
+  color-scheme: light !important;
+  background-color: #ffffff;
+}
+html:has(.sf-root) > body {
+  background-color: transparent;
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-sf-theme="light"]):has(.sf-root) {
+    color-scheme: dark !important;
+    background-color: #0f1424;
+  }
+}
+html[data-sf-theme="dark"]:has(.sf-root) {
+  color-scheme: dark !important;
+  background-color: #0f1424;
 }

@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import type { Availability } from './storefront-data';
@@ -6,29 +6,17 @@ import type { Availability } from './storefront-data';
 // Server-safe storefront building blocks. Interactive pieces (bag,
 // wishlist, search) live in shop-client.tsx.
 //
-// Palette - fixed light, whatever the visitor's dark-mode setting, since
-// this is the shop's own brand surface:
-//   ink    #1C2541  deep navy - text, primary buttons
-//   muted  #5E6378  secondary text
-//   shell  #F4F2F8  soft lilac-grey - image wells, panels
-//   line   #E4E1EC  hairlines
-//   petal  #D9768A  wishlist heart, "only a few left"
-//   wa     #128C4F  WhatsApp actions only
-const THEME = {
-  '--sf-ink': '#1C2541',
-  '--sf-muted': '#5E6378',
-  '--sf-shell': '#F4F2F8',
-  '--sf-line': '#E4E1EC',
-  '--sf-petal': '#D9768A',
-  '--sf-wa': '#128C4F',
-} as CSSProperties;
-
+// Palette: CSS custom properties on .sf-root (app/globals.css), with a
+// light and a dark set - dark follows the visitor's system setting unless
+// they pick one with the header toggle (ShopThemeToggle):
+//   bg / surface   page / drawers, selects, badges
+//   ink / on-ink   text + primary buttons / text on those buttons
+//   muted, faint   secondary text, decorative placeholder initial
+//   shell, line    image wells + panels, hairlines
+//   petal          wishlist heart, "only a few left"
+//   wa / wa-text   WhatsApp fills (white text) / WhatsApp-green on the page
 export function ShopShell({ children }: { children: ReactNode }) {
-  return (
-    <div style={THEME} className="flex min-h-full flex-1 flex-col overflow-x-hidden bg-white text-(--sf-ink) antialiased">
-      {children}
-    </div>
-  );
+  return <div className="sf-root flex min-h-full flex-1 flex-col overflow-x-clip antialiased">{children}</div>;
 }
 
 export function WhatsAppIcon({ className }: { className?: string }) {
@@ -63,7 +51,7 @@ export function WhatsAppOrderButton({
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-full bg-(--sf-wa) font-medium text-white transition-colors hover:bg-[#0f7742] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--sf-wa)',
+        'inline-flex items-center justify-center gap-2 rounded-full bg-(--sf-wa) font-medium text-white transition-colors hover:bg-(--sf-wa-hover) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--sf-wa)',
         BUTTON_SIZES[size],
         className,
       )}
@@ -80,7 +68,7 @@ export function AvailabilityBadge({ availability, className }: { availability: A
     <span
       className={cn(
         'inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium',
-        availability === 'low' ? 'bg-white/95 text-(--sf-petal)' : 'bg-white/95 text-(--sf-muted)',
+        availability === 'low' ? 'bg-(--sf-surface)/95 text-(--sf-petal)' : 'bg-(--sf-surface)/95 text-(--sf-muted)',
         className,
       )}
     >
@@ -94,7 +82,7 @@ export function ImagePlaceholder({ name, className }: { name: string; className?
   return (
     <div
       aria-hidden
-      className={cn('flex h-full w-full items-center justify-center bg-(--sf-shell) text-5xl font-light text-[#B6B1C6]', className)}
+      className={cn('flex h-full w-full items-center justify-center bg-(--sf-shell) text-5xl font-light text-(--sf-faint)', className)}
     >
       {initial}
     </div>
@@ -105,7 +93,7 @@ export function ImagePlaceholder({ name, className }: { name: string; className?
 export function OrderingSteps() {
   const steps = ['Add pieces to your bag', 'Send the bag to us on WhatsApp', 'We confirm delivery and payment'];
   return (
-    <ol className="grid gap-3 text-sm text-(--sf-muted) sm:grid-cols-3">
+    <ol className="grid gap-3 text-sm text-(--sf-muted) md:grid-cols-3">
       {steps.map((step, i) => (
         <li key={step} className="flex items-center gap-3">
           <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-(--sf-line) text-xs font-medium text-(--sf-ink)">
@@ -122,13 +110,13 @@ export function ShopFooter({ shopName, socialHandles }: { shopName?: string; soc
   return (
     <footer className="mt-auto border-t border-(--sf-line) bg-(--sf-shell)">
       <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-8 text-sm text-(--sf-muted) sm:flex-row sm:items-center sm:justify-between">
-        <p>
+        <p className="min-w-0 break-words">
           {shopName ? <span className="font-medium text-(--sf-ink)">{shopName}</span> : null}
-          {socialHandles ? <span className="ml-2 break-words">{socialHandles}</span> : null}
+          {socialHandles ? <span className="ml-2">{socialHandles}</span> : null}
         </p>
         <p className="text-xs">
           Shop powered by{' '}
-          <Link href="/" className="underline-offset-4 hover:underline">
+          <Link href="/" className="text-(--sf-ink) underline-offset-4 hover:underline">
             Fundi POS
           </Link>
         </p>

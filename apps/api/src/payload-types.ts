@@ -84,6 +84,7 @@ export interface Config {
     'stock-transfers': StockTransfer;
     customers: Customer;
     'promo-codes': PromoCode;
+    'subscription-payments': SubscriptionPayment;
     'sync-log': SyncLog;
     shifts: Shift;
     'audit-log': AuditLog;
@@ -113,6 +114,7 @@ export interface Config {
     'stock-transfers': StockTransfersSelect<false> | StockTransfersSelect<true>;
     customers: CustomersSelect<false> | CustomersSelect<true>;
     'promo-codes': PromoCodesSelect<false> | PromoCodesSelect<true>;
+    'subscription-payments': SubscriptionPaymentsSelect<false> | SubscriptionPaymentsSelect<true>;
     'sync-log': SyncLogSelect<false> | SyncLogSelect<true>;
     shifts: ShiftsSelect<false> | ShiftsSelect<true>;
     'audit-log': AuditLogSelect<false> | AuditLogSelect<true>;
@@ -222,6 +224,17 @@ export interface Tenant {
   billingStatus: 'active' | 'trialing' | 'past_due' | 'canceled';
   addons?: 'sell_online'[] | null;
   addonsChangedAt?: string | null;
+  billingCycle?: ('monthly' | 'quarterly' | 'annual') | null;
+  /**
+   * KES per billing cycle (negotiated price). Empty = list price for the tier.
+   */
+  planPrice?: number | null;
+  paidUntil?: string | null;
+  trialEndsAt?: string | null;
+  billingContactName?: string | null;
+  billingContactPhone?: string | null;
+  billingContactEmail?: string | null;
+  platformNotes?: string | null;
   /**
    * Printed at the top of every receipt, below the business name (e.g. address, phone).
    */
@@ -714,6 +727,27 @@ export interface StockTransfer {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "subscription-payments".
+ */
+export interface SubscriptionPayment {
+  id: number;
+  tenant: number | Tenant;
+  amount: number;
+  method: 'mpesa' | 'bank' | 'card' | 'cash' | 'other';
+  /**
+   * e.g. the M-Pesa code (QJK7XXXX).
+   */
+  reference?: string | null;
+  paidAt: string;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  note?: string | null;
+  recordedBy?: (number | null) | PlatformAdmin;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "sync-log".
  */
 export interface SyncLog {
@@ -802,7 +836,10 @@ export interface PlatformAuditLog {
     | 'tenant_soft_deleted'
     | 'tenant_restored'
     | 'subscription_changed'
-    | 'addon_changed';
+    | 'addon_changed'
+    | 'payment_recorded'
+    | 'payment_deleted'
+    | 'billing_updated';
   summary: string;
   metadata?:
     | {
@@ -974,6 +1011,10 @@ export interface PayloadLockedDocument {
         value: number | PromoCode;
       } | null)
     | ({
+        relationTo: 'subscription-payments';
+        value: number | SubscriptionPayment;
+      } | null)
+    | ({
         relationTo: 'sync-log';
         value: number | SyncLog;
       } | null)
@@ -1085,6 +1126,14 @@ export interface TenantsSelect<T extends boolean = true> {
   billingStatus?: T;
   addons?: T;
   addonsChangedAt?: T;
+  billingCycle?: T;
+  planPrice?: T;
+  paidUntil?: T;
+  trialEndsAt?: T;
+  billingContactName?: T;
+  billingContactPhone?: T;
+  billingContactEmail?: T;
+  platformNotes?: T;
   receiptHeader?: T;
   receiptFooter?: T;
   shiftsRequired?: T;
@@ -1433,6 +1482,23 @@ export interface PromoCodesSelect<T extends boolean = true> {
   active?: T;
   referrerCustomer?: T;
   referrerRewardPoints?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "subscription-payments_select".
+ */
+export interface SubscriptionPaymentsSelect<T extends boolean = true> {
+  tenant?: T;
+  amount?: T;
+  method?: T;
+  reference?: T;
+  paidAt?: T;
+  periodStart?: T;
+  periodEnd?: T;
+  note?: T;
+  recordedBy?: T;
   updatedAt?: T;
   createdAt?: T;
 }

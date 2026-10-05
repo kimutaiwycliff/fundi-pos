@@ -121,12 +121,14 @@ export default async function ShopProductPage({ params }: { params: Params }) {
     <ShopShell>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdString(jsonLd) }} />
       <ShopTopBar shop={shop} products={data.products} back />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-16 sm:pt-10">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-0 pb-16 sm:pt-6 md:pt-10">
         <ProductDetail shop={shop} product={product} />
         <RelatedProducts shop={shop} products={relatedFor(product, data.products)} />
         <RecentlyViewed shop={shop} products={data.products} excludeId={product.id} />
       </main>
       <ShopFooter shopName={shop.name} socialHandles={shop.socialHandles} />
+      {/* Room under the footer for ProductDetail's pinned add-to-bag bar on phones. */}
+      <div aria-hidden className="h-[calc(4.5rem+env(safe-area-inset-bottom))] shrink-0 bg-(--sf-shell) md:hidden" />
     </ShopShell>
   );
 }

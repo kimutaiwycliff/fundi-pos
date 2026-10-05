@@ -26,6 +26,7 @@ import { PlatformAuditLog } from './collections/PlatformAuditLog.ts';
 import { Posts } from './collections/Posts.ts';
 import { PostImages } from './collections/PostImages.ts';
 import { PromoCodes } from './collections/PromoCodes.ts';
+import { SubscriptionPayments } from './collections/SubscriptionPayments.ts';
 
 const filename = fileURLToPath(import.meta.url);
 const dirname = path.dirname(filename);
@@ -58,6 +59,7 @@ export default buildConfig({
     StockTransfers,
     Customers,
     PromoCodes,
+    SubscriptionPayments,
     SyncLog,
     Shifts,
     AuditLog,
