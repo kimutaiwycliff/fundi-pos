@@ -15,7 +15,7 @@ import {
   type StorefrontShop,
 } from '@/components/storefront/storefront-data';
 import { OrderingSteps, ShopFooter, ShopShell, WhatsAppOrderButton } from '@/components/storefront/storefront-ui';
-import { Catalog, RecentlyViewed, ShopTopBar } from '@/components/storefront/shop-client';
+import { Catalog, DeliveryPromise, RecentlyViewed, ShopTopBar } from '@/components/storefront/shop-client';
 
 // Same reasoning as blog/[slug]/page.tsx: the Payload API isn't reachable
 // at image-build time, so render per request. payloadPublicFetch's
@@ -58,9 +58,9 @@ function PausedShop({ shop }: { shop: StorefrontShop }) {
   return (
     <ShopShell>
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center px-4 py-20 text-center">
-        <p className="text-sm text-[var(--sf-muted)]">{shop.name}</p>
+        <p className="text-sm text-(--sf-muted)">{shop.name}</p>
         <h1 className="mt-3 text-3xl font-light">This shop is taking a short break</h1>
-        <p className="mt-3 text-[15px] text-[var(--sf-muted)]">
+        <p className="mt-3 text-[15px] text-(--sf-muted)">
           {orderLink
             ? "Our online catalogue is resting for now, but we're still taking orders. WhatsApp us and we'll help you right away."
             : 'Our online catalogue is resting for now. Please check back soon.'}
@@ -115,11 +115,12 @@ export default async function ShopPage({ params }: { params: Params }) {
       {/* The one bold move: the shop's name, set large, light and open. */}
       <section className="mx-auto w-full max-w-6xl px-4 pt-12 pb-8 sm:pt-20 sm:pb-12">
         <h1 className="text-[clamp(2.6rem,11vw,6.5rem)] leading-[0.95] font-light tracking-[0.04em] break-words">{shop.name}</h1>
-        <div className="mt-5 flex flex-col gap-1 text-[15px] text-[var(--sf-muted)] sm:flex-row sm:items-baseline sm:gap-4">
-          {shop.tagline ? <p className="text-[var(--sf-ink)]">{shop.tagline}</p> : null}
+        <div className="mt-5 flex flex-col gap-1 text-[15px] text-(--sf-muted) sm:flex-row sm:items-baseline sm:gap-4">
+          {shop.tagline ? <p className="text-(--sf-ink)">{shop.tagline}</p> : null}
           {shop.seo?.city ? <p>{shop.seo.city}</p> : null}
         </div>
-        <div className="mt-8 border-t border-[var(--sf-line)] pt-5">
+        <DeliveryPromise shop={shop} className="mt-6" />
+        <div className="mt-8 border-t border-(--sf-line) pt-5">
           <OrderingSteps />
         </div>
       </section>
@@ -128,7 +129,7 @@ export default async function ShopPage({ params }: { params: Params }) {
         {data.products.length === 0 ? (
           <div className="mx-auto max-w-sm py-16 text-center">
             <p className="text-xl font-light">New pieces coming soon</p>
-            <p className="mt-2 text-sm text-[var(--sf-muted)]">
+            <p className="mt-2 text-sm text-(--sf-muted)">
               {shopOrderLink(shop) ? 'WhatsApp us to ask what is in store today.' : 'Please check back soon.'}
             </p>
           </div>

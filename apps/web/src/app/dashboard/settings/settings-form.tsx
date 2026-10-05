@@ -34,6 +34,11 @@ interface Tenant {
   storefrontCity?: string | null;
   storefrontIndexable?: boolean | null;
   googleSiteVerification?: string | null;
+  deliveryZones?: Array<{ name: string; fee: number; eta?: string | null }> | null;
+  freeDeliveryThreshold?: number | null;
+  payOnDelivery?: boolean | null;
+  sameDayCutoff?: string | null;
+  sameDayArea?: string | null;
 }
 
 export function SettingsForm({ tenant, sellOnline, siteUrl }: { tenant: Tenant; sellOnline: boolean; siteUrl: string }) {
@@ -58,6 +63,11 @@ export function SettingsForm({ tenant, sellOnline, siteUrl }: { tenant: Tenant; 
     storefrontCity: tenant.storefrontCity ?? '',
     storefrontIndexable: tenant.storefrontIndexable !== false,
     googleSiteVerification: tenant.googleSiteVerification ?? '',
+    deliveryZones: (tenant.deliveryZones ?? []).map((z) => ({ name: z.name, fee: String(z.fee ?? ''), eta: z.eta ?? '' })),
+    freeDeliveryThreshold: tenant.freeDeliveryThreshold ? String(tenant.freeDeliveryThreshold) : '',
+    payOnDelivery: tenant.payOnDelivery === true,
+    sameDayCutoff: tenant.sameDayCutoff ?? '',
+    sameDayArea: tenant.sameDayArea ?? '',
   });
   const footerPreview = receiptFooterWithMarketing(form.receiptFooter, form);
   const [loading, setLoading] = useState(false);
@@ -93,6 +103,14 @@ export function SettingsForm({ tenant, sellOnline, siteUrl }: { tenant: Tenant; 
                 storefrontCity: form.storefrontCity.trim() || null,
                 storefrontIndexable: form.storefrontIndexable,
                 googleSiteVerification: form.googleSiteVerification.trim(),
+                // Rows without a name are treated as unfinished and dropped.
+                deliveryZones: form.deliveryZones
+                  .filter((z) => z.name.trim())
+                  .map((z) => ({ name: z.name.trim(), fee: Math.max(0, Number(z.fee) || 0), eta: z.eta.trim() || null })),
+                freeDeliveryThreshold: Number(form.freeDeliveryThreshold) > 0 ? Number(form.freeDeliveryThreshold) : null,
+                payOnDelivery: form.payOnDelivery,
+                sameDayCutoff: form.sameDayCutoff.trim(),
+                sameDayArea: form.sameDayArea.trim() || null,
               }
             : {}),
         }),

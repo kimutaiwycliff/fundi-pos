@@ -39,6 +39,16 @@ export interface StorefrontSeo {
   googleSiteVerification: string | null;
 }
 
+// Settings -> Online shop -> Delivery & payment. Optional on older API
+// responses; every part is only shown when the owner filled it in.
+export interface StorefrontDelivery {
+  zones: Array<{ name: string; fee: number; eta: string | null }>;
+  freeThreshold: number | null;
+  payOnDelivery: boolean;
+  sameDayCutoff: string | null;
+  sameDayArea: string | null;
+}
+
 export interface StorefrontShop {
   name: string;
   slug: string;
@@ -47,6 +57,7 @@ export interface StorefrontShop {
   socialHandles: string | null;
   updatedAt?: string | null;
   seo?: StorefrontSeo;
+  delivery?: StorefrontDelivery;
 }
 
 // Google shows ~60 title chars / ~155 description chars - trim on a word

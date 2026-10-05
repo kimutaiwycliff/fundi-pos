@@ -5,8 +5,12 @@ import {
   buildReceiptMarketingLines,
   buildWhatsAppLink,
   hasAddon,
+  formatCutoff,
   normalizeShopSlug,
+  parseCutoff,
+  quoteDelivery,
   receiptFooterWithMarketing,
+  sameDayOpen,
   salesChannelLabel,
   toWhatsAppNumber,
 } from './marketing.ts';
@@ -128,6 +132,35 @@ describe('loyalty', () => {
       discount: 100,
     });
     expect(resolveLoyaltyRedemption({ requestedPoints: 10, availablePoints: 10, pointValue: 0, payable: 100 }).points).toBe(0);
+  });
+});
+
+describe('storefront delivery', () => {
+  const zone = { name: 'Nairobi estates', fee: 300 };
+
+  it('charges the zone fee below the free-delivery threshold and shows progress', () => {
+    expect(quoteDelivery(2200, zone, 3000)).toEqual({ fee: 300, free: false, remainingForFree: 800, progress: 2200 / 3000 });
+  });
+
+  it('waives the fee once the threshold is reached', () => {
+    expect(quoteDelivery(3000, zone, 3000)).toMatchObject({ fee: 0, free: true, remainingForFree: null, progress: 1 });
+  });
+
+  it('works with no threshold, no zone, and free zones', () => {
+    expect(quoteDelivery(500, zone, null)).toEqual({ fee: 300, free: false, remainingForFree: null, progress: null });
+    expect(quoteDelivery(500, null, 3000)).toMatchObject({ fee: 0, free: false, remainingForFree: 2500 });
+    expect(quoteDelivery(500, { name: 'Pick up in shop', fee: 0 }, null)).toMatchObject({ fee: 0, free: true });
+  });
+
+  it('parses and formats the same-day cutoff in Nairobi time', () => {
+    expect(parseCutoff('16:00')).toBe(960);
+    expect(parseCutoff('4pm')).toBeNull();
+    expect(formatCutoff('16:00')).toBe('4pm');
+    expect(formatCutoff('09:30')).toBe('9:30am');
+    // 12:59 UTC = 15:59 Nairobi -> still open; 13:00 UTC = 16:00 -> closed
+    expect(sameDayOpen('16:00', new Date('2026-11-27T12:59:00Z'))).toBe(true);
+    expect(sameDayOpen('16:00', new Date('2026-11-27T13:00:00Z'))).toBe(false);
+    expect(sameDayOpen(null)).toBeNull();
   });
 });
 

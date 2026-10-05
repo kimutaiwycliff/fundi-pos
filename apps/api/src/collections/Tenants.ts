@@ -1,6 +1,6 @@
 import type { CollectionConfig } from 'payload';
 import { APIError } from 'payload';
-import { ADDON_LABELS, ADDONS, normalizeKenyanPhone, normalizeShopSlug, type Addon } from '@hardware-pos/business-logic';
+import { ADDON_LABELS, ADDONS, normalizeKenyanPhone, normalizeShopSlug, parseCutoff, type Addon } from '@hardware-pos/business-logic';
 import { toID } from '../lib/relations.ts';
 
 function sameAddons(a: unknown, b: unknown): boolean {
@@ -176,6 +176,24 @@ export const Tenants: CollectionConfig = {
       type: 'text',
       admin: { description: 'Google Search Console HTML-tag verification code.' },
     },
+    // Storefront delivery & payment (Settings -> Online shop). Shown to
+    // shoppers before they open WhatsApp - unexpected delivery costs are the
+    // top fixable reason people abandon an order. Nothing is shown unless
+    // the owner fills it in, so the shop never promises what it doesn't do.
+    {
+      name: 'deliveryZones',
+      type: 'array',
+      maxRows: 20,
+      fields: [
+        { name: 'name', type: 'text', required: true },
+        { name: 'fee', type: 'number', required: true, min: 0 },
+        { name: 'eta', type: 'text' },
+      ],
+    },
+    { name: 'freeDeliveryThreshold', type: 'number', min: 0, admin: { description: 'Free delivery when the bag reaches this many KES. Empty = no free delivery.' } },
+    { name: 'payOnDelivery', type: 'checkbox', defaultValue: false, admin: { description: 'Show "Pay on delivery" on the shop.' } },
+    { name: 'sameDayCutoff', type: 'text', admin: { description: 'Same-day delivery order cutoff, 24h "HH:MM" Nairobi time (e.g. 16:00).' } },
+    { name: 'sameDayArea', type: 'text', admin: { description: 'Where same-day delivery applies, e.g. "Nairobi".' } },
   ],
   hooks: {
     beforeChange: [
@@ -204,6 +222,13 @@ export const Tenants: CollectionConfig = {
             throw new APIError('That Google verification code doesn\'t look right - paste the code (or the whole meta tag) from Search Console.', 400);
           }
           data.googleSiteVerification = code || null;
+        }
+        if (typeof data.sameDayCutoff === 'string') {
+          const cutoff = data.sameDayCutoff.trim();
+          if (cutoff && parseCutoff(cutoff) == null) {
+            throw new APIError('Same-day cutoff must be a time like 16:00.', 400);
+          }
+          data.sameDayCutoff = cutoff || null;
         }
         if (typeof data.whatsappNumber === 'string' && data.whatsappNumber.trim()) {
           const phone = normalizeKenyanPhone(data.whatsappNumber);

@@ -325,6 +325,42 @@ describe('Sell Online add-on + marketing features', () => {
       expect(raw).not.toContain('"quantity"');
     });
 
+    it('serves delivery zones, free-delivery threshold and same-day settings, validating the cutoff', async () => {
+      await enableAddon();
+      await payload.update({
+        collection: 'tenants',
+        id: tenantId,
+        data: {
+          shopSlug: 'mama-baby',
+          storefrontEnabled: true,
+          deliveryZones: [
+            { name: 'Nairobi CBD', fee: 200, eta: 'Same day' },
+            { name: 'Upcountry', fee: 450, eta: '1-2 days' },
+          ],
+          freeDeliveryThreshold: 5000,
+          payOnDelivery: true,
+          sameDayCutoff: ' 16:00 ',
+          sameDayArea: 'Nairobi',
+        },
+        user: owner,
+        overrideAccess: false,
+      });
+      const { body } = await getShop('mama-baby');
+      expect(body.shop.delivery).toEqual({
+        zones: [
+          { name: 'Nairobi CBD', fee: 200, eta: 'Same day' },
+          { name: 'Upcountry', fee: 450, eta: '1-2 days' },
+        ],
+        freeThreshold: 5000,
+        payOnDelivery: true,
+        sameDayCutoff: '16:00',
+        sameDayArea: 'Nairobi',
+      });
+      await expect(
+        payload.update({ collection: 'tenants', id: tenantId, data: { sameDayCutoff: '4pm' }, user: owner, overrideAccess: false }),
+      ).rejects.toThrow(/16:00/);
+    });
+
     it('serves SEO settings and lists live, indexable shops in the sitemap index', async () => {
       await enableAddon();
       await payload.update({

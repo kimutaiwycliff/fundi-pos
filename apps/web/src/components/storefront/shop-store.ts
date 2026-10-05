@@ -24,9 +24,22 @@ export interface ShopState {
   recent: number[];
   customerName: string;
   deliveryArea: string;
+  // Chosen delivery zone name (Settings -> Delivery zones) and whether the
+  // shopper wants to pay on delivery - remembered for their next order.
+  deliveryZone: string;
+  payOnDelivery: boolean;
 }
 
-const EMPTY: ShopState = { bag: [], saved: [], wishlist: [], recent: [], customerName: '', deliveryArea: '' };
+const EMPTY: ShopState = {
+  bag: [],
+  saved: [],
+  wishlist: [],
+  recent: [],
+  customerName: '',
+  deliveryArea: '',
+  deliveryZone: '',
+  payOnDelivery: false,
+};
 const MAX_RECENT = 12;
 
 const states = new Map<string, ShopState>();
@@ -140,7 +153,7 @@ export const shopActions = {
   recordView(slug: string, productId: number) {
     update(slug, (s) => ({ ...s, recent: [productId, ...s.recent.filter((id) => id !== productId)].slice(0, MAX_RECENT) }));
   },
-  setCustomer(slug: string, fields: Partial<Pick<ShopState, 'customerName' | 'deliveryArea'>>) {
+  setCustomer(slug: string, fields: Partial<Pick<ShopState, 'customerName' | 'deliveryArea' | 'deliveryZone' | 'payOnDelivery'>>) {
     update(slug, (s) => ({ ...s, ...fields }));
   },
   clearBag(slug: string) {

@@ -284,6 +284,30 @@ export interface Tenant {
    * Google Search Console HTML-tag verification code.
    */
   googleSiteVerification?: string | null;
+  deliveryZones?:
+    | {
+        name: string;
+        fee: number;
+        eta?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Free delivery when the bag reaches this many KES. Empty = no free delivery.
+   */
+  freeDeliveryThreshold?: number | null;
+  /**
+   * Show "Pay on delivery" on the shop.
+   */
+  payOnDelivery?: boolean | null;
+  /**
+   * Same-day delivery order cutoff, 24h "HH:MM" Nairobi time (e.g. 16:00).
+   */
+  sameDayCutoff?: string | null;
+  /**
+   * Where same-day delivery applies, e.g. "Nairobi".
+   */
+  sameDayArea?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -1078,6 +1102,18 @@ export interface TenantsSelect<T extends boolean = true> {
   storefrontCity?: T;
   storefrontIndexable?: T;
   googleSiteVerification?: T;
+  deliveryZones?:
+    | T
+    | {
+        name?: T;
+        fee?: T;
+        eta?: T;
+        id?: T;
+      };
+  freeDeliveryThreshold?: T;
+  payOnDelivery?: T;
+  sameDayCutoff?: T;
+  sameDayArea?: T;
   updatedAt?: T;
   createdAt?: T;
 }

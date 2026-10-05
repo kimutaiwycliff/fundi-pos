@@ -72,6 +72,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
       googleSiteVerification: (tenant.googleSiteVerification as string | null) ?? null,
     },
   };
+  const delivery = {
+    zones: ((tenant.deliveryZones ?? []) as Array<{ name: string; fee: number; eta?: string | null }>).map((z) => ({
+      name: z.name,
+      fee: Number(z.fee ?? 0),
+      eta: z.eta ?? null,
+    })),
+    freeThreshold: tenant.freeDeliveryThreshold ? Number(tenant.freeDeliveryThreshold) : null,
+    payOnDelivery: tenant.payOnDelivery === true,
+    sameDayCutoff: (tenant.sameDayCutoff as string | null) ?? null,
+    sameDayArea: (tenant.sameDayArea as string | null) ?? null,
+  };
+  Object.assign(shop, { delivery });
   const cacheHeaders = { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' };
 
   if (!tenant.storefrontEnabled) {

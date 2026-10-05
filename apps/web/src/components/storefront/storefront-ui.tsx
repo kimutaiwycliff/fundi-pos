@@ -25,7 +25,7 @@ const THEME = {
 
 export function ShopShell({ children }: { children: ReactNode }) {
   return (
-    <div style={THEME} className="flex min-h-full flex-1 flex-col overflow-x-hidden bg-white text-[var(--sf-ink)] antialiased">
+    <div style={THEME} className="flex min-h-full flex-1 flex-col overflow-x-hidden bg-white text-(--sf-ink) antialiased">
       {children}
     </div>
   );
@@ -63,7 +63,7 @@ export function WhatsAppOrderButton({
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-full bg-[var(--sf-wa)] font-medium text-white transition-colors hover:bg-[#0f7742] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--sf-wa)]',
+        'inline-flex items-center justify-center gap-2 rounded-full bg-(--sf-wa) font-medium text-white transition-colors hover:bg-[#0f7742] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--sf-wa)',
         BUTTON_SIZES[size],
         className,
       )}
@@ -80,7 +80,7 @@ export function AvailabilityBadge({ availability, className }: { availability: A
     <span
       className={cn(
         'inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium',
-        availability === 'low' ? 'bg-white/95 text-[var(--sf-petal)]' : 'bg-white/95 text-[var(--sf-muted)]',
+        availability === 'low' ? 'bg-white/95 text-(--sf-petal)' : 'bg-white/95 text-(--sf-muted)',
         className,
       )}
     >
@@ -94,7 +94,7 @@ export function ImagePlaceholder({ name, className }: { name: string; className?
   return (
     <div
       aria-hidden
-      className={cn('flex h-full w-full items-center justify-center bg-[var(--sf-shell)] text-5xl font-light text-[#B6B1C6]', className)}
+      className={cn('flex h-full w-full items-center justify-center bg-(--sf-shell) text-5xl font-light text-[#B6B1C6]', className)}
     >
       {initial}
     </div>
@@ -103,12 +103,12 @@ export function ImagePlaceholder({ name, className }: { name: string; className?
 
 // "How ordering works" - a real three-step sequence, so it's numbered.
 export function OrderingSteps() {
-  const steps = ['Add pieces to your bag', 'Send the bag to us on WhatsApp', 'We confirm delivery and M-Pesa payment'];
+  const steps = ['Add pieces to your bag', 'Send the bag to us on WhatsApp', 'We confirm delivery and payment'];
   return (
-    <ol className="grid gap-3 text-sm text-[var(--sf-muted)] sm:grid-cols-3">
+    <ol className="grid gap-3 text-sm text-(--sf-muted) sm:grid-cols-3">
       {steps.map((step, i) => (
         <li key={step} className="flex items-center gap-3">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-[var(--sf-line)] text-xs font-medium text-[var(--sf-ink)]">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-(--sf-line) text-xs font-medium text-(--sf-ink)">
             {i + 1}
           </span>
           {step}
@@ -120,10 +120,10 @@ export function OrderingSteps() {
 
 export function ShopFooter({ shopName, socialHandles }: { shopName?: string; socialHandles?: string | null }) {
   return (
-    <footer className="mt-auto border-t border-[var(--sf-line)] bg-[var(--sf-shell)]">
-      <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-8 text-sm text-[var(--sf-muted)] sm:flex-row sm:items-center sm:justify-between">
+    <footer className="mt-auto border-t border-(--sf-line) bg-(--sf-shell)">
+      <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-8 text-sm text-(--sf-muted) sm:flex-row sm:items-center sm:justify-between">
         <p>
-          {shopName ? <span className="font-medium text-[var(--sf-ink)]">{shopName}</span> : null}
+          {shopName ? <span className="font-medium text-(--sf-ink)">{shopName}</span> : null}
           {socialHandles ? <span className="ml-2 break-words">{socialHandles}</span> : null}
         </p>
         <p className="text-xs">

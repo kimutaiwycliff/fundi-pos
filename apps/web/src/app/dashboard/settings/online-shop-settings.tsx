@@ -25,6 +25,11 @@ export interface OnlineShopForm {
   storefrontCity: string;
   storefrontIndexable: boolean;
   googleSiteVerification: string;
+  deliveryZones: Array<{ name: string; fee: string; eta: string }>;
+  freeDeliveryThreshold: string;
+  payOnDelivery: boolean;
+  sameDayCutoff: string;
+  sameDayArea: string;
 }
 
 const TITLE_LIMIT = 60;
@@ -69,6 +74,10 @@ export function OnlineShopSettings<T extends OnlineShopForm>({
 
   function update<K extends keyof OnlineShopForm>(key: K, value: OnlineShopForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  function updateZone(index: number, patch: Partial<OnlineShopForm['deliveryZones'][number]>) {
+    setForm((f) => ({ ...f, deliveryZones: f.deliveryZones.map((z, i) => (i === index ? { ...z, ...patch } : z)) }));
   }
 
   async function uploadShareImage(e: React.ChangeEvent<HTMLInputElement>) {
@@ -166,6 +175,106 @@ export function OnlineShopSettings<T extends OnlineShopForm>({
               Add your WhatsApp number above so the shop&apos;s order buttons work.
             </p>
           ) : null}
+        </div>
+
+        <div className="flex flex-col gap-4 border-t pt-5">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-sm font-semibold">Delivery &amp; payment</h3>
+            <p className="text-sm text-muted-foreground">
+              Shown to shoppers before they message you, and added to their WhatsApp order. Leave anything blank to hide
+              it.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label>Delivery areas and fees</Label>
+            {form.deliveryZones.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No delivery areas yet - orders show &quot;total before delivery&quot;.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {form.deliveryZones.map((zone, index) => (
+                  <div key={index} className="grid grid-cols-[1fr_6rem_auto] gap-2 sm:grid-cols-[1fr_7rem_9rem_auto]">
+                    <Input
+                      aria-label={`Area ${index + 1} name`}
+                      placeholder="e.g. Nairobi CBD"
+                      value={zone.name}
+                      onChange={(e) => updateZone(index, { name: e.target.value })}
+                    />
+                    <Input
+                      aria-label={`Area ${index + 1} fee (KES)`}
+                      type="number"
+                      min={0}
+                      placeholder="KES"
+                      value={zone.fee}
+                      onChange={(e) => updateZone(index, { fee: e.target.value })}
+                    />
+                    <Input
+                      aria-label={`Area ${index + 1} delivery time`}
+                      placeholder="e.g. Same day"
+                      value={zone.eta}
+                      onChange={(e) => updateZone(index, { eta: e.target.value })}
+                      className="col-span-2 sm:col-span-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setForm((f) => ({ ...f, deliveryZones: f.deliveryZones.filter((_, i) => i !== index) }))}
+                      className="row-start-1 col-start-3 sm:col-start-4"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              disabled={form.deliveryZones.length >= 20}
+              onClick={() => setForm((f) => ({ ...f, deliveryZones: [...f.deliveryZones, { name: '', fee: '', eta: '' }] }))}
+            >
+              Add delivery area
+            </Button>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="freeDeliveryThreshold">Free delivery over (KES)</Label>
+              <Input
+                id="freeDeliveryThreshold"
+                type="number"
+                min={0}
+                placeholder="e.g. 5000"
+                value={form.freeDeliveryThreshold}
+                onChange={(e) => update('freeDeliveryThreshold', e.target.value)}
+              />
+              <span className="text-xs text-muted-foreground">Shoppers see a progress bar towards it in their bag.</span>
+            </div>
+            <div className="flex items-center justify-between gap-4 sm:pt-6">
+              <Label htmlFor="payOnDelivery" className="flex flex-col items-start gap-1 font-normal">
+                <span className="font-medium">Pay on delivery available</span>
+                <span className="text-sm text-muted-foreground">Shoppers can choose it in the bag.</span>
+              </Label>
+              <Switch id="payOnDelivery" checked={form.payOnDelivery} onCheckedChange={(checked) => update('payOnDelivery', checked)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sameDayCutoff">Same-day delivery order cutoff</Label>
+              <Input id="sameDayCutoff" type="time" value={form.sameDayCutoff} onChange={(e) => update('sameDayCutoff', e.target.value)} />
+              <span className="text-xs text-muted-foreground">e.g. 16:00 shows &quot;Order by 4pm for same-day delivery&quot;.</span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="sameDayArea">Same-day delivery area</Label>
+              <Input
+                id="sameDayArea"
+                placeholder="e.g. Nairobi"
+                value={form.sameDayArea}
+                onChange={(e) => update('sameDayArea', e.target.value)}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="flex flex-col gap-4 border-t pt-5">
