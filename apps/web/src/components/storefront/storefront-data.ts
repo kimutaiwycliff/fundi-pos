@@ -122,11 +122,15 @@ export const STOREFRONT_REVALIDATE_SECONDS = 60;
 // anything else (500s, API down) is rethrown to the error boundary.
 export const getStorefront = cache(async (slug: string): Promise<StorefrontResponse | null> => {
   try {
-    const data = await payloadPublicFetch<StorefrontResponse>(
+    const data = await payloadPublicFetch<StorefrontResponse | { found: false }>(
       `/api/storefront/${encodeURIComponent(slug)}`,
       STOREFRONT_REVALIDATE_SECONDS,
     );
-    return resolveMediaUrls(data);
+    // The API answers "no such shop" as 200 { found: false } so it replaces
+    // a cached live shop (Next's fetch cache only stores 200s) - see
+    // apps/api's storefront route. Still a 404 page for the visitor.
+    if ('found' in data && data.found === false) return null;
+    return resolveMediaUrls(data as StorefrontResponse);
   } catch (error) {
     if (error instanceof PayloadApiError && error.status === 404) return null;
     throw error;

@@ -275,7 +275,7 @@ describe('Sell Online add-on + marketing features', () => {
     it('is new tenants\' default: add-on off, and the shop 404s as if it never existed', async () => {
       const fresh = await payload.findByID({ collection: 'tenants', id: tenantId, overrideAccess: true });
       expect(fresh.addons ?? []).toEqual([]);
-      expect((await getShop('nobody-here')).status).toBe(404);
+      expect((await getShop('nobody-here')).body).toEqual({ found: false });
       // Even with a slug + "open" saved, no add-on means no shop at all.
       await payload.update({
         collection: 'tenants',
@@ -283,7 +283,11 @@ describe('Sell Online add-on + marketing features', () => {
         data: { shopSlug: 'mama-baby', storefrontEnabled: true, whatsappNumber: '0712345678' },
         overrideAccess: true,
       });
-      expect((await getShop('mama-baby')).status).toBe(404);
+      // 200 + found:false (not a 404) so it replaces a cached live shop in
+      // the web app's fetch cache - which only ever stores 200s.
+      const off = await getShop('mama-baby');
+      expect(off.status).toBe(200);
+      expect(off.body).toEqual({ found: false });
     });
 
     it('shows a paused page when the add-on is on but the owner closed the shop', async () => {

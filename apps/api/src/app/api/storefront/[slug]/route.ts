@@ -64,6 +64,16 @@ function photos(cover: unknown, gallery: unknown) {
   return list.filter((p, i) => list.findIndex((q) => q.url === p.url) === i);
 }
 
+// "No such shop" (unknown slug, suspended/deleted, or the add-on is off) is
+// answered as 200 { found: false }, not a 404: apps/web caches this feed
+// with Next's fetch cache, which only ever stores 200s. A 404 never
+// replaced a previously cached live shop, so a shop whose add-on was
+// switched off kept being served from the old cached copy. The web page
+// still renders a real 404 for found:false.
+function notFound() {
+  return Response.json({ found: false }, { headers: { 'Cache-Control': 'public, s-maxage=60' } });
+}
+
 interface BalanceRow extends Record<string, unknown> {
   product_id: number;
   variant: string | null;
@@ -73,7 +83,7 @@ interface BalanceRow extends Record<string, unknown> {
 export async function GET(_request: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug: rawSlug } = await params;
   const slug = normalizeShopSlug(rawSlug);
-  if (!slug) return Response.json({ error: 'not_found' }, { status: 404 });
+  if (!slug) return notFound();
 
   const payload = await getPayload({ config });
   const tenants = await payload.find({
@@ -85,7 +95,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   });
   const tenant = tenants.docs[0];
   if (!tenant || tenant.status !== 'active' || !hasAddon(tenant, 'sell_online')) {
-    return Response.json({ error: 'not_found' }, { status: 404 });
+    return notFound();
   }
 
   const shop = {
