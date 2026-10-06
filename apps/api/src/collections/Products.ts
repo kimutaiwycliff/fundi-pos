@@ -201,6 +201,14 @@ export const Products: CollectionConfig = {
       defaultValue: false,
       access: { update: managerOrOwnerField },
     },
+    {
+      // Used when the shop lists all products automatically
+      // (Tenants.storefrontListAll): hides just this one.
+      name: 'hideOnline',
+      type: 'checkbox',
+      defaultValue: false,
+      access: { update: managerOrOwnerField },
+    },
     { name: 'onlineDescription', type: 'textarea', access: { update: managerOrOwnerField } },
     // Optional per-product search overrides - the product page falls back to
     // "<name> — KES <price> | <shop>" and onlineDescription when blank.

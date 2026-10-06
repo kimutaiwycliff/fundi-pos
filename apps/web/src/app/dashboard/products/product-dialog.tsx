@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { isListedOnline, onlineVisibilityPatch } from '@hardware-pos/business-logic';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
@@ -225,6 +226,7 @@ export function ProductDialog({
   canEditFields,
   mediaUrlById,
   sellOnline = false,
+  listAll = false,
   open: openProp,
   onOpenChange: onOpenChangeProp,
 }: {
@@ -232,6 +234,9 @@ export function ProductDialog({
   // shop" section. Without it those fields are never sent, so saves are
   // byte-for-byte what they were before the add-on existed.
   sellOnline?: boolean;
+  // Shop lists every product automatically (Settings -> Online shop); the
+  // switch below then hides/unhides this one instead of hand-picking it.
+  listAll?: boolean;
   product?: Product;
   stores: Store[];
   allProducts: Product[];
@@ -275,7 +280,10 @@ export function ProductDialog({
     reorderPoint: product?.reorderPoint != null ? String(product.reorderPoint) : '0',
     maxDiscountAmount: product?.maxDiscountAmount != null ? String(product.maxDiscountAmount) : '0',
   });
-  const [showOnline, setShowOnline] = useState(product?.showOnline === true);
+  // The switch always shows whether the product is actually listed; what it
+  // saves depends on the shop's mode (business-logic onlineVisibilityPatch).
+  const initiallyListed = isListedOnline(product ?? {}, listAll);
+  const [showOnline, setShowOnline] = useState(initiallyListed);
   const [onlineDescription, setOnlineDescription] = useState(product?.onlineDescription ?? '');
   const [seoTitle, setSeoTitle] = useState(product?.seoTitle ?? '');
   const [seoDescription, setSeoDescription] = useState(product?.seoDescription ?? '');
@@ -404,7 +412,7 @@ export function ProductDialog({
           relatedProducts,
           ...(sellOnline
             ? {
-                showOnline,
+                ...(showOnline !== initiallyListed ? onlineVisibilityPatch(showOnline, listAll) : {}),
                 onlineDescription: onlineDescription.trim() || null,
                 seoTitle: seoTitle.trim() || null,
                 seoDescription: seoDescription.trim() || null,
@@ -739,7 +747,9 @@ export function ProductDialog({
                 <Label htmlFor="showOnline" className="flex flex-col items-start gap-1 font-normal">
                   <span className="font-medium">Show in online shop</span>
                   <span className="text-xs text-muted-foreground">
-                    Listed on your public shop page with its price, photo and an &quot;Order on WhatsApp&quot; button.
+                    {listAll
+                      ? 'Your shop lists all products automatically - turn this off to hide just this one.'
+                      : 'Listed on your public shop page with its price, photo and an "Order on WhatsApp" button.'}
                   </span>
                 </Label>
                 <Switch id="showOnline" checked={showOnline} disabled={fieldsDisabled} onCheckedChange={setShowOnline} />

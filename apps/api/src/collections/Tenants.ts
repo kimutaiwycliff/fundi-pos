@@ -200,6 +200,15 @@ export const Tenants: CollectionConfig = {
     // the add-on is on AND the owner has it enabled.
     { name: 'shopSlug', type: 'text', unique: true, index: true, admin: { description: 'Your online shop address: /shop/<this>.' } },
     { name: 'storefrontEnabled', type: 'checkbox', defaultValue: false },
+    {
+      // On: every active product is listed unless hidden per product
+      // (Products.hideOnline). Off (default): only hand-picked products
+      // (Products.showOnline). See business-logic's isListedOnline().
+      name: 'storefrontListAll',
+      type: 'checkbox',
+      defaultValue: false,
+      admin: { description: 'List all active products online; hide individual ones per product.' },
+    },
     { name: 'storefrontTagline', type: 'text' },
     // Storefront SEO (Settings -> Online shop -> Search engines). Every one
     // is optional with a sensible fallback in apps/web's /shop pages, so a

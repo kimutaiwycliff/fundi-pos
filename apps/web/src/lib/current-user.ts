@@ -10,7 +10,7 @@ export type CurrentUser = {
   // `addons` (platform-admin-controlled, see Tenants.ts) gates the Sell
   // Online screens - checked with business-logic's hasAddon().
   tenant:
-    | { id: number; name: string; billingStatus: 'active' | 'trialing' | 'past_due' | 'canceled'; addons?: string[] | null }
+    | { id: number; name: string; billingStatus: 'active' | 'trialing' | 'past_due' | 'canceled'; addons?: string[] | null; storefrontListAll?: boolean | null }
     | number;
   // Nullable for org-level users (owner/manager overseeing multiple stores) -
   // see Users.ts's `store` field. A cashier/store-level manager always has

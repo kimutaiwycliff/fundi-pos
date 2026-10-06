@@ -26,6 +26,7 @@ interface Tenant {
   loyaltyPointValue?: number | null;
   shopSlug?: string | null;
   storefrontEnabled?: boolean | null;
+  storefrontListAll?: boolean | null;
   storefrontTagline?: string | null;
   seoTitle?: string | null;
   seoDescription?: string | null;
@@ -55,6 +56,7 @@ export function SettingsForm({ tenant, sellOnline, siteUrl }: { tenant: Tenant; 
     loyaltyPointValue: String(tenant.loyaltyPointValue ?? 1),
     shopSlug: tenant.shopSlug ?? '',
     storefrontEnabled: tenant.storefrontEnabled === true,
+    storefrontListAll: tenant.storefrontListAll === true,
     storefrontTagline: tenant.storefrontTagline ?? '',
     seoTitle: tenant.seoTitle ?? '',
     seoDescription: tenant.seoDescription ?? '',
@@ -96,6 +98,7 @@ export function SettingsForm({ tenant, sellOnline, siteUrl }: { tenant: Tenant; 
             ? {
                 shopSlug: form.shopSlug.trim() || null,
                 storefrontEnabled: form.storefrontEnabled,
+                storefrontListAll: form.storefrontListAll,
                 storefrontTagline: form.storefrontTagline.trim() || null,
                 seoTitle: form.seoTitle.trim() || null,
                 seoDescription: form.seoDescription.trim() || null,

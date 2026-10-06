@@ -138,6 +138,31 @@ export function receiptFooterWithMarketing(
   return parts.length > 0 ? parts.join('\n') : null;
 }
 
+// ---- Which products are listed online
+//
+// Two shop modes (Tenants.storefrontListAll):
+//  - hand-picked (default): only products ticked showOnline are listed
+//  - list all: every active product is listed unless it's hidden (hideOnline)
+// The two flags are kept separately so switching the shop mode back and
+// forth never loses either the hand-picked list or the hidden list.
+
+export interface OnlineFlags {
+  showOnline?: boolean | null;
+  hideOnline?: boolean | null;
+}
+
+export function isListedOnline(product: OnlineFlags, listAll: boolean | null | undefined): boolean {
+  return listAll ? product.hideOnline !== true : product.showOnline === true;
+}
+
+// What a single "Show in online shop" switch should save, in either mode.
+// Turning a product on always clears its hidden flag, so it can never be
+// "on" yet hidden.
+export function onlineVisibilityPatch(listed: boolean, listAll: boolean | null | undefined): OnlineFlags {
+  if (listed) return { showOnline: true, hideOnline: false };
+  return listAll ? { hideOnline: true } : { showOnline: false, hideOnline: false };
+}
+
 // ---- Storefront delivery (Settings -> Online shop -> Delivery & payment)
 
 export interface DeliveryZone {

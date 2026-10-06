@@ -17,6 +17,7 @@ export interface OnlineShopForm {
   whatsappNumber: string;
   shopSlug: string;
   storefrontEnabled: boolean;
+  storefrontListAll: boolean;
   storefrontTagline: string;
   seoTitle: string;
   seoDescription: string;
@@ -128,6 +129,20 @@ export function OnlineShopSettings<T extends OnlineShopForm>({
               id="storefrontEnabled"
               checked={form.storefrontEnabled}
               onCheckedChange={(checked) => update('storefrontEnabled', checked)}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <Label htmlFor="storefrontListAll" className="flex flex-col items-start gap-1 font-normal">
+              <span className="font-medium">List all products automatically</span>
+              <span className="text-sm text-muted-foreground">
+                Every active product appears online, including new ones. Hide any you want to keep offline from the
+                Products page. When off, only products you switch on appear.
+              </span>
+            </Label>
+            <Switch
+              id="storefrontListAll"
+              checked={form.storefrontListAll}
+              onCheckedChange={(checked) => update('storefrontListAll', checked)}
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">

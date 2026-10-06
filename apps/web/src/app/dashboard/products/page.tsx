@@ -51,6 +51,7 @@ export type Product = {
   onlineDescription?: string | null;
   seoTitle?: string | null;
   seoDescription?: string | null;
+  hideOnline?: boolean | null;
 };
 
 export interface StockLevel {
@@ -87,6 +88,7 @@ export default async function ProductsPage({
   const canEditFields = me.role === 'owner' || me.role === 'manager';
   const mediaUrlById: Record<number, string> = Object.fromEntries(mediaDocs.map((m) => [m.id, m.url]));
   const sellOnline = typeof me.tenant === 'object' && hasAddon(me.tenant, 'sell_online');
+  const listAll = typeof me.tenant === 'object' && me.tenant.storefrontListAll === true;
 
   // Products are tenant-wide, not store-owned - a branch toggle here can't
   // filter the catalog itself, only annotate each row with that branch's
@@ -123,6 +125,7 @@ export default async function ProductsPage({
             canEditFields={canEditFields}
             mediaUrlById={mediaUrlById}
             sellOnline={sellOnline}
+            listAll={listAll}
           />
         </div>
       </div>
@@ -138,6 +141,7 @@ export default async function ProductsPage({
         archivedView={archived}
         mediaUrlById={mediaUrlById}
         sellOnline={sellOnline}
+        listAll={listAll}
       />
     </div>
   );

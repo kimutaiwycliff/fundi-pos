@@ -6,6 +6,8 @@ import {
   buildWhatsAppLink,
   hasAddon,
   formatCutoff,
+  isListedOnline,
+  onlineVisibilityPatch,
   normalizeShopSlug,
   parseCutoff,
   quoteDelivery,
@@ -132,6 +134,27 @@ describe('loyalty', () => {
       discount: 100,
     });
     expect(resolveLoyaltyRedemption({ requestedPoints: 10, availablePoints: 10, pointValue: 0, payable: 100 }).points).toBe(0);
+  });
+});
+
+describe('online listing modes', () => {
+  it('lists only hand-picked products by default, and everything not hidden in list-all mode', () => {
+    expect(isListedOnline({ showOnline: true }, false)).toBe(true);
+    expect(isListedOnline({}, false)).toBe(false);
+    expect(isListedOnline({}, true)).toBe(true);
+    expect(isListedOnline({ showOnline: false }, true)).toBe(true);
+    expect(isListedOnline({ hideOnline: true, showOnline: true }, true)).toBe(false);
+  });
+
+  it('saves the right flags for a switch in each mode, never "on but hidden"', () => {
+    expect(onlineVisibilityPatch(true, true)).toEqual({ showOnline: true, hideOnline: false });
+    expect(onlineVisibilityPatch(false, true)).toEqual({ hideOnline: true });
+    expect(onlineVisibilityPatch(false, false)).toEqual({ showOnline: false, hideOnline: false });
+    // Switching modes keeps choices: a product hidden in list-all mode that
+    // was never hand-picked stays off in hand-picked mode too.
+    const hidden = { showOnline: false, ...onlineVisibilityPatch(false, true) };
+    expect(isListedOnline(hidden, false)).toBe(false);
+    expect(isListedOnline(hidden, true)).toBe(false);
   });
 });
 

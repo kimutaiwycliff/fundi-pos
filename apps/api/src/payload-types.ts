@@ -272,6 +272,10 @@ export interface Tenant {
    */
   shopSlug?: string | null;
   storefrontEnabled?: boolean | null;
+  /**
+   * List all active products online; hide individual ones per product.
+   */
+  storefrontListAll?: boolean | null;
   storefrontTagline?: string | null;
   /**
    * Google result title for the shop page (~60 characters).
@@ -466,6 +470,7 @@ export interface Product {
     | null;
   relatedProducts?: (number | Product)[] | null;
   showOnline?: boolean | null;
+  hideOnline?: boolean | null;
   onlineDescription?: string | null;
   seoTitle?: string | null;
   seoDescription?: string | null;
@@ -1144,6 +1149,7 @@ export interface TenantsSelect<T extends boolean = true> {
   loyaltyPointValue?: T;
   shopSlug?: T;
   storefrontEnabled?: T;
+  storefrontListAll?: T;
   storefrontTagline?: T;
   seoTitle?: T;
   seoDescription?: T;
@@ -1247,6 +1253,7 @@ export interface ProductsSelect<T extends boolean = true> {
       };
   relatedProducts?: T;
   showOnline?: T;
+  hideOnline?: T;
   onlineDescription?: T;
   seoTitle?: T;
   seoDescription?: T;

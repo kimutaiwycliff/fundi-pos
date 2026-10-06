@@ -22,6 +22,7 @@ import * as migration_20260923_165015_make_platform_audit_log_tenant_nullable fr
 import * as migration_20261005_091612_sell_online_addon from './20261005_091612_sell_online_addon';
 import * as migration_20261005_115009_storefront_delivery from './20261005_115009_storefront_delivery';
 import * as migration_20261005_131142_platform_billing from './20261005_131142_platform_billing';
+import * as migration_20261006_051408_storefront_list_all from './20261006_051408_storefront_list_all';
 
 export const migrations = [
   {
@@ -142,6 +143,11 @@ export const migrations = [
   {
     up: migration_20261005_131142_platform_billing.up,
     down: migration_20261005_131142_platform_billing.down,
-    name: '20261005_131142_platform_billing'
+    name: '20261005_131142_platform_billing',
+  },
+  {
+    up: migration_20261006_051408_storefront_list_all.up,
+    down: migration_20261006_051408_storefront_list_all.down,
+    name: '20261006_051408_storefront_list_all'
   },
 ];

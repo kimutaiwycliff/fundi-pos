@@ -325,6 +325,36 @@ describe('Sell Online add-on + marketing features', () => {
       expect(raw).not.toContain('"quantity"');
     });
 
+    it('lists every active product in list-all mode except hidden ones, and keeps hand-picks when switched back', async () => {
+      await enableAddon();
+      await payload.update({ collection: 'tenants', id: tenantId, data: { shopSlug: 'mama-baby', storefrontEnabled: true }, overrideAccess: true });
+      const second = await payload.create({
+        collection: 'products',
+        data: { tenant: tenantId, sku: 'BIB', name: 'Bib pack', costPrice: 100, sellPrice: 400, taxRate: 0, reorderPoint: 0, maxDiscountAmount: 0 },
+        overrideAccess: true,
+        draft: false,
+      });
+      // Hand-picked mode: only the ticked romper.
+      await payload.update({ collection: 'products', id: productId, data: { showOnline: true }, overrideAccess: true });
+      expect((await getShop('mama-baby')).body.products.map((p: { name: string }) => p.name)).toEqual(['Romper set']);
+
+      // List-all mode (owner's own setting): both, including the never-ticked bib pack.
+      await payload.update({ collection: 'tenants', id: tenantId, data: { storefrontListAll: true }, user: owner, overrideAccess: false });
+      expect((await getShop('mama-baby')).body.products.map((p: { name: string }) => p.name).sort()).toEqual(['Bib pack', 'Romper set']);
+
+      // Hide one - gone from the shop and the sitemap index.
+      await payload.update({ collection: 'products', id: productId, data: { hideOnline: true }, user: owner, overrideAccess: false });
+      expect((await getShop('mama-baby')).body.products.map((p: { name: string }) => p.name)).toEqual(['Bib pack']);
+      const { GET: index } = await import('../app/api/storefront/route.ts');
+      const shops = (await (await index()).json()).shops;
+      expect(shops[0].products.map((p: { id: number }) => p.id)).toEqual([second.id]);
+
+      // Back to hand-picked: the original pick is still remembered.
+      await payload.update({ collection: 'tenants', id: tenantId, data: { storefrontListAll: false }, overrideAccess: true });
+      await payload.update({ collection: 'products', id: productId, data: { hideOnline: false }, overrideAccess: true });
+      expect((await getShop('mama-baby')).body.products.map((p: { name: string }) => p.name)).toEqual(['Romper set']);
+    });
+
     it('serves delivery zones, free-delivery threshold and same-day settings, validating the cutoff', async () => {
       await enableAddon();
       await payload.update({

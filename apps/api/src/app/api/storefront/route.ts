@@ -1,6 +1,6 @@
 import config from '@payload-config';
 import { getPayload } from 'payload';
-import { hasAddon } from '@hardware-pos/business-logic';
+import { hasAddon, isListedOnline } from '@hardware-pos/business-logic';
 
 // PUBLIC sitemap index for the storefronts - every live shop (add-on on,
 // owner opened it, "show on Google" left on) and its listed product ids
@@ -25,16 +25,18 @@ export async function GET() {
     live.map(async (tenant) => {
       const products = await payload.find({
         collection: 'products',
-        where: { tenant: { equals: tenant.id }, isActive: { equals: true }, showOnline: { equals: true } },
+        where: { tenant: { equals: tenant.id }, isActive: { equals: true } },
         pagination: false,
         depth: 0,
-        select: { updatedAt: true },
+        select: { updatedAt: true, showOnline: true, hideOnline: true },
         overrideAccess: true,
       });
       return {
         slug: tenant.shopSlug as string,
         updatedAt: (tenant.updatedAt as string | null) ?? null,
-        products: products.docs.map((p) => ({ id: Number(p.id), updatedAt: (p.updatedAt as string | null) ?? null })),
+        products: products.docs
+          .filter((p) => isListedOnline(p, tenant.storefrontListAll === true))
+          .map((p) => ({ id: Number(p.id), updatedAt: (p.updatedAt as string | null) ?? null })),
       };
     }),
   );

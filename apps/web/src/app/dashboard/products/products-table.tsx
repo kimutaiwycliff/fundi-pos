@@ -1,7 +1,13 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Search } from 'lucide-react';
+import { toast } from 'sonner';
+import { isListedOnline, onlineVisibilityPatch, type OnlineFlags } from '@hardware-pos/business-logic';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
@@ -29,7 +35,9 @@ export function ProductsTable({
   archivedView = false,
   mediaUrlById,
   sellOnline = false,
+  listAll = false,
 }: {
+  listAll?: boolean;
   sellOnline?: boolean;
   products: Product[];
   canSeeCost: boolean;
@@ -47,10 +55,57 @@ export function ProductsTable({
   // browser where the button sits off to the right.
   const [openProductId, setOpenProductId] = useState<number | null>(null);
 
-  const filtered = useMemo(
+  // Online visibility (Sell Online add-on): optimistic per-row overrides
+  // on top of the server data, cleared again by router.refresh().
+  const router = useRouter();
+  const [onlineOverrides, setOnlineOverrides] = useState<Record<number, OnlineFlags>>({});
+  const [onlineFilter, setOnlineFilter] = useState<'all' | 'online' | 'hidden'>('all');
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const canManageOnline = sellOnline && canEditFields && !archivedView;
+  const listed = (product: Product) => isListedOnline({ ...product, ...onlineOverrides[product.id] }, listAll);
+
+  const searched = useMemo(
     () => fuzzySearch(products, ['name', 'sku', 'barcode', 'category'], query),
     [products, query],
   );
+  const filtered = canManageOnline && onlineFilter !== 'all'
+    ? searched.filter((p) => listed(p) === (onlineFilter === 'online'))
+    : searched;
+  const onlineCount = canManageOnline ? searched.filter(listed).length : 0;
+
+  async function setOnline(targets: Product[], on: boolean) {
+    const patch = onlineVisibilityPatch(on, listAll);
+    const ids = targets.filter((p) => listed(p) !== on).map((p) => p.id);
+    if (ids.length === 0) return;
+    const previous = onlineOverrides;
+    setOnlineOverrides((o) => ({ ...o, ...Object.fromEntries(ids.map((id) => [id, { ...o[id], ...patch }])) }));
+    try {
+      // One request for any number of products (Payload bulk update by id).
+      const response = await clientFetch(`/api/payload/products?where[id][in]=${ids.join(',')}&depth=0`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(errorMessageFrom(body, 'Could not update the online shop'));
+      }
+      if (ids.length > 1) toast.success(`${ids.length} products ${on ? 'now show' : 'hidden'} online`);
+      router.refresh();
+    } catch (err) {
+      setOnlineOverrides(previous);
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function setOnlineBulk(on: boolean) {
+    setBulkSaving(true);
+    try {
+      await setOnline(filtered, on);
+    } finally {
+      setBulkSaving(false);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -63,6 +118,45 @@ export function ProductsTable({
           className="pl-8"
         />
       </div>
+
+      {canManageOnline ? (
+        <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-1">
+            <p className="text-sm">
+              <span className="font-medium tabular-nums">{onlineCount}</span> of {searched.length} products in your online shop
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {listAll
+                ? 'Your shop lists all products automatically - switch off any you want to keep offline.'
+                : 'Only products you switch on appear online. Turn on "List all products automatically" in Settings to list everything.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div role="group" aria-label="Filter by online visibility" className="inline-flex rounded-md border bg-background p-0.5">
+              {(['all', 'online', 'hidden'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={onlineFilter === value}
+                  onClick={() => setOnlineFilter(value)}
+                  className={
+                    'rounded px-2.5 py-1 text-xs transition-colors ' +
+                    (onlineFilter === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground')
+                  }
+                >
+                  {value === 'all' ? 'All' : value === 'online' ? `Online (${onlineCount})` : `Not online (${searched.length - onlineCount})`}
+                </button>
+              ))}
+            </div>
+            <Button type="button" variant="outline" size="sm" disabled={bulkSaving || filtered.length === 0} onClick={() => setOnlineBulk(true)}>
+              Show {filtered.length === products.length ? 'all' : `these ${filtered.length}`}
+            </Button>
+            <Button type="button" variant="outline" size="sm" disabled={bulkSaving || filtered.length === 0} onClick={() => setOnlineBulk(false)}>
+              Hide {filtered.length === products.length ? 'all' : `these ${filtered.length}`}
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="hidden rounded-md border md:block">
         <Table>
@@ -77,6 +171,7 @@ export function ProductsTable({
               <TableHead className="text-right">Tax</TableHead>
               <TableHead className="text-right">Max discount</TableHead>
               {branchStock ? <TableHead className="text-right">Stock at {branchName ?? 'branch'}</TableHead> : null}
+              {canManageOnline ? <TableHead className="text-center">Online</TableHead> : null}
               <TableHead className="w-0" />
             </TableRow>
           </TableHeader>
@@ -84,7 +179,7 @@ export function ProductsTable({
             {filtered.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={(canSeeCost ? 9 : 7) + (branchStock ? 1 : 0)}
+                  colSpan={(canSeeCost ? 9 : 7) + (branchStock ? 1 : 0) + (canManageOnline ? 1 : 0)}
                   className="text-center text-muted-foreground"
                 >
                   {products.length === 0
@@ -139,6 +234,15 @@ export function ProductsTable({
                   {branchStock ? (
                     <TableCell className="text-right">{branchStock[product.id] ?? 0}</TableCell>
                   ) : null}
+                  {canManageOnline ? (
+                    <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                      <Switch
+                        checked={listed(product)}
+                        onCheckedChange={(on) => setOnline([product], on)}
+                        aria-label={`Show ${product.name} in online shop`}
+                      />
+                    </TableCell>
+                  ) : null}
                   {/* stopPropagation so the Edit trigger button inside
                       ProductDialog doesn't also fire the row's own
                       onClick above (redundant, not harmful, but avoids
@@ -153,6 +257,7 @@ export function ProductsTable({
                       canEditFields={canEditFields}
                       mediaUrlById={mediaUrlById}
                       sellOnline={sellOnline}
+                      listAll={listAll}
                       open={openProductId === product.id}
                       onOpenChange={(o) => setOpenProductId(o ? product.id : null)}
                     />
@@ -221,6 +326,16 @@ export function ProductsTable({
 
                 <div className="flex shrink-0 flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
                   <span className="text-base font-semibold">{product.sellPrice.toFixed(2)}</span>
+                  {canManageOnline ? (
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      Online
+                      <Switch
+                        checked={listed(product)}
+                        onCheckedChange={(on) => setOnline([product], on)}
+                        aria-label={`Show ${product.name} in online shop`}
+                      />
+                    </label>
+                  ) : null}
                   <ProductDialog
                     product={product}
                     stores={stores}
@@ -230,6 +345,7 @@ export function ProductsTable({
                     canEditFields={canEditFields}
                     mediaUrlById={mediaUrlById}
                     sellOnline={sellOnline}
+                    listAll={listAll}
                     open={openProductId === product.id}
                     onOpenChange={(o) => setOpenProductId(o ? product.id : null)}
                   />

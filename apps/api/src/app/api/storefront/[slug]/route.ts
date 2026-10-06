@@ -1,7 +1,7 @@
 import config from '@payload-config';
 import { getPayload } from 'payload';
 import { sql } from 'drizzle-orm';
-import { hasAddon, normalizeShopSlug } from '@hardware-pos/business-logic';
+import { hasAddon, isListedOnline, normalizeShopSlug } from '@hardware-pos/business-logic';
 
 // PUBLIC, unauthenticated - the Sell Online add-on's storefront feed, read
 // by apps/web's /shop/[slug] pages. Every field returned is whitelisted
@@ -94,7 +94,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const [products, balances] = await Promise.all([
     payload.find({
       collection: 'products',
-      where: { tenant: { equals: tenantId }, isActive: { equals: true }, showOnline: { equals: true } },
+      // Filtered by isListedOnline() below - it depends on the shop's mode.
+      where: { tenant: { equals: tenantId }, isActive: { equals: true } },
       pagination: false,
       depth: 1,
       sort: 'name',
@@ -115,7 +116,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
     stockByProduct.set(row.product_id, (stockByProduct.get(row.product_id) ?? 0) + row.quantity);
   }
 
-  const items = products.docs.map((product) => {
+  const listAll = tenant.storefrontListAll === true;
+  const items = products.docs.filter((product) => isListedOnline(product, listAll)).map((product) => {
     const id = Number(product.id);
     const variants = ((product.variants ?? []) as Array<{ id?: string; label: string; sellPrice?: number | null; image?: unknown }>).map(
       (variant) => ({
