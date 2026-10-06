@@ -3,6 +3,7 @@ import { fileURLToPath } from 'url';
 import { postgresAdapter } from '@payloadcms/db-postgres';
 import { s3Storage } from '@payloadcms/storage-s3';
 import { buildConfig } from 'payload';
+import sharp from 'sharp';
 
 import { Tenants } from './collections/Tenants.ts';
 import { Stores } from './collections/Stores.ts';
@@ -82,6 +83,8 @@ export default buildConfig({
   cors: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:3000'],
   csrf: process.env.ALLOWED_ORIGINS?.split(',') ?? ['http://localhost:3000'],
   secret: process.env.PAYLOAD_SECRET || '',
+  // Image resizing for Media's imageSizes (product photo thumb/card/large).
+  sharp,
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },

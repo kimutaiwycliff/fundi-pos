@@ -26,6 +26,18 @@ export const Media: CollectionConfig = {
   },
   upload: {
     mimeTypes: ['image/*'],
+    // Resized WebP copies made on upload (needs `sharp` in payload.config):
+    // thumb for gallery strips/cart lines, card for product grids, large for
+    // the zoomable product view - so phones on mobile data never download
+    // the multi-MB original. Images smaller than a size are never upscaled.
+    // Uploads from before this existed simply have no sizes and every
+    // reader falls back to the original `url`.
+    imageSizes: [
+      { name: 'thumb', width: 240, withoutEnlargement: true, formatOptions: { format: 'webp', options: { quality: 78 } } },
+      { name: 'card', width: 640, withoutEnlargement: true, formatOptions: { format: 'webp', options: { quality: 80 } } },
+      { name: 'large', width: 1600, withoutEnlargement: true, formatOptions: { format: 'webp', options: { quality: 82 } } },
+    ],
+    adminThumbnail: 'thumb',
   },
   fields: [
     { name: 'tenant', type: 'relationship', relationTo: 'tenants', required: true, index: true },

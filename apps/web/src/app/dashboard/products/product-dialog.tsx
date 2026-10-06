@@ -1,9 +1,9 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Check, ChevronDown, ChevronsUpDown, ImageIcon, Search, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronsUpDown, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -53,6 +53,7 @@ import { stockKey } from '@/lib/stock-key';
 import { fuzzySearch } from '@/lib/fuzzy-search';
 import { EmptyState } from '@/components/empty-state';
 import type { Product, StockLevel, Variant } from './page';
+import { PhotoManager, photosFrom, photosToFields, type Photo } from './photo-manager';
 
 type Store = { id: number; name: string };
 
@@ -138,84 +139,17 @@ function RelatedProductsField({
   );
 }
 
-// Uploads straight to R2 via /api/media (its own dedicated route, not the
-// generic JSON proxy - see that route's own comment) the moment a file is
-// picked, then reports back the new media doc's id/url. Shared between the
-// product-level image and each variant's own optional override below.
-function ImageField({
-  label,
-  imageUrl,
-  onChange,
-}: {
-  label: string;
-  imageUrl: string | null;
-  onChange: (imageId: number | null, imageUrl: string | null) => void;
-}) {
-  const [loading, setLoading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setLoading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const response = await clientFetch('/api/media', { method: 'POST', body: formData });
-      const body = await response.json().catch(() => null);
-      if (!response.ok) {
-        toast.error(errorMessageFrom(body, 'Failed to upload image'));
-        return;
-      }
-      onChange(body.doc.id, body.doc.url);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-      if (inputRef.current) inputRef.current.value = '';
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-3">
-      {imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageUrl} alt="" className="size-12 shrink-0 rounded-md border object-cover" />
-      ) : (
-        <div className="flex size-12 shrink-0 items-center justify-center rounded-md border border-dashed text-muted-foreground">
-          <ImageIcon className="size-4" />
-        </div>
-      )}
-      <div className="flex min-w-0 flex-col gap-1">
-        <Label className="text-xs text-muted-foreground">{label}</Label>
-        <div className="flex items-center gap-2">
-          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-          <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => inputRef.current?.click()}>
-            {loading ? 'Uploading…' : imageUrl ? 'Replace' : 'Upload'}
-          </Button>
-          {imageUrl ? (
-            <Button type="button" variant="ghost" size="sm" onClick={() => onChange(null, null)}>
-              Remove
-            </Button>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // One dialog for both add and edit, same pattern as staff-dialog.tsx/
 // store-dialog.tsx - the trigger button is built inside this component's
 // own render rather than passed in as a prop, which is what actually
 // fixed a real "Primitive.button failed to slot onto its children" error
 // on the Staff page (a pre-built JSX element passed through props across
 // a .map() apparently isn't a safe pattern for Radix's asChild Slot here).
-// The dialog's own working copy of a variant carries an ephemeral imageUrl
-// alongside the real `image` id field, purely so an already-uploaded image
-// (existing variant) or a freshly-uploaded one (new variant) can render a
-// preview without a fresh lookup - stripped back out before the array is
-// sent to the API (see handleSubmit).
-type WorkingVariant = Variant & { imageUrl?: string | null };
+// The dialog's own working copy of a variant carries its photos as one
+// ordered list (cover first, with preview urls) instead of the stored
+// `image` + `gallery` id fields - split back out into those two fields
+// before the array is sent to the API (see handleSubmit).
+type WorkingVariant = Variant & { photos: Photo[] };
 
 export function ProductDialog({
   product,
@@ -243,7 +177,7 @@ export function ProductDialog({
   stockLevels: StockLevel[];
   canSeeCost: boolean;
   // Owner/manager only - a cashier can still open this dialog and change
-  // the product's own photo (ImageField below is never gated by this),
+  // the product's own photos (PhotoManager below is never gated by this),
   // but every other field is disabled client-side so the form is honest
   // about what a cashier's save will actually change - the same fields
   // are independently locked server-side (Products.ts's own field-level
@@ -287,14 +221,18 @@ export function ProductDialog({
   const [onlineDescription, setOnlineDescription] = useState(product?.onlineDescription ?? '');
   const [seoTitle, setSeoTitle] = useState(product?.seoTitle ?? '');
   const [seoDescription, setSeoDescription] = useState(product?.seoDescription ?? '');
-  const [imageId, setImageId] = useState<number | null>(product?.image ?? null);
-  const [imageUrl, setImageUrl] = useState<string | null>(
-    product?.image != null ? (mediaUrlById[product.image] ?? null) : null,
+  // Cover (`image`) + `gallery` as one ordered list - index 0 is the cover.
+  const [photos, setPhotos] = useState<Photo[]>(() =>
+    photosFrom(product?.image, product?.gallery, mediaUrlById),
   );
-  const [variants, setVariants] = useState<WorkingVariant[]>(
+  // Photo uploads still in flight across the product and every variant -
+  // Save waits for them so no picked photo is silently left out.
+  const [uploadsInFlight, setUploadsInFlight] = useState(0);
+  const trackUploads = (delta: number) => setUploadsInFlight((n) => Math.max(0, n + delta));
+  const [variants, setVariants] = useState<WorkingVariant[]>(() =>
     (product?.variants ?? []).map((v) => ({
       ...v,
-      imageUrl: v.image != null ? (mediaUrlById[v.image] ?? null) : null,
+      photos: photosFrom(v.image, v.gallery, mediaUrlById),
     })),
   );
   const [variantQuery, setVariantQuery] = useState('');
@@ -309,7 +247,7 @@ export function ProductDialog({
   const [expandedVariants, setExpandedVariants] = useState<Set<number>>(new Set());
   const [relatedProducts, setRelatedProducts] = useState<number[]>(product?.relatedProducts ?? []);
 
-  const savedVariants = variants.filter((v): v is Variant & { id: string } => Boolean(v.id));
+  const savedVariants = variants.filter((v): v is WorkingVariant & { id: string } => Boolean(v.id));
   const [stockForm, setStockForm] = useState({
     storeId: stores[0] ? String(stores[0].id) : '',
     variantId: savedVariants[0]?.id ?? NO_VARIANT,
@@ -330,11 +268,9 @@ export function ProductDialog({
       setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, label: e.target.value } : v)));
   }
 
-  function updateVariantImage(index: number) {
-    return (nextImageId: number | null, nextImageUrl: string | null) =>
-      setVariants((prev) =>
-        prev.map((v, i) => (i === index ? { ...v, image: nextImageId, imageUrl: nextImageUrl } : v)),
-      );
+  function updateVariantPhotos(index: number) {
+    return (update: (prev: Photo[]) => Photo[]) =>
+      setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, photos: update(v.photos) } : v)));
   }
 
   // Blank means "inherit the product's own price" - stored as undefined
@@ -350,7 +286,7 @@ export function ProductDialog({
 
   function addVariant() {
     const newIndex = variants.length;
-    setVariants((prev) => [...prev, { label: '', sku: '', barcode: '' }]);
+    setVariants((prev) => [...prev, { label: '', sku: '', barcode: '', photos: [] }]);
     setExpandedVariants((prev) => new Set(prev).add(newIndex));
   }
 
@@ -380,6 +316,10 @@ export function ProductDialog({
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (uploadsInFlight > 0) {
+      toast.error('Wait for the photos to finish uploading');
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -392,7 +332,7 @@ export function ProductDialog({
           barcode: form.barcode || null,
           name: form.name,
           category: form.category,
-          image: imageId,
+          ...photosToFields(photos),
           costPrice: Number(form.costPrice) || 0,
           sellPrice: Number(form.sellPrice) || 0,
           taxRate: Number(form.taxRate) || 0,
@@ -407,7 +347,7 @@ export function ProductDialog({
               barcode: v.barcode,
               sellPrice: v.sellPrice,
               costPrice: v.costPrice,
-              image: v.image,
+              ...photosToFields(v.photos),
             })),
           relatedProducts,
           ...(sellOnline
@@ -562,7 +502,7 @@ export function ProductDialog({
         <form onSubmit={handleSubmit} className="flex min-w-0 flex-col gap-4">
           {fieldsDisabled ? (
             <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              Only owners/managers can edit a product&apos;s details - you can still update its photo below.
+              Only owners/managers can edit a product&apos;s details - you can still update its photos below.
             </p>
           ) : null}
           <div className="flex flex-col gap-1.5">
@@ -573,13 +513,11 @@ export function ProductDialog({
             <Label htmlFor="category">Category</Label>
             <Input id="category" disabled={fieldsDisabled} value={form.category} onChange={update('category')} />
           </div>
-          <ImageField
-            label="Product image"
-            imageUrl={imageUrl}
-            onChange={(nextId, nextUrl) => {
-              setImageId(nextId);
-              setImageUrl(nextUrl);
-            }}
+          <PhotoManager
+            label="Photos"
+            photos={photos}
+            onChange={setPhotos}
+            onUploadingChange={trackUploads}
           />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {canSeeCost ? (
@@ -687,10 +625,12 @@ export function ProductDialog({
                             value={variant.label}
                             onChange={updateVariantLabel(index)}
                           />
-                          <ImageField
-                            label="Variant image"
-                            imageUrl={variant.imageUrl ?? null}
-                            onChange={updateVariantImage(index)}
+                          <PhotoManager
+                            label="Option photos"
+                            description="Shown first in the online shop when a shopper picks this option"
+                            photos={variant.photos}
+                            onChange={updateVariantPhotos(index)}
+                            onUploadingChange={trackUploads}
                           />
                           <div className="grid grid-cols-2 gap-2">
                             <div className="flex flex-col gap-1">
@@ -860,8 +800,14 @@ export function ProductDialog({
             ) : (
               <div />
             )}
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Saving…' : isEdit ? 'Save changes' : 'Create product'}
+            <Button type="submit" disabled={loading || uploadsInFlight > 0}>
+              {loading
+                ? 'Saving…'
+                : uploadsInFlight > 0
+                  ? 'Uploading photos…'
+                  : isEdit
+                    ? 'Save changes'
+                    : 'Create product'}
             </Button>
           </DialogFooter>
         </form>

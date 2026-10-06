@@ -10,6 +10,7 @@ import { ExportProductsButton } from './export-products-button';
 import { ProductStatusFilter } from './status-filter';
 
 type Store = { id: number; name: string };
+type MediaDoc = { id: number; url: string; sizes?: { thumb?: { url?: string | null } | null } | null };
 
 export type Variant = {
   id?: string;
@@ -23,6 +24,9 @@ export type Variant = {
   // Bare media doc id (depth=0, see below) - null/undefined means "use the
   // product's own image." Look up the actual URL via mediaUrlById.
   image?: number | null;
+  // This option's extra photos (ordered media ids, max 8) - shown first in
+  // the online shop when a shopper picks it.
+  gallery?: number[] | null;
 };
 
 export type Product = {
@@ -43,6 +47,9 @@ export type Product = {
   // Bare media doc id (depth=0, see below), not a populated doc - look up
   // the actual URL via mediaUrlById.
   image?: number | null;
+  // Extra photos after the cover `image`, in display order (bare media ids,
+  // max 8) - the dialog edits cover + gallery as one ordered list.
+  gallery?: number[] | null;
   // Fetched at depth=0 below, so relations come back as bare ids, not
   // populated docs - keeps a 500-product catalog fetch cheap.
   relatedProducts: number[];
@@ -79,14 +86,22 @@ export default async function ProductsPage({
     // Products/variants only store a bare media id at depth=0 - resolved
     // against actual URLs client-side via this map, same "load once, join
     // client-side" pattern as branchStock above.
-    payloadFetch<{ docs: { id: number; url: string }[] }>('/api/media?limit=1000&depth=0'),
+    payloadFetch<{ docs: MediaDoc[] }>('/api/media?limit=1000&depth=0'),
   ]);
   // Matches Products.ts's own costPrice field access - owner and manager.
   const canSeeCost = me.role === 'owner' || me.role === 'manager';
   // Matches Products.ts's field-level access on everything except `image` -
   // a cashier can still change a product's photo, nothing else.
   const canEditFields = me.role === 'owner' || me.role === 'manager';
-  const mediaUrlById: Record<number, string> = Object.fromEntries(mediaDocs.map((m) => [m.id, m.url]));
+  // Every product image here renders as a small preview (table thumbnails,
+  // the dialog's photo grid), so prefer the 240w `thumb` resize; uploads
+  // from before resizing existed have no sizes and fall back to the
+  // original. The original-url map stays available for anything that needs
+  // full resolution.
+  const mediaOriginalUrlById: Record<number, string> = Object.fromEntries(mediaDocs.map((m) => [m.id, m.url]));
+  const mediaUrlById: Record<number, string> = Object.fromEntries(
+    mediaDocs.map((m) => [m.id, m.sizes?.thumb?.url || mediaOriginalUrlById[m.id]]),
+  );
   const sellOnline = typeof me.tenant === 'object' && hasAddon(me.tenant, 'sell_online');
   const listAll = typeof me.tenant === 'object' && me.tenant.storefrontListAll === true;
 

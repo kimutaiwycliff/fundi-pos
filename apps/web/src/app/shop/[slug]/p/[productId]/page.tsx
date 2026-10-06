@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import {
+  allProductPhotos,
   clampText,
   shopRobots,
   formatPriceSummary,
@@ -92,14 +93,15 @@ export default async function ShopProductPage({ params }: { params: Params }) {
   // Product no longer listed (hidden, deactivated, deleted).
   if (!product) notFound();
 
-  const image = productImage(product);
+  // Every photo (product + options), full size - Google can pick the best.
+  const images = allProductPhotos(product).map((p) => p.large);
   const hasVariants = product.variants.length > 0;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.name,
     description: product.description ?? undefined,
-    image: image ?? undefined,
+    image: images.length > 0 ? images : undefined,
     category: product.category,
     brand: { '@type': 'Brand', name: shop.name },
     offers: (hasVariants ? product.variants : [null]).map((variant) => ({

@@ -350,6 +350,32 @@ export interface Media {
   height?: number | null;
   focalX?: number | null;
   focalY?: number | null;
+  sizes?: {
+    thumb?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+    card?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+    large?: {
+      url?: string | null;
+      width?: number | null;
+      height?: number | null;
+      mimeType?: string | null;
+      filesize?: number | null;
+      filename?: string | null;
+    };
+  };
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -425,6 +451,10 @@ export interface Product {
    */
   image?: (number | null) | Media;
   /**
+   * Up to 8 more photos for the online shop, in display order.
+   */
+  gallery?: (number | Media)[] | null;
+  /**
    * Archived products are hidden from the Sell page and the default Products list, but stay intact on past orders, stock movements, and reports.
    */
   isActive?: boolean | null;
@@ -438,6 +468,7 @@ export interface Product {
          * Optional. Leave blank to use the product's own image.
          */
         image?: (number | null) | Media;
+        gallery?: (number | Media)[] | null;
         /**
          * Leave blank to use the product's own sell price.
          */
@@ -1225,6 +1256,7 @@ export interface ProductsSelect<T extends boolean = true> {
   name?: T;
   category?: T;
   image?: T;
+  gallery?: T;
   isActive?: T;
   variants?:
     | T
@@ -1234,6 +1266,7 @@ export interface ProductsSelect<T extends boolean = true> {
         barcode?: T;
         tenantId?: T;
         image?: T;
+        gallery?: T;
         sellPrice?: T;
         costPrice?: T;
         id?: T;
@@ -1278,6 +1311,40 @@ export interface MediaSelect<T extends boolean = true> {
   height?: T;
   focalX?: T;
   focalY?: T;
+  sizes?:
+    | T
+    | {
+        thumb?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+        card?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+        large?:
+          | T
+          | {
+              url?: T;
+              width?: T;
+              height?: T;
+              mimeType?: T;
+              filesize?: T;
+              filename?: T;
+            };
+      };
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

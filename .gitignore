@@ -104,3 +104,6 @@ cache/
 apps/mobile/credentials/
 apps/mobile/credentials.json
 
+
+# Local Payload uploads (dev/tests) - production uses R2
+apps/api/media/

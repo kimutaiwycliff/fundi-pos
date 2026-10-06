@@ -57,6 +57,18 @@ export const Products: CollectionConfig = {
       admin: { description: "Optional. Shown on the Sell page and Products list. A variant without its own image below falls back to this one." },
     },
     {
+      // Extra photos after the cover `image` (online shop gallery: back,
+      // close-up, worn...). Ordered; the cover stays the one photo the
+      // tills, Sell page and link previews use. Same "any staff can manage
+      // photos" rule as `image` - no access.update override.
+      name: 'gallery',
+      type: 'upload',
+      relationTo: 'media',
+      hasMany: true,
+      maxRows: 8,
+      admin: { description: 'Up to 8 more photos for the online shop, in display order.' },
+    },
+    {
       name: 'isActive',
       type: 'checkbox',
       defaultValue: true,
@@ -94,6 +106,15 @@ export const Products: CollectionConfig = {
           type: 'upload',
           relationTo: 'media',
           admin: { description: "Optional. Leave blank to use the product's own image." },
+        },
+        {
+          // This option's extra photos - shown first in the online shop when
+          // a shopper picks it, before the product's shared photos.
+          name: 'gallery',
+          type: 'upload',
+          relationTo: 'media',
+          hasMany: true,
+          maxRows: 8,
         },
         // Null/unset means "use the product's own price" - most variants
         // (e.g. a T-shirt's colors) don't need their own price, but some

@@ -6,11 +6,25 @@ import { payloadPublicFetch, PayloadApiError } from '@/lib/payload-public-client
 // "Sell Online" add-on feed). Only whitelisted, customer-safe fields.
 export type Availability = 'in_stock' | 'low' | 'sold_out';
 
+// One product/variant photo with its resized copies (thumb ~240w, card
+// ~640w, large ~1600w). Older uploads repeat `url` for every size.
+export interface StorefrontPhoto {
+  url: string;
+  thumb: string;
+  card: string;
+  large: string;
+  alt: string | null;
+  width: number | null;
+  height: number | null;
+}
+
 export interface StorefrontVariant {
   id: string;
   label: string;
   price: number;
+  // Card-size cover (kept for older readers); `images` is the full set.
   image: string | null;
+  images?: StorefrontPhoto[];
   availability: Availability;
 }
 
@@ -20,7 +34,9 @@ export interface StorefrontProduct {
   category: string;
   description: string | null;
   price: number;
+  // Card-size cover; `images` = cover + gallery (optional on older APIs).
   image: string | null;
+  images?: StorefrontPhoto[];
   availability: Availability;
   variants: StorefrontVariant[];
   // Optional owner overrides for search results (Products.seoTitle/...).
@@ -106,10 +122,11 @@ export const STOREFRONT_REVALIDATE_SECONDS = 60;
 // anything else (500s, API down) is rethrown to the error boundary.
 export const getStorefront = cache(async (slug: string): Promise<StorefrontResponse | null> => {
   try {
-    return await payloadPublicFetch<StorefrontResponse>(
+    const data = await payloadPublicFetch<StorefrontResponse>(
       `/api/storefront/${encodeURIComponent(slug)}`,
       STOREFRONT_REVALIDATE_SECONDS,
     );
+    return resolveMediaUrls(data);
   } catch (error) {
     if (error instanceof PayloadApiError && error.status === 404) return null;
     throw error;
@@ -128,8 +145,97 @@ export function absoluteImage(url: string | null | undefined): string | null {
   return url && /^https?:\/\//i.test(url) ? url : null;
 }
 
+// Production media lives on R2 (absolute URLs). Without R2 (local dev,
+// self-hosting) Payload returns "/api/media/file/..." paths; setting the
+// server-only PAYLOAD_PUBLIC_MEDIA_BASE (e.g. http://localhost:3011) makes
+// those absolute before they reach the page. Unset = untouched.
+function resolveMediaUrls(data: StorefrontResponse): StorefrontResponse {
+  const base = process.env.PAYLOAD_PUBLIC_MEDIA_BASE?.replace(/\/+$/, '');
+  if (!base || !data?.products) return data;
+  const fix = <T extends string | null | undefined>(url: T): T => (url && url.startsWith('/') ? (`${base}${url}` as T) : url);
+  const fixPhotos = (list?: StorefrontPhoto[]) =>
+    list?.map((p) => ({ ...p, url: fix(p.url), thumb: fix(p.thumb), card: fix(p.card), large: fix(p.large) }));
+  return {
+    ...data,
+    shop: data.shop.seo ? { ...data.shop, seo: { ...data.shop.seo, image: fix(data.shop.seo.image) } } : data.shop,
+    products: data.products.map((product) => ({
+      ...product,
+      image: fix(product.image),
+      images: fixPhotos(product.images),
+      variants: product.variants.map((v) => ({ ...v, image: fix(v.image), images: fixPhotos(v.images) })),
+    })),
+  };
+}
+
+// Renderable photos only (absolute URLs). A size that isn't absolute falls
+// back to the original. Older API responses without `images` get a single
+// photo built from the card-size `image`.
+function usablePhotos(list: StorefrontPhoto[] | undefined, fallback: string | null): StorefrontPhoto[] {
+  const out: StorefrontPhoto[] = [];
+  for (const p of list ?? []) {
+    const url = absoluteImage(p.url) ?? absoluteImage(p.large) ?? absoluteImage(p.card);
+    if (!url) continue;
+    out.push({
+      ...p,
+      url,
+      thumb: absoluteImage(p.thumb) ?? url,
+      card: absoluteImage(p.card) ?? url,
+      large: absoluteImage(p.large) ?? url,
+    });
+  }
+  if (out.length === 0) {
+    const single = absoluteImage(fallback);
+    if (single) out.push({ url: single, thumb: single, card: single, large: single, alt: null, width: null, height: null });
+  }
+  return out;
+}
+
+function dedupePhotos(list: StorefrontPhoto[]): StorefrontPhoto[] {
+  const seen = new Set<string>();
+  return list.filter((p) => (seen.has(p.url) ? false : (seen.add(p.url), true)));
+}
+
+export function productPhotos(product: StorefrontProduct): StorefrontPhoto[] {
+  return usablePhotos(product.images, product.image);
+}
+
+export function variantPhotos(variant: StorefrontVariant | null | undefined): StorefrontPhoto[] {
+  return variant ? usablePhotos(variant.images, variant.image) : [];
+}
+
+// What the product page shows: the chosen variant's photos first, then the
+// product's shared photos. With no variant chosen: the product's photos
+// followed by every variant's (so nothing uploaded is hidden).
+export function galleryPhotos(product: StorefrontProduct, variant: StorefrontVariant | null): StorefrontPhoto[] {
+  if (variant) return dedupePhotos([...variantPhotos(variant), ...productPhotos(product)]);
+  return dedupePhotos([...productPhotos(product), ...product.variants.flatMap((v) => variantPhotos(v))]);
+}
+
+// Every photo of the product (JSON-LD wants them all).
+export function allProductPhotos(product: StorefrontProduct): StorefrontPhoto[] {
+  return galleryPhotos(product, null);
+}
+
+// Width descriptors for <img srcSet>; skips sizes that fell back to the same
+// file so the browser never sees one URL claiming two widths.
+export function photoSrcSet(photo: StorefrontPhoto, sizes: Array<'thumb' | 'card' | 'large'> = ['thumb', 'card', 'large']): string | undefined {
+  const widths = { thumb: 240, card: 640, large: 1600 } as const;
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  for (const size of sizes) {
+    const url = photo[size];
+    if (seen.has(url)) continue;
+    seen.add(url);
+    // Resizes never upscale: a 1200px original's "large" is 1200px wide.
+    const width = photo.width ? Math.min(widths[size], photo.width) : widths[size];
+    parts.push(`${url} ${width}w`);
+  }
+  return parts.length > 1 ? parts.join(', ') : undefined;
+}
+
+// Card-size cover for grids, link previews and anywhere one photo is shown.
 export function productImage(product: StorefrontProduct): string | null {
-  return absoluteImage(product.image) ?? absoluteImage(product.variants.find((v) => absoluteImage(v.image))?.image);
+  return productPhotos(product)[0]?.card ?? product.variants.map((v) => variantPhotos(v)[0]?.card).find(Boolean) ?? null;
 }
 
 export interface PriceSummary {

@@ -23,6 +23,7 @@ import * as migration_20261005_091612_sell_online_addon from './20261005_091612_
 import * as migration_20261005_115009_storefront_delivery from './20261005_115009_storefront_delivery';
 import * as migration_20261005_131142_platform_billing from './20261005_131142_platform_billing';
 import * as migration_20261006_051408_storefront_list_all from './20261006_051408_storefront_list_all';
+import * as migration_20261006_055107_product_galleries from './20261006_055107_product_galleries';
 
 export const migrations = [
   {
@@ -148,6 +149,11 @@ export const migrations = [
   {
     up: migration_20261006_051408_storefront_list_all.up,
     down: migration_20261006_051408_storefront_list_all.down,
-    name: '20261006_051408_storefront_list_all'
+    name: '20261006_051408_storefront_list_all',
+  },
+  {
+    up: migration_20261006_055107_product_galleries.up,
+    down: migration_20261006_055107_product_galleries.down,
+    name: '20261006_055107_product_galleries'
   },
 ];

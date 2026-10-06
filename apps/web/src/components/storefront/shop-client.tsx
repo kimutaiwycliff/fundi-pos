@@ -6,11 +6,12 @@ import { buildWhatsAppLink, formatCutoff, quoteDelivery, sameDayOpen } from '@ha
 import { cn } from '@/lib/utils';
 import { fuzzySearch } from '@/lib/fuzzy-search';
 import {
-  absoluteImage,
   formatKes,
   formatPriceSummary,
+  galleryPhotos,
+  photoSrcSet,
   priceSummary,
-  productImage,
+  productPhotos,
   productPath,
   productUrl,
   shopPath,
@@ -18,8 +19,10 @@ import {
   type StorefrontProduct,
   type StorefrontShop,
   type StorefrontVariant,
+  variantPhotos,
 } from './storefront-data';
 import { AvailabilityBadge, ImagePlaceholder, WhatsAppIcon } from './storefront-ui';
+import { ProductGallery } from './product-gallery';
 import { sameLine, shopActions, useShopState, type LineRef } from './shop-store';
 
 // ---------------------------------------------------------------- helpers
@@ -41,8 +44,14 @@ function lineSoldOut(product: StorefrontProduct, variantId: string | null): bool
   return (findVariant(product, variantId)?.availability ?? product.availability) === 'sold_out';
 }
 
+// Small (thumb-size) photo for bag / wishlist / saved-for-later lines.
 function lineImage(product: StorefrontProduct, variantId: string | null): string | null {
-  return absoluteImage(findVariant(product, variantId)?.image) ?? productImage(product);
+  return (
+    variantPhotos(findVariant(product, variantId))[0]?.thumb ??
+    productPhotos(product)[0]?.thumb ??
+    product.variants.map((v) => variantPhotos(v)[0]?.thumb).find(Boolean) ??
+    null
+  );
 }
 
 // Short human-friendly order reference the shop can quote back in chat.
@@ -358,7 +367,7 @@ function LineThumb({ product, variantId }: { product: StorefrontProduct; variant
     <div className="size-20 shrink-0 overflow-hidden rounded-xl bg-(--sf-shell)">
       {image ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={image} alt="" className="h-full w-full object-cover" />
+        <img src={image} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
       ) : (
         <ImagePlaceholder name={product.name} className="text-2xl" />
       )}
@@ -582,7 +591,7 @@ function BagDrawer({ open, onClose, shop, products }: { open: boolean; onClose: 
                 <div className="size-12 shrink-0 overflow-hidden rounded-lg bg-(--sf-shell)">
                   {lineImage(l.product, l.variantId) ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={lineImage(l.product, l.variantId)!} alt="" className="h-full w-full object-cover" />
+                    <img src={lineImage(l.product, l.variantId)!} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   ) : null}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -685,10 +694,19 @@ function useAddedFlash(): [boolean, () => void] {
   ];
 }
 
+// Grid: 2 cols on phones, 3 at md, 4 at lg, 5 at xl (max-w-6xl page).
+const CARD_SIZES = '(min-width: 1280px) 220px, (min-width: 1024px) 25vw, (min-width: 768px) 33vw, 50vw';
+
 export function ProductCard({ shop, product }: { shop: StorefrontShop; product: StorefrontProduct }) {
   const state = useShopState(shop.slug);
   const [added, flash] = useAddedFlash();
-  const image = productImage(product);
+  // Cover + (on hover-capable screens) the second photo crossfading in.
+  const photos = galleryPhotos(product, null);
+  const cover = photos[0] ?? null;
+  const second = photos[1] ?? null;
+  // The second photo is only requested once a mouse hovers the card, so
+  // phones never download it.
+  const [wantSecond, setWantSecond] = useState(false);
   const soldOut = product.availability === 'sold_out';
   const href = productPath(shop.slug, product.id);
   const ref: LineRef = { productId: product.id, variantId: null };
@@ -698,15 +716,41 @@ export function ProductCard({ shop, product }: { shop: StorefrontShop; product: 
   return (
     <article className="group flex min-w-0 flex-col">
       <div className="relative">
-        <Link href={href} className="block aspect-[4/5] overflow-hidden rounded-2xl bg-(--sf-shell)">
-          {image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={image}
-              alt={product.name}
-              loading="lazy"
-              className={cn('h-full w-full object-cover transition-transform duration-500 motion-safe:group-hover:scale-[1.03]', soldOut && 'opacity-60 grayscale')}
-            />
+        <Link
+          href={href}
+          onPointerEnter={(e) => {
+            if (e.pointerType === 'mouse' && second) setWantSecond(true);
+          }}
+          className="block aspect-[4/5] overflow-hidden rounded-2xl bg-(--sf-shell)"
+        >
+          {cover ? (
+            <div className={cn('relative h-full w-full transition-transform duration-500 motion-safe:group-hover:scale-[1.03]', soldOut && 'opacity-60 grayscale')}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={cover.card}
+                srcSet={photoSrcSet(cover, ['thumb', 'card'])}
+                sizes={CARD_SIZES}
+                width={cover.width ?? undefined}
+                height={cover.height ?? undefined}
+                alt={cover.alt?.trim() || product.name}
+                loading="lazy"
+                decoding="async"
+                className="h-full w-full object-cover"
+              />
+              {second && wantSecond ? (
+                // Tailwind v4's hover: only applies on hover-capable devices.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={second.card}
+                  srcSet={photoSrcSet(second, ['thumb', 'card'])}
+                  sizes={CARD_SIZES}
+                  alt=""
+                  aria-hidden
+                  decoding="async"
+                  className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 group-hover:opacity-100 motion-reduce:transition-none"
+                />
+              ) : null}
+            </div>
           ) : (
             <ImagePlaceholder name={product.name} />
           )}
@@ -1007,14 +1051,9 @@ export function ProductDetail({ shop, product }: { shop: StorefrontShop; product
     shopActions.recordView(shop.slug, product.id);
   }, [shop.slug, product.id]);
 
-  // Gallery: the product photo plus any distinct variant photos.
-  const images = useMemo(() => {
-    const list = [productImage(product), ...product.variants.map((v) => absoluteImage(v.image))].filter(Boolean) as string[];
-    return [...new Set(list)];
-  }, [product]);
   const variant = findVariant(product, variantId);
-  const [activeImage, setActiveImage] = useState(0);
-  const shownImage = absoluteImage(variant?.image) ?? images[activeImage] ?? null;
+  // The chosen option's own photos first, then the shared product photos.
+  const photos = galleryPhotos(product, variant);
 
   const soldOut = hasVariants ? !variant || variant.availability === 'sold_out' : product.availability === 'sold_out';
   const price = variant?.price ?? product.price;
@@ -1046,36 +1085,16 @@ export function ProductDetail({ shop, product }: { shop: StorefrontShop; product
 
   return (
     <div className="grid gap-6 md:grid-cols-[1.1fr_1fr] md:gap-10 lg:gap-12">
-      <div className="flex min-w-0 flex-col gap-3 md:sticky md:top-20 md:self-start">
-        <div className="relative -mx-4 aspect-[4/5] overflow-hidden bg-(--sf-shell) sm:mx-0 sm:rounded-3xl">
-          {shownImage ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={shownImage} alt={label} className={cn('h-full w-full object-cover', soldOut && 'opacity-70')} />
-          ) : (
-            <ImagePlaceholder name={product.name} className="text-7xl" />
-          )}
-          <AvailabilityBadge availability={variant?.availability ?? product.availability} className="absolute top-3 left-3" />
-        </div>
-        {images.length > 1 ? (
-          <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {images.map((src, i) => (
-              <button
-                key={src}
-                type="button"
-                onClick={() => {
-                  setActiveImage(i);
-                  const match = product.variants.find((v) => absoluteImage(v.image) === src);
-                  if (match && match.availability !== 'sold_out') setVariantId(match.id);
-                }}
-                aria-label={`Show photo ${i + 1}`}
-                className={cn('size-16 shrink-0 overflow-hidden rounded-xl border-2 bg-(--sf-shell)', shownImage === src ? 'border-(--sf-ink)' : 'border-transparent')}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt="" className="h-full w-full object-cover" />
-              </button>
-            ))}
-          </div>
-        ) : null}
+      <div className="min-w-0 md:sticky md:top-20 md:self-start">
+        {/* Keyed by option: picking one starts its photos from the first. */}
+        <ProductGallery
+          key={variant?.id ?? 'product'}
+          photos={photos}
+          name={label}
+          dimmed={soldOut}
+          placeholder={<ImagePlaceholder name={product.name} className="text-7xl" />}
+          badge={<AvailabilityBadge availability={variant?.availability ?? product.availability} className="absolute top-3 left-3" />}
+        />
       </div>
 
       <div className="min-w-0">
@@ -1092,6 +1111,7 @@ export function ProductDetail({ shop, product }: { shop: StorefrontShop; product
               {product.variants.map((v) => {
                 const out = v.availability === 'sold_out';
                 const active = v.id === variantId;
+                const swatch = variantPhotos(v)[0]?.thumb;
                 return (
                   <button
                     key={v.id || v.label}
@@ -1100,11 +1120,17 @@ export function ProductDetail({ shop, product }: { shop: StorefrontShop; product
                     onClick={() => setVariantId(v.id)}
                     aria-pressed={active}
                     className={cn(
-                      'min-h-11 rounded-full border px-4 text-sm transition-colors',
+                      'inline-flex min-h-11 items-center rounded-full border px-4 text-sm transition-colors',
+                      swatch && 'pl-1.5',
                       active ? 'border-(--sf-ink) bg-(--sf-ink) text-(--sf-on-ink)' : 'border-(--sf-line) hover:border-(--sf-ink)',
                       out && 'cursor-not-allowed text-(--sf-muted) line-through opacity-60 hover:border-(--sf-line)',
                     )}
                   >
+                    {swatch ? (
+                      // Option photo as a swatch - a preview of what picking it shows.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={swatch} alt="" loading="lazy" decoding="async" className={cn('mr-2 size-8 shrink-0 rounded-full object-cover', out && 'grayscale')} />
+                    ) : null}
                     {v.label}
                     {v.price !== product.price ? <span className="ml-1.5 text-xs opacity-80">{formatKes(v.price)}</span> : null}
                   </button>

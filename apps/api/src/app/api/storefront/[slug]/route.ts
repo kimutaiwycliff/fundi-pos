@@ -31,6 +31,39 @@ function mediaUrl(media: unknown): string | null {
   return null;
 }
 
+interface MediaDoc {
+  url?: string | null;
+  alt?: string | null;
+  width?: number | null;
+  height?: number | null;
+  sizes?: Record<string, { url?: string | null } | undefined> | null;
+}
+
+// One storefront photo with its resized copies (Media.imageSizes). Uploads
+// from before resizing existed have no sizes - every size falls back to the
+// original so readers never need to care.
+function photo(media: unknown) {
+  const doc = media && typeof media === 'object' ? (media as MediaDoc) : null;
+  const url = doc?.url || null;
+  if (!url) return null;
+  const size = (name: string) => doc?.sizes?.[name]?.url || url;
+  return {
+    url,
+    thumb: size('thumb'),
+    card: size('card'),
+    large: size('large'),
+    alt: doc?.alt || null,
+    width: doc?.width ?? null,
+    height: doc?.height ?? null,
+  };
+}
+
+// Cover first, then the gallery in its saved order, without duplicates.
+function photos(cover: unknown, gallery: unknown) {
+  const list = [cover, ...(Array.isArray(gallery) ? gallery : [])].map(photo).filter((p): p is NonNullable<ReturnType<typeof photo>> => p !== null);
+  return list.filter((p, i) => list.findIndex((q) => q.url === p.url) === i);
+}
+
 interface BalanceRow extends Record<string, unknown> {
   product_id: number;
   variant: string | null;
@@ -119,12 +152,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
   const listAll = tenant.storefrontListAll === true;
   const items = products.docs.filter((product) => isListedOnline(product, listAll)).map((product) => {
     const id = Number(product.id);
-    const variants = ((product.variants ?? []) as Array<{ id?: string; label: string; sellPrice?: number | null; image?: unknown }>).map(
+    const variants = ((product.variants ?? []) as Array<{ id?: string; label: string; sellPrice?: number | null; image?: unknown; gallery?: unknown }>).map(
       (variant) => ({
         id: variant.id ?? '',
         label: variant.label,
         price: Number(variant.sellPrice ?? product.sellPrice ?? 0),
-        image: mediaUrl(variant.image),
+        image: photo(variant.image)?.card ?? null,
+        images: photos(variant.image, variant.gallery),
         availability: availabilityFor(stockByKey.get(`${id}::${variant.id ?? ''}`) ?? 0),
       }),
     );
@@ -148,7 +182,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
       seoDescription: (product.seoDescription as string | null) ?? null,
       updatedAt: (product.updatedAt as string | null) ?? null,
       price: Number(product.sellPrice ?? 0),
-      image: mediaUrl(product.image),
+      // Card-size cover for grids; the full set (with thumb/large) below.
+      image: photo(product.image)?.card ?? photos(null, product.gallery)[0]?.card ?? null,
+      images: photos(product.image, product.gallery),
       availability,
       variants,
     };

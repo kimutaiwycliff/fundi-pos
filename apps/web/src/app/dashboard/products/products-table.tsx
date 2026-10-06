@@ -53,7 +53,10 @@ export function ProductsTable({
   // Lifted out of ProductDialog so a row click can open that row's own
   // editor, not just its Edit button - most useful on a phone-width
   // browser where the button sits off to the right.
-  const [openProductId, setOpenProductId] = useState<number | null>(null);
+  // Which layout opened it too: the table and the card list below each
+  // mount their own (portaled) dialog per product, so keying on the id
+  // alone opened two stacked copies - edits in the hidden one were lost.
+  const [openProduct, setOpenProduct] = useState<{ id: number; from: 'table' | 'card' } | null>(null);
 
   // Online visibility (Sell Online add-on): optimistic per-row overrides
   // on top of the server data, cleared again by router.refresh().
@@ -195,7 +198,7 @@ export function ProductsTable({
                 return (
                 <TableRow
                   key={product.id}
-                  onClick={() => setOpenProductId(product.id)}
+                  onClick={() => setOpenProduct({ id: product.id, from: 'table' })}
                   className="cursor-pointer hover:bg-muted/50"
                 >
                   <TableCell className="font-mono text-xs">{product.sku}</TableCell>
@@ -258,8 +261,8 @@ export function ProductsTable({
                       mediaUrlById={mediaUrlById}
                       sellOnline={sellOnline}
                       listAll={listAll}
-                      open={openProductId === product.id}
-                      onOpenChange={(o) => setOpenProductId(o ? product.id : null)}
+                      open={openProduct?.id === product.id && openProduct.from === 'table'}
+                      onOpenChange={(o) => setOpenProduct(o ? { id: product.id, from: 'table' } : null)}
                     />
                   </TableCell>
                 </TableRow>
@@ -290,7 +293,7 @@ export function ProductsTable({
             return (
               <div
                 key={product.id}
-                onClick={() => setOpenProductId(product.id)}
+                onClick={() => setOpenProduct({ id: product.id, from: 'card' })}
                 className="flex items-center gap-3 rounded-lg border p-3 active:bg-muted/50"
               >
                 {imageUrl ? (
@@ -346,8 +349,8 @@ export function ProductsTable({
                     mediaUrlById={mediaUrlById}
                     sellOnline={sellOnline}
                     listAll={listAll}
-                    open={openProductId === product.id}
-                    onOpenChange={(o) => setOpenProductId(o ? product.id : null)}
+                    open={openProduct?.id === product.id && openProduct.from === 'card'}
+                    onOpenChange={(o) => setOpenProduct(o ? { id: product.id, from: 'card' } : null)}
                   />
                 </div>
               </div>
