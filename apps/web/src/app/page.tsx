@@ -25,8 +25,8 @@ import { Reveal } from '@/components/marketing/reveal';
 import { WhatsAppButton } from '@/components/marketing/whatsapp-button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { cn } from '@/lib/utils';
+import { SITE_URL } from '@/lib/site-url';
 
-const SITE_URL = 'https://app.fundipos.co.ke';
 
 const NAV_LINKS = [
   { href: '#features', label: 'Features' },

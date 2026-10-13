@@ -1,6 +1,11 @@
 import { cache } from 'react';
 import { buildWhatsAppLink } from '@hardware-pos/business-logic';
 import { payloadPublicFetch, PayloadApiError } from '@/lib/payload-public-client';
+import { SITE_URL } from '@/lib/site-url';
+
+// Re-exported for storefront components - shared links (WhatsApp messages,
+// OG urls) must be absolute.
+export { SITE_URL };
 
 // Shapes returned by apps/api's PUBLIC GET /api/storefront/{slug} (the
 // "Sell Online" add-on feed). Only whitelisted, customer-safe fields.
@@ -110,9 +115,6 @@ export interface StorefrontResponse {
   products: StorefrontProduct[];
 }
 
-// Same base the root layout uses for metadataBase - shared links (WhatsApp
-// messages, OG urls) must be absolute.
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'https://app.fundipos.co.ke').replace(/\/+$/, '');
 
 export const STOREFRONT_REVALIDATE_SECONDS = 60;
 

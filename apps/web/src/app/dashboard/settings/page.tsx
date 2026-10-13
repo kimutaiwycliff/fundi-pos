@@ -3,6 +3,7 @@ import { payloadFetch } from '@/lib/payload-client';
 import { getCurrentUser } from '@/lib/current-user';
 import { SettingsForm } from './settings-form';
 import { hasAddon } from '@hardware-pos/business-logic';
+import { SITE_URL } from '@/lib/site-url';
 
 interface Tenant {
   id: number;
@@ -38,7 +39,7 @@ export default async function SettingsPage() {
       <SettingsForm
         tenant={tenant}
         sellOnline={hasAddon(tenant, 'sell_online')}
-        siteUrl={(process.env.NEXT_PUBLIC_SITE_URL || 'https://app.fundipos.co.ke').replace(/\/+$/, '')}
+        siteUrl={SITE_URL}
       />
     </div>
   );
