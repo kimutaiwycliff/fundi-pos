@@ -134,7 +134,11 @@ function ProductForm({ product, canManage, catalog, mediaUrlById, payloadToken, 
   const [error, setError] = useState<string | null>(null);
 
   function update(field: keyof typeof form) {
-    return (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [field]: e.currentTarget.value }));
+    return (e: React.ChangeEvent<HTMLInputElement>) => {
+      // Read the value now: React runs the updater later, after currentTarget has been reset to null.
+      const value = e.currentTarget.value;
+      setForm((f) => ({ ...f, [field]: value }));
+    };
   }
 
   async function handleProductImagePick(file: File) {

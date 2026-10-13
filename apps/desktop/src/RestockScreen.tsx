@@ -491,7 +491,10 @@ function PurchaseOrderDetailPane({
                 className="table-input"
                 disabled={!checked[l.index]}
                 value={quantities[l.index] ?? ''}
-                onChange={(e) => setQuantities((prev) => ({ ...prev, [l.index]: e.currentTarget.value }))}
+                onChange={(e) => {
+                  const value = e.currentTarget.value;
+                  setQuantities((prev) => ({ ...prev, [l.index]: value }));
+                }}
               />
               <span className="section-card-hint">of {l.outstanding}</span>
             </div>
