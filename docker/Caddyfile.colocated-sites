@@ -1,0 +1,53 @@
+# Fundi POS site blocks for a production box shared with another app, whose
+# Caddy is the box's only public entrypoint and imports a directory of extra
+# site files. `make vps-caddy-sites` installs this file there and reloads that
+# Caddy gracefully (see the Makefile and .env.deploy.example). Never add these
+# blocks to the other app's own Caddyfile - its deploys overwrite it.
+# TLS: Cloudflare origin cert (covers *.fundipos.co.ke and the bare domain).
+
+api.fundipos.co.ke {
+	tls /etc/caddy/certs/fundipos-origin.pem /etc/caddy/certs/fundipos-origin.key
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	reverse_proxy fundi-payload-api:3000
+}
+
+app.fundipos.co.ke {
+	tls /etc/caddy/certs/fundipos-origin.pem /etc/caddy/certs/fundipos-origin.key
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	reverse_proxy fundi-web:3000
+}
+
+sync.fundipos.co.ke {
+	tls /etc/caddy/certs/fundipos-origin.pem /etc/caddy/certs/fundipos-origin.key
+	reverse_proxy fundi-powersync:8080
+}
+
+# Marketing site on the bare domain. Authenticated routes stay on
+# app.fundipos.co.ke so the session cookie lives on a single host.
+fundipos.co.ke {
+	tls /etc/caddy/certs/fundipos-origin.pem /etc/caddy/certs/fundipos-origin.key
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	@app path /login* /signup* /dashboard* /platform* /subscription-canceled*
+	redir @app https://app.fundipos.co.ke{uri} permanent
+	reverse_proxy fundi-web:3000
+}
