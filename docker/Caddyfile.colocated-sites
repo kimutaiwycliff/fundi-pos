@@ -51,3 +51,8 @@ fundipos.co.ke {
 	redir @app https://app.fundipos.co.ke{uri} permanent
 	reverse_proxy fundi-web:3000
 }
+
+www.fundipos.co.ke {
+	tls /etc/caddy/certs/fundipos-origin.pem /etc/caddy/certs/fundipos-origin.key
+	redir https://fundipos.co.ke{uri} permanent
+}
