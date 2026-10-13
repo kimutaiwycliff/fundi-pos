@@ -21,6 +21,10 @@
 #     via the provision-full-env.yml workflow (the true disaster path — the
 #     old box is genuinely gone). Keep that secret fresh with `snapshot-env`.
 
+# Optional local, gitignored overrides (DEPLOY_HOST, CADDY_* ...) - see
+# .env.deploy.example. Plain KEY=value lines, read as make variables.
+-include .env.deploy
+
 REPO        ?= kimutaiwycliff/fundi-pos
 SSH_KEY     ?= clif.pem
 DEPLOY_HOST ?=
@@ -150,6 +154,28 @@ endif
 vps-set-domains: ## Write API_DOMAIN/WEB_DOMAIN/POWERSYNC_DOMAIN into DEPLOY_HOST's docker/.env — only needed for a standalone box using its OWN Caddy (WITH_CADDY=1)
 	@test -n "$(API_DOMAIN)" -a -n "$(WEB_DOMAIN)" -a -n "$(POWERSYNC_DOMAIN)" || (echo "Usage: make vps-set-domains API_DOMAIN=api.example.com WEB_DOMAIN=app.example.com POWERSYNC_DOMAIN=sync.example.com"; exit 1)
 	$(SSH) "cd $(DEPLOY_PATH)/docker && (grep -v -E '^(API_DOMAIN|WEB_DOMAIN|POWERSYNC_DOMAIN)=' .env > .env.tmp || true) && printf 'API_DOMAIN=$(API_DOMAIN)\nWEB_DOMAIN=$(WEB_DOMAIN)\nPOWERSYNC_DOMAIN=$(POWERSYNC_DOMAIN)\n' >> .env.tmp && mv .env.tmp .env"
+
+# Where the co-located app's Caddy (the box's public entrypoint) imports extra
+# site files from, its main Caddyfile on the host, and its container name.
+# Like COLOCATED_NETWORK_NAME these identify a third party's infrastructure,
+# so they have no defaults here - set them in .env.deploy.
+CADDY_SITES_DIR ?=
+CADDY_MAIN_FILE ?=
+CADDY_CONTAINER ?=
+
+# The container's /etc/caddy/Caddyfile is a single-file bind mount, which pins
+# the inode at container start - the other app's deploys replace that file, so
+# the path can be stale. Reload from a fresh docker-cp'd copy instead.
+.PHONY: vps-caddy-sites
+vps-caddy-sites: ## Install docker/Caddyfile.colocated-sites into the co-located Caddy and reload it gracefully (rolls back if invalid)
+	@test -n "$(CADDY_SITES_DIR)" -a -n "$(CADDY_MAIN_FILE)" -a -n "$(CADDY_CONTAINER)" || (echo "Set CADDY_SITES_DIR, CADDY_MAIN_FILE and CADDY_CONTAINER (see .env.deploy.example)"; exit 1)
+	$(SSH) "mkdir -p $(CADDY_SITES_DIR)"
+	$(SCP) docker/Caddyfile.colocated-sites $(DEPLOY_USER)@$(DEPLOY_HOST):$(CADDY_SITES_DIR)/fundipos.caddy.new
+	$(SSH) "cd $(CADDY_SITES_DIR) && ([ -f fundipos.caddy ] && cp fundipos.caddy fundipos.caddy.prev || true) && mv fundipos.caddy.new fundipos.caddy && \
+	  docker cp ~/$(CADDY_MAIN_FILE) $(CADDY_CONTAINER):/config/Caddyfile.current && \
+	  if docker exec $(CADDY_CONTAINER) caddy validate --config /config/Caddyfile.current --adapter caddyfile >/dev/null 2>&1; then \
+	    docker exec $(CADDY_CONTAINER) caddy reload --config /config/Caddyfile.current --adapter caddyfile && echo 'Caddy reloaded'; \
+	  else echo 'Invalid Caddy config - rolling back'; ([ -f fundipos.caddy.prev ] && mv fundipos.caddy.prev fundipos.caddy || rm -f fundipos.caddy); exit 1; fi"
 
 .PHONY: vps-up-db
 vps-up-db: ## Start just postgres/postgres-storage/backup on DEPLOY_HOST — enough to have something to restore into
