@@ -20,6 +20,8 @@ const ALLOWED_ROOTS = new Set([
   'platform-notifications',
   'platform-provision',
   'devices',
+  'platform-export',
+  'platform-campaign',
 ]);
 
 function isAllowed(path: string[]): boolean {
@@ -51,10 +53,11 @@ async function proxy(request: Request, path: string[]) {
 
   const response = await fetch(target, init);
   const body = await response.text();
-  return new Response(body, {
-    status: response.status,
-    headers: { 'Content-Type': response.headers.get('Content-Type') ?? 'application/json' },
-  });
+  const headers: Record<string, string> = { 'Content-Type': response.headers.get('Content-Type') ?? 'application/json' };
+  // CSV exports name their download file.
+  const disposition = response.headers.get('Content-Disposition');
+  if (disposition) headers['Content-Disposition'] = disposition;
+  return new Response(body, { status: response.status, headers });
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {

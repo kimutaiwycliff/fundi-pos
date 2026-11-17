@@ -186,6 +186,7 @@ export async function buildStats(payload: Payload) {
         spark30: roll.spark30,
       },
       repeatTrial: (repeatTrialCounts.get(id) ?? 0) > 0,
+      marketingOptOut: Boolean(t.marketingOptOut),
       pendingClaims: claimCounts.get(id) ?? 0,
       pendingTrialRequests: trialRequestCounts.get(id) ?? 0,
       followUpOn: roll.followUpOn,

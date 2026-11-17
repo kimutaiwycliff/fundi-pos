@@ -21,7 +21,7 @@ import type { PriorTrial } from './trialGrants.ts';
 // (reminders, digest) run from the Payload job queue (payload.config.ts).
 
 const DAY = 24 * 60 * 60 * 1000;
-const appUrl = (path = '') => `${(process.env.APP_URL || 'https://app.fundipos.co.ke').replace(/\/$/, '')}${path}`;
+export const appUrl = (path = '') => `${(process.env.APP_URL || 'https://app.fundipos.co.ke').replace(/\/$/, '')}${path}`;
 const kes = (n: number) => `KES ${Math.round(n).toLocaleString('en-KE')}`;
 const day = (iso: string | Date) =>
   new Date(iso).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi' });
@@ -35,16 +35,19 @@ interface Section {
   lines: string[]; // plain text; rendered escaped
 }
 
-function render({
+export function render({
   heading,
   intro,
   sections = [],
   cta,
+  footer,
 }: {
   heading: string;
   intro: string[];
   sections?: Section[];
   cta?: { label: string; href: string };
+  // Extra small print, e.g. an unsubscribe link (campaigns).
+  footer?: { text: string; href?: string };
 }): { html: string; text: string } {
   const p = (t: string) => `<p style="margin:0 0 12px;font-size:15px;line-height:1.5;color:#1f2937">${esc(t)}</p>`;
   const html = `<!doctype html><html><body style="margin:0;background:#f4f4f5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
@@ -64,7 +67,9 @@ ${sections
   .join('')}
 ${cta ? `<p style="margin:20px 0 0"><a href="${esc(cta.href)}" style="display:inline-block;background:#ea580c;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:10px 18px;border-radius:8px">${esc(cta.label)}</a></p>` : ''}
 </td></tr></table>
-<p style="font-size:12px;color:#6b7280;margin:16px 0 0">Fundi POS · point of sale for Kenyan hardware shops</p>
+<p style="font-size:12px;color:#6b7280;margin:16px 0 0">Fundi POS · point of sale for Kenyan hardware shops${
+    footer ? `<br>${footer.href ? `<a href="${esc(footer.href)}" style="color:#6b7280">${esc(footer.text)}</a>` : esc(footer.text)}` : ''
+  }</p>
 </td></tr></table></body></html>`;
   const text = [
     heading,
@@ -72,13 +77,14 @@ ${cta ? `<p style="margin:20px 0 0"><a href="${esc(cta.href)}" style="display:in
     ...intro,
     ...sections.flatMap((s) => ['', ...(s.heading ? [s.heading] : []), ...s.lines.map((l) => `- ${l}`)]),
     ...(cta ? ['', `${cta.label}: ${cta.href}`] : []),
+    ...(footer ? ['', footer.href ? `${footer.text}: ${footer.href}` : footer.text] : []),
   ].join('\n');
   return { html, text };
 }
 
 // -------------------------------------------------------------- recipients
 
-async function operatorRecipients(payload: Payload): Promise<string[]> {
+export async function operatorRecipients(payload: Payload): Promise<string[]> {
   const configured = (process.env.PLATFORM_NOTIFY_EMAIL || '').split(',').map((s) => s.trim()).filter(Boolean);
   if (configured.length > 0) return configured;
   const admins = await payload.find({ collection: 'platform-admins', pagination: false, depth: 0, overrideAccess: true });
