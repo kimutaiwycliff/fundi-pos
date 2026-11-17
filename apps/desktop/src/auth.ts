@@ -39,8 +39,12 @@ export const OFFLINE_MESSAGE = "You're offline. Check your connection and try ag
  * `if (!res.ok)` call site keeps working unchanged.
  */
 export async function apiFetch(input: string, init?: Parameters<typeof tauriFetch>[1]): Promise<Response> {
+  // Tells the API which app this is, for the platform console's activity
+  // tracking (apps/api/src/lib/activity.ts). No CORS concerns: Tauri fetches from Rust, not the webview.
+  const headers = new Headers(init?.headers);
+  headers.set('X-Fundi-Client', 'desktop');
   try {
-    return await tauriFetch(input, init);
+    return await tauriFetch(input, { ...init, headers });
   } catch {
     throw new Error(OFFLINE_MESSAGE);
   }

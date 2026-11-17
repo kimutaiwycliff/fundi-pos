@@ -17,7 +17,7 @@ async function proxy(request: Request, path: string[]) {
 
   const init: RequestInit = {
     method: request.method,
-    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${token}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `JWT ${token}`, 'X-Fundi-Client': 'web' },
   };
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     init.body = await request.text();

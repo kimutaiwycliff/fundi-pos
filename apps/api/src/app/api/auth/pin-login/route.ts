@@ -5,6 +5,7 @@ import { normalizeKenyanPhone } from '@hardware-pos/business-logic';
 import { verifyPin } from '@/lib/pin';
 import { checkTenantAccess } from '@/lib/billing';
 import { toID } from '@/lib/relations';
+import { activitySource, recordActivity } from '@/lib/activity';
 import { extendTillSession, mintTillToken } from '@/lib/tillAuth';
 
 // Fast till login: phone + PIN instead of email + password (the web
@@ -134,6 +135,7 @@ export async function POST(request: Request) {
       summary: `${user.name || user.email} logged in (till)`,
     },
   });
+  recordActivity(payload, { userId: user.id, tenantId: toID(user.tenant), source: activitySource(request.headers), login: true });
 
   return Response.json({ token, exp, user });
 }

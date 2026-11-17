@@ -2,10 +2,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { getPayload, type Payload } from 'payload';
 import sharp from 'sharp';
 import config from '../payload.config.ts';
+import { flushActivity } from '../lib/activity.ts';
 
 let payload: Payload;
 
 async function truncateAll() {
+  await flushActivity();
   const tables = [
     'orders_line_items', 'orders', 'stock_movements', 'products', 'customers', 'users_sessions', 'users', 'stores',
     'platform_audit_log', 'tenants_addons', 'tenants',

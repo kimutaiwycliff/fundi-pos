@@ -89,6 +89,8 @@ export interface Config {
     shifts: Shift;
     'audit-log': AuditLog;
     'platform-audit-log': PlatformAuditLog;
+    'tenant-activity-days': TenantActivityDay;
+    'platform-tenant-notes': PlatformTenantNote;
     posts: Post;
     'post-images': PostImage;
     'payload-kv': PayloadKv;
@@ -119,6 +121,8 @@ export interface Config {
     shifts: ShiftsSelect<false> | ShiftsSelect<true>;
     'audit-log': AuditLogSelect<false> | AuditLogSelect<true>;
     'platform-audit-log': PlatformAuditLogSelect<false> | PlatformAuditLogSelect<true>;
+    'tenant-activity-days': TenantActivityDaysSelect<false> | TenantActivityDaysSelect<true>;
+    'platform-tenant-notes': PlatformTenantNotesSelect<false> | PlatformTenantNotesSelect<true>;
     posts: PostsSelect<false> | PostsSelect<true>;
     'post-images': PostImagesSelect<false> | PostImagesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
@@ -891,6 +895,45 @@ export interface PlatformAuditLog {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "tenant-activity-days".
+ */
+export interface TenantActivityDay {
+  id: number;
+  tenant: number | Tenant;
+  user: number | User;
+  day: string;
+  logins: number;
+  pings: number;
+  sources?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  firstSeenAt?: string | null;
+  lastSeenAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-tenant-notes".
+ */
+export interface PlatformTenantNote {
+  id: number;
+  tenant: number | Tenant;
+  author?: (number | null) | PlatformAdmin;
+  kind: 'call' | 'whatsapp' | 'email' | 'visit' | 'note';
+  body: string;
+  followUpOn?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "posts".
  */
 export interface Post {
@@ -1065,6 +1108,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'platform-audit-log';
         value: number | PlatformAuditLog;
+      } | null)
+    | ({
+        relationTo: 'tenant-activity-days';
+        value: number | TenantActivityDay;
+      } | null)
+    | ({
+        relationTo: 'platform-tenant-notes';
+        value: number | PlatformTenantNote;
       } | null)
     | ({
         relationTo: 'posts';
@@ -1632,6 +1683,35 @@ export interface PlatformAuditLogSelect<T extends boolean = true> {
   action?: T;
   summary?: T;
   metadata?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "tenant-activity-days_select".
+ */
+export interface TenantActivityDaysSelect<T extends boolean = true> {
+  tenant?: T;
+  user?: T;
+  day?: T;
+  logins?: T;
+  pings?: T;
+  sources?: T;
+  firstSeenAt?: T;
+  lastSeenAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-tenant-notes_select".
+ */
+export interface PlatformTenantNotesSelect<T extends boolean = true> {
+  tenant?: T;
+  author?: T;
+  kind?: T;
+  body?: T;
+  followUpOn?: T;
   updatedAt?: T;
   createdAt?: T;
 }

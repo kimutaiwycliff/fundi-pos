@@ -4,6 +4,7 @@ import { headers as nextHeaders } from 'next/headers';
 import { ACCESS_REVOKED_CODE, checkTenantAccess } from '@/lib/billing';
 import { isTenantUser, toID } from '@/lib/relations';
 import { extendTillSession, mintTillToken } from '@/lib/tillAuth';
+import { activitySource, recordActivity } from '@/lib/activity';
 
 // Lets an already-logged-in till (still holding a currently-valid session)
 // silently extend its own session another TILL_TOKEN_TTL_SECONDS - a till
@@ -47,6 +48,8 @@ export async function POST() {
   }
 
   await extendTillSession(payload, user.id, sid);
+  const headers = await nextHeaders();
+  recordActivity(payload, { userId: user.id, tenantId: toID(user.tenant), source: activitySource(headers) });
   const { token, exp } = await mintTillToken(payload, { id: user.id, email: user.email, sid });
 
   return Response.json({ token, exp, user });

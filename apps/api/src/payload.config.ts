@@ -23,6 +23,8 @@ import { SyncLog } from './collections/SyncLog.ts';
 import { Shifts } from './collections/Shifts.ts';
 import { PlatformAdmins } from './collections/PlatformAdmins.ts';
 import { AuditLog } from './collections/AuditLog.ts';
+import { TenantActivityDays } from './collections/TenantActivityDays.ts';
+import { PlatformTenantNotes } from './collections/PlatformTenantNotes.ts';
 import { PlatformAuditLog } from './collections/PlatformAuditLog.ts';
 import { Posts } from './collections/Posts.ts';
 import { PostImages } from './collections/PostImages.ts';
@@ -65,6 +67,8 @@ export default buildConfig({
     Shifts,
     AuditLog,
     PlatformAuditLog,
+    TenantActivityDays,
+    PlatformTenantNotes,
     Posts,
     PostImages,
   ],
