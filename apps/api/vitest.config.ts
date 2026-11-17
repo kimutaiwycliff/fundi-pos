@@ -30,7 +30,9 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     testTimeout: 20000,
-    hookTimeout: 20000,
+    // beforeAll boots Payload (schema pull + init across ~30 collections),
+    // which can take ~20s on a cold local Postgres.
+    hookTimeout: 60000,
     // All integration test files share one physical Postgres database and
     // each truncates all tables in its own beforeEach - running files in
     // parallel races two files' truncates/inserts against each other

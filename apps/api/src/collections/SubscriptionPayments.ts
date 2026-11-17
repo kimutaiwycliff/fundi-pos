@@ -3,6 +3,7 @@ import { APIError } from 'payload';
 import { nextBillingPeriod } from '@hardware-pos/business-logic';
 import { toID } from '../lib/relations.ts';
 import { invalidatePlatformStats } from '../lib/platformStatsCache.ts';
+import { notifyPaymentDecision } from '../lib/notifications.ts';
 
 const platformAdmin: Access = ({ req }) => req.user?.collection === 'platform-admins';
 
@@ -25,21 +26,48 @@ export const SubscriptionPayments: CollectionConfig = {
     { name: 'periodEnd', type: 'date', index: true },
     { name: 'note', type: 'textarea' },
     { name: 'recordedBy', type: 'relationship', relationTo: 'platform-admins', admin: { readOnly: true } },
+    // Payments happen outside the app. The operator records one directly
+    // (confirmed), or the tenant taps "I've paid" (POST /api/billing/claim),
+    // which lands here as pending until the operator confirms or rejects it.
+    // Only confirmed payments count towards paidUntil, MRR and collections.
+    { name: 'status', type: 'select', required: true, defaultValue: 'confirmed', options: ['pending', 'confirmed', 'rejected'], index: true },
+    { name: 'claimedBy', type: 'relationship', relationTo: 'users', admin: { readOnly: true } },
+    { name: 'decidedBy', type: 'relationship', relationTo: 'platform-admins', admin: { readOnly: true } },
+    { name: 'decidedAt', type: 'date', admin: { readOnly: true } },
+    { name: 'rejectReason', type: 'text', admin: { description: 'Shown to the tenant in the rejection email.' } },
   ],
   hooks: {
     beforeChange: [
-      async ({ data, req, operation }) => {
+      async ({ data, req, operation, originalDoc }) => {
+        const before = originalDoc?.status as string | undefined;
+        const after = (data.status ?? before ?? 'confirmed') as string;
+        // Only a pending claim moves; a confirmed or rejected payment stays put
+        // (delete a mistaken one instead).
+        if (operation === 'update' && before && before !== 'pending' && after !== before) {
+          throw new APIError('Only a pending payment claim can be confirmed or rejected.', 409);
+        }
+        if (operation === 'update' && before === 'pending' && after !== 'pending') {
+          data.decidedAt = new Date().toISOString();
+          if (req.user?.collection === 'platform-admins') data.decidedBy = req.user.id;
+        }
         if (operation === 'create') {
           if (req.user?.collection === 'platform-admins') data.recordedBy = req.user.id;
           if (!data.paidAt) data.paidAt = new Date().toISOString();
-          // Default period: one billing cycle continuing from the current
-          // paid-until (so paying early never loses days).
-          if (!data.periodEnd) {
-            const tenant = await req.payload.findByID({ collection: 'tenants', id: toID(data.tenant), overrideAccess: true, depth: 0, req });
-            const period = nextBillingPeriod(tenant.paidUntil as string | null, tenant.billingCycle as string | null);
-            data.periodStart = data.periodStart ?? period.start.toISOString();
-            data.periodEnd = period.end.toISOString();
-          }
+        }
+        // A confirmed payment always covers a period. Default: one billing
+        // cycle continuing from the current paid-until (so paying early never
+        // loses days). Claims carry no period until they're confirmed.
+        if (after === 'confirmed' && !data.periodEnd && !originalDoc?.periodEnd) {
+          const tenant = await req.payload.findByID({
+            collection: 'tenants',
+            id: toID(data.tenant ?? originalDoc?.tenant),
+            overrideAccess: true,
+            depth: 0,
+            req,
+          });
+          const period = nextBillingPeriod(tenant.paidUntil as string | null, tenant.billingCycle as string | null);
+          data.periodStart = data.periodStart ?? period.start.toISOString();
+          data.periodEnd = period.end.toISOString();
         }
         if (data.periodStart && data.periodEnd && new Date(data.periodEnd) <= new Date(data.periodStart)) {
           throw new APIError('The period must end after it starts.', 400);
@@ -51,11 +79,14 @@ export const SubscriptionPayments: CollectionConfig = {
       () => invalidatePlatformStats(),
       async ({ doc, previousDoc, operation, req }) => {
         await syncPaidUntil(req, toID(doc.tenant));
-        if (operation === 'create') await logPayment(req, doc, 'payment_recorded');
+        if (operation === 'create' && doc.status !== 'pending') await logPayment(req, doc, 'payment_recorded');
         if (operation === 'update') {
           // Moved to another tenant: the old one's paidUntil needs redoing too.
           if (previousDoc?.tenant && toID(previousDoc.tenant) !== toID(doc.tenant)) await syncPaidUntil(req, toID(previousDoc.tenant));
           await logPaymentEdit(req, doc, previousDoc ?? {});
+          if (previousDoc?.status === 'pending' && (doc.status === 'confirmed' || doc.status === 'rejected')) {
+            notifyPaymentDecision(req.payload, { paymentId: doc.id, tenantId: toID(doc.tenant) });
+          }
         }
         return doc;
       },
@@ -77,7 +108,7 @@ export const SubscriptionPayments: CollectionConfig = {
 async function syncPaidUntil(req: PayloadRequest, tenantId: string | number) {
   const latest = await req.payload.find({
     collection: 'subscription-payments',
-    where: { tenant: { equals: tenantId } },
+    where: { tenant: { equals: tenantId }, status: { equals: 'confirmed' } },
     sort: '-periodEnd',
     limit: 1,
     depth: 0,
@@ -118,7 +149,7 @@ async function logPayment(req: PayloadRequest, doc: Record<string, unknown>, act
   });
 }
 
-const EDIT_TRACKED = ['tenant', 'amount', 'method', 'reference', 'paidAt', 'periodStart', 'periodEnd', 'note'] as const;
+const EDIT_TRACKED = ['tenant', 'amount', 'method', 'reference', 'paidAt', 'periodStart', 'periodEnd', 'note', 'status', 'rejectReason'] as const;
 
 // Edits used to go unlogged (only record/delete were). Logged as
 // billing_updated - the platform_audit_log action enum has no payment_updated
@@ -141,7 +172,9 @@ async function logPaymentEdit(req: PayloadRequest, doc: Record<string, unknown>,
       tenant: Number(tenant.id),
       actor: Number(req.user.id),
       action: 'billing_updated',
-      summary: `${tenant.name}: payment edited - ${amount}${doc.reference ? ` (${doc.reference})` : ''} (${Object.keys(changes).join(', ')})`,
+      summary: changes.status
+        ? `${tenant.name}: payment claim ${doc.status} - ${amount}${doc.reference ? ` (${doc.reference})` : ''}`
+        : `${tenant.name}: payment edited - ${amount}${doc.reference ? ` (${doc.reference})` : ''} (${Object.keys(changes).join(', ')})`,
       metadata: { paymentId: doc.id, changes },
     },
     req,

@@ -25,6 +25,9 @@ import { PlatformAdmins } from './collections/PlatformAdmins.ts';
 import { AuditLog } from './collections/AuditLog.ts';
 import { TenantActivityDays } from './collections/TenantActivityDays.ts';
 import { PlatformTenantNotes } from './collections/PlatformTenantNotes.ts';
+import { PlatformNotifications } from './collections/PlatformNotifications.ts';
+import { TrialExtensionRequests } from './collections/TrialExtensionRequests.ts';
+import { runBillingReminders, runPlatformDigest } from './lib/notifications.ts';
 import { PlatformAuditLog } from './collections/PlatformAuditLog.ts';
 import { Posts } from './collections/Posts.ts';
 import { PostImages } from './collections/PostImages.ts';
@@ -69,6 +72,8 @@ export default buildConfig({
     PlatformAuditLog,
     TenantActivityDays,
     PlatformTenantNotes,
+    PlatformNotifications,
+    TrialExtensionRequests,
     Posts,
     PostImages,
   ],
@@ -91,6 +96,27 @@ export default buildConfig({
   sharp,
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
+  },
+  // Scheduled platform work, run inside this long-lived API process (no
+  // separate worker): billing reminders to tenant owners and the operator's
+  // Monday digest, both hourly and both idempotent (lib/notifications.ts
+  // keys every email). Off under tests and when DISABLE_JOBS is set.
+  jobs: {
+    tasks: [
+      {
+        slug: 'billing-reminders',
+        schedule: [{ cron: '0 5 * * * *', queue: 'platform' }],
+        handler: async ({ req }) => ({ output: await runBillingReminders(req.payload) }),
+      },
+      {
+        slug: 'platform-digest',
+        schedule: [{ cron: '0 10 * * * *', queue: 'platform' }],
+        handler: async ({ req }) => ({ output: { result: await runPlatformDigest(req.payload) } }),
+      },
+    ],
+    autoRun: process.env.VITEST || process.env.DISABLE_JOBS ? [] : [{ cron: '0 * * * * *', queue: 'platform' }],
+    // Finished job rows are noise; failures stay for inspection in /admin.
+    deleteJobOnComplete: true,
   },
   plugins: [
     // Cloudflare R2 (S3-compatible) - see apps/api/.env for the actual
