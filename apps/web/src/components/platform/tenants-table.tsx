@@ -41,6 +41,7 @@ export interface DeletedTenant {
 
 const CHIPS = [
   { key: 'all', label: 'All' },
+  { key: 'waiting', label: 'Waiting on you' },
   { key: 'attention', label: 'Billing attention' },
   { key: 'usage_risk', label: 'Slipping / inactive' },
   { key: 'followups', label: 'Follow-ups due' },
@@ -60,6 +61,8 @@ function matchesChip(row: PlatformTenantRow, chip: ChipKey): boolean {
       return true;
     case 'attention':
       return row.needsAttention;
+    case 'waiting':
+      return row.pendingClaims > 0 || row.pendingTrialRequests > 0;
     case 'usage_risk':
       return isAttentionHealth(row.health.level);
     case 'followups':

@@ -19,7 +19,7 @@ import { buildStats } from './platformStats.ts';
 // (reminders, digest) run from the Payload job queue (payload.config.ts).
 
 const DAY = 24 * 60 * 60 * 1000;
-const appUrl = (path = '') => `${(process.env.APP_URL || 'https://fundipos.co.ke').replace(/\/$/, '')}${path}`;
+const appUrl = (path = '') => `${(process.env.APP_URL || 'https://app.fundipos.co.ke').replace(/\/$/, '')}${path}`;
 const kes = (n: number) => `KES ${Math.round(n).toLocaleString('en-KE')}`;
 const day = (iso: string | Date) =>
   new Date(iso).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi' });

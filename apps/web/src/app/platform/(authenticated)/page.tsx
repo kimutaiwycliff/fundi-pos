@@ -12,6 +12,7 @@ import {
   Activity,
   UserPlus,
   HeartPulse,
+  Inbox,
   PhoneCall,
   Store,
 } from 'lucide-react';
@@ -136,7 +137,15 @@ export default async function PlatformOverviewPage() {
 
       <section aria-label="How tenants use Fundi" className="flex flex-col gap-3">
         <h2 className="text-sm font-medium text-muted-foreground">Usage</h2>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+          <KpiCard
+            label="Waiting on you"
+            value={summary.pendingClaims + summary.pendingTrialRequests}
+            hint={`${summary.pendingClaims} payment claim${summary.pendingClaims === 1 ? '' : 's'} · ${summary.pendingTrialRequests} trial request${summary.pendingTrialRequests === 1 ? '' : 's'}`}
+            icon={Inbox}
+            tone={summary.pendingClaims + summary.pendingTrialRequests > 0 ? 'bad' : 'default'}
+            href="/platform/tenants?state=waiting"
+          />
           <KpiCard
             label="Active this week"
             value={`${summary.active7} / ${summary.tenants}`}

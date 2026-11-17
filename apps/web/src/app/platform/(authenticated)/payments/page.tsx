@@ -10,7 +10,7 @@ export default async function PlatformPaymentsPage() {
   const [{ docs: payments }, stats] = await Promise.all([
     // depth=1 populates the tenant (so payments of deleted tenants still
     // show a name) and recordedBy.
-    platformFetch<{ docs: SubscriptionPayment[] }>('/api/subscription-payments?sort=-paidAt&depth=1&limit=2000'),
+    platformFetch<{ docs: SubscriptionPayment[] }>('/api/subscription-payments?where[status][equals]=confirmed&sort=-paidAt&depth=1&limit=2000'),
     platformFetch<PlatformStats>('/api/platform-stats'),
   ]);
   const tenantNames = Object.fromEntries(stats.tenants.map((t) => [t.id, t.name]));

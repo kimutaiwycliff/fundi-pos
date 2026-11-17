@@ -1,6 +1,6 @@
 import config from '@payload-config';
 import { getPayload } from 'payload';
-import { cyclePrice, subscriptionState, SUBSCRIPTION_STATE_LABELS, tenantAccess, TRIAL_DAYS } from '@hardware-pos/business-logic';
+import { cyclePrice, subscriptionState, SUBSCRIPTION_STATE_LABELS, tenantAccess, TIER_LIST_PRICE, TRIAL_DAYS } from '@hardware-pos/business-logic';
 import { billingUser } from '@/lib/billingAccount';
 import { platformPaymentDetails } from '@/lib/notifications';
 
@@ -52,6 +52,10 @@ export async function GET() {
     trialEndsAt,
     paidUntil: (tenant.paidUntil as string | null) ?? null,
     payTo: platformPaymentDetails(tenantId),
+    // Published monthly prices - what a trial shop picks from.
+    plans: Object.entries(TIER_LIST_PRICE)
+      .filter(([, price]) => price > 0)
+      .map(([tier, monthly]) => ({ tier, monthly })),
     payments: payments.docs.map((p) => ({
       id: p.id,
       amount: p.amount,

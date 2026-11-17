@@ -56,6 +56,8 @@ export interface PlatformTenantRow {
     stockRetail: number;
     spark30: number[];
   };
+  pendingClaims: number;
+  pendingTrialRequests: number;
   followUpOn: string | null;
   followUpDue: boolean;
   lastNoteAt: string | null;
@@ -99,6 +101,8 @@ export interface PlatformStats {
     setupFunnel: Record<string, number>;
     followUpsDue: number;
     blocked: number;
+    pendingClaims: number;
+    pendingTrialRequests: number;
   };
   collectionsByMonth: { month: string; amount: number }[];
   recentPayments: PlatformRecentPayment[];
@@ -176,6 +180,32 @@ export interface SubscriptionPayment {
   periodEnd?: string | null;
   note?: string | null;
   recordedBy?: number | { id: number; name?: string | null; email: string } | null;
+  // Tenant "I've paid" claims start pending; only confirmed ones count.
+  status?: 'pending' | 'confirmed' | 'rejected';
+  claimedBy?: number | { id: number; name?: string | null; email: string } | null;
+  rejectReason?: string | null;
+  createdAt: string;
+}
+
+export interface TrialExtensionRequest {
+  id: number;
+  tenant: number | { id: number; name: string };
+  requestedBy?: number | { id: number; name?: string | null; email: string } | null;
+  message?: string | null;
+  status: 'pending' | 'approved' | 'declined';
+  daysGranted?: number | null;
+  decidedAt?: string | null;
+  newTrialEndsAt?: string | null;
+  createdAt: string;
+}
+
+export interface PlatformNotification {
+  id: number;
+  kind: string;
+  to: string;
+  subject: string;
+  status: 'sent' | 'logged' | 'failed';
+  error?: string | null;
   createdAt: string;
 }
 
