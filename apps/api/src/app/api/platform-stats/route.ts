@@ -18,6 +18,7 @@ import {
   type SubscriptionState,
 } from '@hardware-pos/business-logic';
 import { emptyRollup, nairobiDay, platformDaily, tenantRollups } from '@/lib/platformInsights';
+import { getCachedStats, setCachedStats } from '@/lib/platformStatsCache';
 
 interface CountRow extends Record<string, unknown> {
   tenant_id: number;
@@ -44,10 +45,8 @@ function monthKey(date: Date): string {
 // a per-tenant row with billing state, owner contact and 30-day usage. Read
 // only; all heavy counting happens in SQL GROUP BYs, not per-tenant queries.
 //
-// The whole response is cached for a minute: it scans every tenant, and the
-// console, the tenant page and the tenants list all ask for it.
-let cache: { at: number; body: unknown } | null = null;
-const CACHE_MS = 60 * 1000;
+// Cached for a minute (lib/platformStatsCache.ts) - cleared by any write to
+// tenants, payments or notes, so operator changes show up at once.
 
 export async function GET(request?: Request) {
   const payload = await getPayload({ config });
@@ -56,9 +55,10 @@ export async function GET(request?: Request) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const fresh = request ? new URL(request.url).searchParams.has('fresh') : false;
-  if (!fresh && cache && Date.now() - cache.at < CACHE_MS) return Response.json(cache.body);
+  const cached = fresh ? null : getCachedStats();
+  if (cached) return Response.json(cached);
   const body = await buildStats(payload);
-  cache = { at: Date.now(), body };
+  setCachedStats(body);
   return Response.json(body);
 }
 

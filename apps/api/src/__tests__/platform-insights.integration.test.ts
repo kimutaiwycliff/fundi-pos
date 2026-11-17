@@ -186,6 +186,21 @@ describe('Platform insights: activity, health, tenant detail, follow-up notes', 
     expect(body.summary.followUpsDue).toBe(1);
   });
 
+  it('shows a newly recorded payment straight away despite the stats cache', async () => {
+    await asAdmin();
+    const { GET } = await import('../app/api/platform-stats/route.ts');
+    const before = await (await GET(new Request('http://test/api/platform-stats'))).json();
+    expect(before.tenants.find((t: any) => t.id === tenantId).state).toBe('never_paid');
+    await payload.create({
+      collection: 'subscription-payments',
+      data: { tenant: tenantId, amount: 1000, method: 'mpesa' } as any,
+      user: admin,
+      overrideAccess: false,
+    });
+    const after = await (await GET(new Request('http://test/api/platform-stats'))).json();
+    expect(after.tenants.find((t: any) => t.id === tenantId).state).toBe('paid');
+  });
+
   it('still deletes a user and purges a tenant that have activity and notes', async () => {
     const extra = await payload.create({
       collection: 'users',

@@ -11,13 +11,18 @@ import {
   TrendingUp,
   Activity,
   UserPlus,
+  HeartPulse,
+  PhoneCall,
+  Store,
 } from 'lucide-react';
-import { ADDON_LABELS } from '@hardware-pos/business-logic';
+import { ADDON_LABELS, HEALTH_LABELS, HEALTH_LEVELS, SETUP_STAGE_LABELS, SETUP_STAGES } from '@hardware-pos/business-logic';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/empty-state';
 import { AttentionList } from '@/components/platform/attention-list';
 import { SubscriptionStateBadge } from '@/components/platform/badges';
 import { CollectionsChart } from '@/components/platform/collections-chart';
+import { PlatformDailyChart } from '@/components/platform/daily-charts';
+import { HealthBadge, kesShort } from '@/components/platform/insights';
 import { formatDay, formatKES, timeAgo } from '@/components/platform/format';
 import { KpiCard } from '@/components/platform/kpi-card';
 import { PAYMENT_METHOD_LABELS, type PlatformStats } from '@/components/platform/types';
@@ -127,6 +132,111 @@ export default async function PlatformOverviewPage() {
           tone={summary.needsAttention > 0 ? 'warn' : 'default'}
           href="/platform/tenants?state=attention"
         />
+      </section>
+
+      <section aria-label="How tenants use Fundi" className="flex flex-col gap-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Usage</h2>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <KpiCard
+            label="Active this week"
+            value={`${summary.active7} / ${summary.tenants}`}
+            hint="Signed in or sold in the last 7 days"
+            icon={Activity}
+            tone="good"
+          />
+          <KpiCard
+            label="Slipping or inactive"
+            value={summary.atRisk}
+            hint="Idle 4+ days, sales halved, or never started"
+            icon={HeartPulse}
+            tone={summary.atRisk > 0 ? 'warn' : 'default'}
+            href="/platform/tenants?state=usage_risk"
+          />
+          <KpiCard
+            label="Follow-ups due"
+            value={summary.followUpsDue}
+            hint="From your contact log"
+            icon={PhoneCall}
+            tone={summary.followUpsDue > 0 ? 'bad' : 'default'}
+            href="/platform/tenants?state=followups"
+          />
+          <KpiCard
+            label="Sales through Fundi · 30d"
+            value={kesShort(summary.revenue30)}
+            hint={`Est. profit ${kesShort(summary.profit30)}`}
+            icon={Store}
+            tone="info"
+          />
+        </div>
+
+        <div className="grid items-start gap-4 lg:grid-cols-5">
+          <Card className="lg:col-span-3">
+            <CardHeader>
+              <CardTitle>Last 30 days</CardTitle>
+              <CardDescription>Daily sales across every shop, and how many shops were in use each day.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PlatformDailyChart data={stats.daily} />
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Health and setup</CardTitle>
+              <CardDescription>Tap a row to see those tenants.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <ul className="flex flex-col gap-1">
+                {HEALTH_LEVELS.map((level) => (
+                  <li key={level}>
+                    <Link
+                      href={`/platform/tenants?usage=health:${level}`}
+                      className="flex items-center justify-between gap-2 rounded-md px-2 py-1 outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      <HealthBadge level={level} />
+                      <span className="text-sm tabular-nums">{summary.health[level] ?? 0}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">Setup funnel - where each shop is stuck</span>
+                {SETUP_STAGES.map((stage) => {
+                  const n = summary.setupFunnel[stage] ?? 0;
+                  const pct = summary.tenants > 0 ? (n / summary.tenants) * 100 : 0;
+                  const inner = (
+                    <>
+                      <div className="flex justify-between gap-2 text-sm">
+                        <span>{SETUP_STAGE_LABELS[stage]}</span>
+                        <span className="text-muted-foreground tabular-nums">{n}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted">
+                        <div className="h-1.5 rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                      </div>
+                    </>
+                  );
+                  return stage === 'selling' ? (
+                    <div key={stage} className="flex flex-col gap-1 px-2 py-1">
+                      {inner}
+                    </div>
+                  ) : (
+                    <Link
+                      key={stage}
+                      href={`/platform/tenants?usage=setup:${stage}`}
+                      className="flex flex-col gap-1 rounded-md px-2 py-1 outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      {inner}
+                    </Link>
+                  );
+                })}
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {HEALTH_LABELS.healthy}: used in the last 3 days with sales holding up. Sign-in history goes back to launch (backfilled from
+                the audit log); which app people use is tracked from this release on.
+              </span>
+            </CardContent>
+          </Card>
+        </div>
       </section>
 
       <div className="grid gap-4 lg:grid-cols-5">

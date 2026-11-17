@@ -11,6 +11,7 @@ import {
   type Addon,
 } from '@hardware-pos/business-logic';
 import { toID } from '../lib/relations.ts';
+import { invalidatePlatformStats } from '../lib/platformStatsCache.ts';
 
 const platformAdminOnly: FieldAccess = ({ req }) => req.user?.collection === 'platform-admins';
 
@@ -293,6 +294,7 @@ export const Tenants: CollectionConfig = {
       },
     ],
     afterChange: [
+      () => invalidatePlatformStats(),
       // Only a platform admin can actually change these fields (see the
       // field-level access above), so this only ever fires for genuine
       // platform actions - never for a tenant owner's own Settings edits.

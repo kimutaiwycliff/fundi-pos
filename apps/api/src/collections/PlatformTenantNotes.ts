@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload';
+import { invalidatePlatformStats } from '../lib/platformStatsCache.ts';
 
 const platformAdmin = ({ req }: { req: { user?: { collection?: string } | null } }) => req.user?.collection === 'platform-admins';
 
@@ -20,6 +21,8 @@ export const PlatformTenantNotes: CollectionConfig = {
     { name: 'followUpOn', type: 'text', index: true },
   ],
   hooks: {
+    afterChange: [() => invalidatePlatformStats()],
+    afterDelete: [() => invalidatePlatformStats()],
     beforeChange: [
       ({ data, req, operation }) => {
         if (operation === 'create' && req.user?.collection === 'platform-admins') data.author = req.user.id;

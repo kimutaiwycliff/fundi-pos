@@ -4,7 +4,17 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowDown, ArrowUp, ArrowUpDown, Building2, Download, Search, X } from 'lucide-react';
-import { ADDON_LABELS, ADDONS, SUBSCRIPTION_STATE_LABELS, type Addon } from '@hardware-pos/business-logic';
+import {
+  ADDON_LABELS,
+  ADDONS,
+  HEALTH_LABELS,
+  HEALTH_LEVELS,
+  isAttentionHealth,
+  SETUP_STAGE_LABELS,
+  SETUP_STAGES,
+  SUBSCRIPTION_STATE_LABELS,
+  type Addon,
+} from '@hardware-pos/business-logic';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { SubscriptionStateBadge, TenantStatusBadge } from './badges';
 import { keyDaysLabel } from './billing';
 import { downloadCsv, formatDay, formatKES, relativeDays, timeAgo, titleCase } from './format';
+import { Delta, HealthBadge, kesShort, Sparkline } from './insights';
 import { SUBSCRIPTION_TIERS, type PlatformTenantRow } from './types';
 
 export interface DeletedTenant {
@@ -30,7 +41,10 @@ export interface DeletedTenant {
 
 const CHIPS = [
   { key: 'all', label: 'All' },
-  { key: 'attention', label: 'Needs attention' },
+  { key: 'attention', label: 'Billing attention' },
+  { key: 'usage_risk', label: 'Slipping / inactive' },
+  { key: 'followups', label: 'Follow-ups due' },
+  { key: 'blocked', label: 'Locked out' },
   { key: 'overdue', label: 'Overdue' },
   { key: 'due_soon', label: 'Due soon' },
   { key: 'trial', label: 'Trial' },
@@ -46,6 +60,12 @@ function matchesChip(row: PlatformTenantRow, chip: ChipKey): boolean {
       return true;
     case 'attention':
       return row.needsAttention;
+    case 'usage_risk':
+      return isAttentionHealth(row.health.level);
+    case 'followups':
+      return row.followUpDue;
+    case 'blocked':
+      return row.blocked;
     case 'trial':
       return row.state === 'trial' || row.state === 'trial_ending' || row.state === 'trial_expired';
     default:
@@ -53,7 +73,16 @@ function matchesChip(row: PlatformTenantRow, chip: ChipKey): boolean {
   }
 }
 
-type SortKey = 'name' | 'paidUntil' | 'mrr' | 'activity' | 'created';
+type SortKey = 'name' | 'paidUntil' | 'mrr' | 'activity' | 'created' | 'health' | 'sales';
+
+// "health:<level>" or "setup:<stage>" (overview links use ?usage=).
+function matchesUsage(row: PlatformTenantRow, usage: string): boolean {
+  if (usage === 'all') return true;
+  const [kind, value] = usage.split(':');
+  if (kind === 'health') return row.health.level === value;
+  if (kind === 'setup') return row.setupStage === value;
+  return true;
+}
 type SortDir = 'asc' | 'desc';
 
 function compare(a: PlatformTenantRow, b: PlatformTenantRow, key: SortKey): number {
@@ -66,7 +95,12 @@ function compare(a: PlatformTenantRow, b: PlatformTenantRow, key: SortKey): numb
     case 'mrr':
       return a.monthlyValue - b.monthlyValue;
     case 'activity':
-      return (a.usage.lastOrderAt ?? '').localeCompare(b.usage.lastOrderAt ?? '');
+      return (a.activity.lastActiveAt ?? '').localeCompare(b.activity.lastActiveAt ?? '');
+    case 'health':
+      // Ties: the bigger shop first.
+      return a.health.urgency - b.health.urgency || a.sales.revenuePrev30 - b.sales.revenuePrev30;
+    case 'sales':
+      return a.sales.revenue30 - b.sales.revenue30;
     case 'created':
       return a.createdAt.localeCompare(b.createdAt);
   }
@@ -127,12 +161,14 @@ export function TenantsTable({
   rows,
   now,
   initialChip = 'all',
+  initialUsage = 'all',
   showDeleted,
   deleted,
 }: {
   rows: PlatformTenantRow[];
   now: string;
   initialChip?: string;
+  initialUsage?: string;
   showDeleted: boolean;
   deleted: DeletedTenant[];
 }) {
@@ -141,6 +177,7 @@ export function TenantsTable({
   const [chip, setChip] = useState<ChipKey>(CHIPS.some((c) => c.key === initialChip) ? (initialChip as ChipKey) : 'all');
   const [tier, setTier] = useState('all');
   const [addon, setAddon] = useState('all');
+  const [usage, setUsage] = useState(initialUsage);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'created', dir: 'desc' });
 
   const counts = useMemo(() => Object.fromEntries(CHIPS.map((c) => [c.key, rows.filter((r) => matchesChip(r, c.key)).length])), [rows]);
@@ -150,14 +187,15 @@ export function TenantsTable({
       (r) =>
         matchesChip(r, chip) &&
         (tier === 'all' || r.subscriptionTier === tier) &&
-        (addon === 'all' || (addon === 'none' ? r.addons.length === 0 : r.addons.includes(addon))),
+        (addon === 'all' || (addon === 'none' ? r.addons.length === 0 : r.addons.includes(addon))) &&
+        matchesUsage(r, usage),
     );
     const searched = fuzzySearch(base, ['name', 'owner.email', 'owner.phone', 'owner.name', 'billingContact.phone'], query);
     // Keep relevance order while searching; otherwise apply the chosen sort.
     if (query.trim()) return searched;
     const sorted = [...searched].sort((a, b) => compare(a, b, sort.key));
     return sort.dir === 'desc' ? sorted.reverse() : sorted;
-  }, [rows, chip, tier, addon, query, sort]);
+  }, [rows, chip, tier, addon, usage, query, sort]);
 
   const deletedFiltered = useMemo(() => fuzzySearch(deleted, ['name'], query), [deleted, query]);
 
@@ -191,7 +229,16 @@ export function TenantsTable({
         'Total paid (KES)',
         'Orders 30d',
         'GMV 30d (KES)',
-        'Last activity',
+        'Health',
+        'Health reasons',
+        'Setup stage',
+        'Last active',
+        'Last sign-in',
+        'Active days 30d',
+        'Staff active 30d',
+        'Est. profit 30d (KES)',
+        'Stock value at cost (KES)',
+        'Next follow-up',
         'Add-ons',
         'Created',
       ],
@@ -213,7 +260,16 @@ export function TenantsTable({
         r.payments.total,
         r.usage.orders30d,
         Math.round(r.usage.gmv30d),
-        r.usage.lastOrderAt ? formatDay(r.usage.lastOrderAt) : '',
+        HEALTH_LABELS[r.health.level],
+        r.health.reasons.join('; '),
+        SETUP_STAGE_LABELS[r.setupStage],
+        r.activity.lastActiveAt ? formatDay(r.activity.lastActiveAt) : '',
+        r.activity.lastLoginAt ? formatDay(r.activity.lastLoginAt) : '',
+        r.activity.activeDays30,
+        `${r.activity.activeStaff30}/${r.activity.staff}`,
+        Math.round(r.sales.profit30),
+        Math.round(r.sales.stockCost),
+        r.followUpOn ?? '',
         r.addons.map((a) => ADDON_LABELS[a as Addon] ?? a).join('; '),
         formatDay(r.createdAt),
       ]),
@@ -225,8 +281,9 @@ export function TenantsTable({
     setChip('all');
     setTier('all');
     setAddon('all');
+    setUsage('all');
   };
-  const anyFilter = query.trim() !== '' || chip !== 'all' || tier !== 'all' || addon !== 'all';
+  const anyFilter = query.trim() !== '' || chip !== 'all' || tier !== 'all' || addon !== 'all' || usage !== 'all';
 
   return (
     <div className="flex flex-col gap-4">
@@ -272,12 +329,30 @@ export function TenantsTable({
                   <SelectItem value="none">No add-ons</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={usage} onValueChange={setUsage}>
+                <SelectTrigger className="col-span-2 h-9 w-full sm:col-span-1 sm:w-44" aria-label="Filter by health or setup stage">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Any health</SelectItem>
+                  {HEALTH_LEVELS.map((h) => (
+                    <SelectItem key={h} value={`health:${h}`}>
+                      {HEALTH_LABELS[h]}
+                    </SelectItem>
+                  ))}
+                  {SETUP_STAGES.filter((st) => st !== 'selling').map((st) => (
+                    <SelectItem key={st} value={`setup:${st}`}>
+                      Setup: {SETUP_STAGE_LABELS[st]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           ) : null}
         </div>
 
         {!showDeleted ? (
-          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0" role="group" aria-label="Filter by billing state">
+          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0" role="group" aria-label="Filter tenants">
             <div className="flex w-max gap-1.5 sm:w-auto sm:flex-wrap">
               {CHIPS.map((c) => (
                 <button
@@ -361,8 +436,13 @@ export function TenantsTable({
                       <span className="truncate font-medium">{row.name}</span>
                       <span className="truncate text-xs text-muted-foreground">{row.owner?.email ?? 'No owner email'}</span>
                     </div>
-                    <SubscriptionStateBadge state={row.state} />
+                    <div className="flex flex-col items-end gap-1">
+                      <HealthBadge level={row.health.level} />
+                      <SubscriptionStateBadge state={row.state} />
+                    </div>
                   </div>
+                  {row.health.reasons[0] ? <span className="text-xs text-muted-foreground">{row.health.reasons[0]}</span> : null}
+                  {row.followUpDue ? <FollowUpBadge on={row.followUpOn} /> : null}
                   <dl className="grid grid-cols-3 gap-2 text-xs">
                     <div className="flex flex-col">
                       <dt className="text-muted-foreground">Plan</dt>
@@ -385,10 +465,10 @@ export function TenantsTable({
                       </dd>
                     </div>
                     <div className="flex flex-col">
-                      <dt className="text-muted-foreground">Orders 30d</dt>
+                      <dt className="text-muted-foreground">Sales 30d</dt>
                       <dd className="font-medium tabular-nums">
-                        {row.usage.orders30d}
-                        <span className="block font-normal text-muted-foreground">{timeAgo(row.usage.lastOrderAt, now)}</span>
+                        {kesShort(row.sales.revenue30)} <Delta current={row.sales.revenue30} previous={row.sales.revenuePrev30} />
+                        <span className="block font-normal text-muted-foreground">active {timeAgo(row.activity.lastActiveAt, now).toLowerCase()}</span>
                       </dd>
                     </div>
                   </dl>
@@ -403,13 +483,14 @@ export function TenantsTable({
               <TableHeader className="bg-muted/40">
                 <TableRow>
                   <SortHeader label="Tenant" sortKey="name" sort={sort} onSort={onSort} className="pl-4" />
+                  <SortHeader label="Health" sortKey="health" sort={sort} onSort={onSort} />
                   <TableHead>State</TableHead>
                   <SortHeader label="Plan" sortKey="mrr" sort={sort} onSort={onSort} />
                   <SortHeader label="Paid until" sortKey="paidUntil" sort={sort} onSort={onSort} />
-                  <TableHead className="hidden xl:table-cell">Last payment</TableHead>
-                  <TableHead className="text-right">Usage (30d)</TableHead>
-                  <SortHeader label="Last activity" sortKey="activity" sort={sort} onSort={onSort} className="hidden lg:table-cell" />
-                  <SortHeader label="Created" sortKey="created" sort={sort} onSort={onSort} className="hidden xl:table-cell" />
+                  <TableHead className="hidden 2xl:table-cell">Last payment</TableHead>
+                  <SortHeader label="Sales (30d)" sortKey="sales" sort={sort} onSort={onSort} />
+                  <SortHeader label="Last active" sortKey="activity" sort={sort} onSort={onSort} className="hidden lg:table-cell" />
+                  <SortHeader label="Created" sortKey="created" sort={sort} onSort={onSort} className="hidden 2xl:table-cell" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -431,11 +512,25 @@ export function TenantsTable({
                           {row.name}
                         </Link>
                         <span className="truncate text-xs text-muted-foreground">{row.owner?.email ?? '—'}</span>
+                        {row.followUpDue ? <FollowUpBadge on={row.followUpOn} /> : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="w-56 max-w-56 whitespace-normal">
+                      <div className="flex min-w-0 flex-col items-start gap-1">
+                        <HealthBadge level={row.health.level} />
+                        {row.health.reasons[0] ? (
+                          <span className="line-clamp-2 text-xs text-muted-foreground" title={row.health.reasons.join(' · ')}>
+                            {row.health.reasons[0]}
+                          </span>
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col items-start gap-1">
                         <SubscriptionStateBadge state={row.state} />
+                        {row.blocked && row.status === 'active' ? (
+                          <span className="text-xs font-medium text-red-700 dark:text-red-300">Locked out</span>
+                        ) : null}
                         {row.status !== 'active' ? <TenantStatusBadge status={row.status} /> : null}
                       </div>
                     </TableCell>
@@ -450,7 +545,7 @@ export function TenantsTable({
                     <TableCell>
                       <PaidUntilCell row={row} now={now} />
                     </TableCell>
-                    <TableCell className="hidden xl:table-cell">
+                    <TableCell className="hidden 2xl:table-cell">
                       {row.payments.lastPaidAt ? (
                         <div className="flex flex-col">
                           <span>{formatDay(row.payments.lastPaidAt)}</span>
@@ -462,16 +557,21 @@ export function TenantsTable({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      <div className="flex flex-col">
-                        <span>
-                          {row.usage.orders30d} order{row.usage.orders30d === 1 ? '' : 's'}
-                        </span>
-                        <span className="text-xs text-muted-foreground">{formatKES(row.usage.gmv30d, { compact: true })}</span>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div className="flex flex-col tabular-nums">
+                          <span>
+                            {kesShort(row.sales.revenue30)} <Delta current={row.sales.revenue30} previous={row.sales.revenuePrev30} />
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {row.usage.orders30d} sale{row.usage.orders30d === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                        <Sparkline values={row.sales.spark30} className="hidden 2xl:block" />
                       </div>
                     </TableCell>
-                    <TableCell className="hidden text-muted-foreground lg:table-cell">{timeAgo(row.usage.lastOrderAt, now)}</TableCell>
-                    <TableCell className="hidden text-muted-foreground xl:table-cell">{formatDay(row.createdAt)}</TableCell>
+                    <TableCell className="hidden text-muted-foreground lg:table-cell">{timeAgo(row.activity.lastActiveAt, now)}</TableCell>
+                    <TableCell className="hidden text-muted-foreground 2xl:table-cell">{formatDay(row.createdAt)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -480,6 +580,14 @@ export function TenantsTable({
         </>
       )}
     </div>
+  );
+}
+
+function FollowUpBadge({ on }: { on: string | null }) {
+  return (
+    <span className="w-fit rounded-full bg-red-500/12 px-2 text-xs font-medium text-red-700 dark:text-red-300">
+      Follow up{on ? ` · ${formatDay(`${on}T09:00:00Z`)}` : ''}
+    </span>
   );
 }
 
