@@ -73,7 +73,7 @@ services:
       PLATFORM_MPESA_PHONE: ${PLATFORM_MPESA_PHONE:-0716522948}
       PLATFORM_MPESA_NAME: ${PLATFORM_MPESA_NAME:-Wycliff Kimutai}
       # "Continue with Google" - the API verifies Google ID tokens against this client ID.
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-977258875758-15jdpijq2r0lj7ua5eapthgambvbdfe2.apps.googleusercontent.com}
     ports: ["3001:3000"]
     networks: [default, colocated_net]
     depends_on:
@@ -103,7 +103,7 @@ services:
       HOSTNAME: 0.0.0.0
       # "Continue with Google" (runtime, not NEXT_PUBLIC - the button checks
       # /api/auth/google/status). Leave blank to hide the button.
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-977258875758-15jdpijq2r0lj7ua5eapthgambvbdfe2.apps.googleusercontent.com}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       # Public address of the signed-in app - Google's redirect URI is built from it.
       APP_URL: ${APP_URL:-https://app.fundipos.co.ke}
