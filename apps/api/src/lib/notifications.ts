@@ -105,15 +105,27 @@ async function tenantContacts(payload: Payload, tenantId: number | string) {
   return { tenant, to, ownerName };
 }
 
-// How a tenant pays Fundi (configured per deployment). Shown in emails and
-// on the tenant's billing page.
+// How a tenant pays Fundi (configured per deployment, first one set wins).
+// Shown in emails and on the tenant's billing page. Like PharmaTrack, the
+// simplest is M-Pesa Send Money to a phone number: the shop then enters the
+// confirmation code ("I've paid") and the operator is emailed to confirm.
+//   PLATFORM_MPESA_PAYBILL  paybill, account FUNDI<tenantId>
+//   PLATFORM_MPESA_TILL     Buy Goods till
+//   PLATFORM_MPESA_PHONE    Send Money to this number
+//   PLATFORM_MPESA_NAME     optional: the name M-Pesa shows for it, so shops
+//                           can check they're paying the right person
 export function platformPaymentDetails(tenantId: number | string) {
   const paybill = process.env.PLATFORM_MPESA_PAYBILL || '';
   const till = process.env.PLATFORM_MPESA_TILL || '';
+  const phone = process.env.PLATFORM_MPESA_PHONE || '';
+  const name = process.env.PLATFORM_MPESA_NAME || null;
   const account = `FUNDI${tenantId}`;
-  if (paybill) return { kind: 'paybill' as const, number: paybill, account, line: `M-Pesa Paybill ${paybill}, account number ${account}` };
-  if (till) return { kind: 'till' as const, number: till, account: null, line: `M-Pesa Buy Goods till ${till}` };
-  return { kind: null, number: null, account: null, line: 'Reply to this email and we will send you payment details' };
+  if (paybill) return { kind: 'paybill' as const, number: paybill, account, name, line: `M-Pesa Paybill ${paybill}, account number ${account}` };
+  if (till) return { kind: 'till' as const, number: till, account: null, name, line: `M-Pesa Buy Goods till ${till}` };
+  if (phone) {
+    return { kind: 'phone' as const, number: phone, account: null, name, line: `M-Pesa Send Money to ${phone}${name ? ` (${name})` : ''}` };
+  }
+  return { kind: null, number: null, account: null, name: null, line: 'Reply to this email and we will send you payment details' };
 }
 
 const greeting = (name: string | null) => (name ? `Hi ${name.split(' ')[0]},` : 'Hello,');

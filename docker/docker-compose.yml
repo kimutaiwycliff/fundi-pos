@@ -70,6 +70,8 @@ services:
       APP_URL: ${APP_URL:-https://app.fundipos.co.ke}
       PLATFORM_MPESA_PAYBILL: ${PLATFORM_MPESA_PAYBILL:-}
       PLATFORM_MPESA_TILL: ${PLATFORM_MPESA_TILL:-}
+      PLATFORM_MPESA_PHONE: ${PLATFORM_MPESA_PHONE:-0716522948}
+      PLATFORM_MPESA_NAME: ${PLATFORM_MPESA_NAME:-}
     ports: ["3001:3000"]
     networks: [default, colocated_net]
     depends_on:
