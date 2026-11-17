@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LogoMark } from '@/components/marketing/logo-mark';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { GoogleButton } from '@/components/auth/google-button';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -66,6 +67,9 @@ export default function SignupPage() {
             <CardDescription>Set up your shop in under a minute.</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="mb-4">
+              <GoogleButton label="Sign up with Google" />
+            </div>
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="businessName">Business name</Label>

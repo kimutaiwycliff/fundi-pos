@@ -23,6 +23,8 @@ export const Users: CollectionConfig = {
     delete: managerOrOwner,
   },
   fields: [
+    // Google account ID once the user has signed in with Google (lib/google.ts).
+    { name: 'googleSub', type: 'text', index: true, access: { read: () => false, update: () => false }, admin: { readOnly: true } },
     { name: 'tenant', type: 'relationship', relationTo: 'tenants', required: true, index: true },
     {
       name: 'store',

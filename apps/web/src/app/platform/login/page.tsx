@@ -17,6 +17,8 @@ export default function PlatformLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [needsCode, setNeedsCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -28,11 +30,17 @@ export default function PlatformLoginPage() {
     const response = await fetch('/api/platform-auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, ...(needsCode ? { totp: code } : {}) }),
     });
 
     if (!response.ok) {
       const body = await response.json().catch(() => null);
+      if (body?.needsCode && !needsCode) {
+        setNeedsCode(true);
+        setError(null);
+        setLoading(false);
+        return;
+      }
       setError(body?.error ?? 'Login failed');
       setLoading(false);
       return;
@@ -66,6 +74,22 @@ export default function PlatformLoginPage() {
               />
             </div>
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {needsCode ? (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="totp">2-step code</Label>
+                <Input
+                  id="totp"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  maxLength={6}
+                  required
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="6-digit code from your authenticator app"
+                />
+              </div>
+            ) : null}
             <Button type="submit" disabled={loading}>
               {loading ? 'Signing in…' : 'Sign in'}
             </Button>

@@ -28,12 +28,12 @@ export interface PriorTrial {
   tenant: number | null;
   businessName: string;
   createdAt: string;
-  matchedOn: ('email' | 'phone' | 'ip')[];
+  matchedOn: ('email' | 'phone' | 'ip' | 'google')[];
 }
 
 export async function findPriorTrials(
   payload: Payload,
-  q: { email?: string | null; phone?: string | null; ip?: string | null; excludeTenantId?: number | string | null },
+  q: { email?: string | null; phone?: string | null; ip?: string | null; googleSub?: string | null; excludeTenantId?: number | string | null },
 ): Promise<PriorTrial[]> {
   const email = canonicalEmail(q.email);
   const phone = canonicalPhone(q.phone);
@@ -41,6 +41,7 @@ export async function findPriorTrials(
     ...(email ? [{ emailCanonical: { equals: email } }] : []),
     ...(phone ? [{ phone: { equals: phone } }] : []),
     ...(q.ip ? [{ ip: { equals: q.ip } }] : []),
+    ...(q.googleSub ? [{ googleSub: { equals: q.googleSub } }] : []),
   ];
   if (or.length === 0) return [];
   const found = await payload.find({ collection: 'trial-grants', where: { or }, sort: 'createdAt', limit: 20, depth: 0, overrideAccess: true });
@@ -55,13 +56,14 @@ export async function findPriorTrials(
         ...(email && g.emailCanonical === email ? (['email'] as const) : []),
         ...(phone && g.phone === phone ? (['phone'] as const) : []),
         ...(q.ip && g.ip === q.ip ? (['ip'] as const) : []),
+        ...(q.googleSub && g.googleSub === q.googleSub ? (['google'] as const) : []),
       ],
     }));
 }
 
 export async function recordTrialGrant(
   payload: Payload,
-  g: { tenantId: number | string; businessName: string; email?: string | null; phone?: string | null; ip?: string | null; source: 'signup' | 'operator'; trialDays: number; repeatOverride?: boolean },
+  g: { tenantId: number | string; businessName: string; email?: string | null; phone?: string | null; ip?: string | null; googleSub?: string | null; source: 'signup' | 'operator'; trialDays: number; repeatOverride?: boolean },
 ): Promise<void> {
   await payload.create({
     collection: 'trial-grants',
@@ -73,6 +75,7 @@ export async function recordTrialGrant(
       emailRaw: g.email ?? null,
       phone: canonicalPhone(g.phone),
       ip: g.ip ?? null,
+      googleSub: g.googleSub ?? null,
       source: g.source,
       trialDays: g.trialDays,
       repeatOverride: g.repeatOverride ?? false,

@@ -72,6 +72,8 @@ services:
       PLATFORM_MPESA_TILL: ${PLATFORM_MPESA_TILL:-}
       PLATFORM_MPESA_PHONE: ${PLATFORM_MPESA_PHONE:-0716522948}
       PLATFORM_MPESA_NAME: ${PLATFORM_MPESA_NAME:-Wycliff Kimutai}
+      # "Continue with Google" - the API verifies Google ID tokens against this client ID.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     ports: ["3001:3000"]
     networks: [default, colocated_net]
     depends_on:
@@ -99,6 +101,12 @@ services:
     environment:
       # See fundi-payload-api's identical HOSTNAME override above for why.
       HOSTNAME: 0.0.0.0
+      # "Continue with Google" (runtime, not NEXT_PUBLIC - the button checks
+      # /api/auth/google/status). Leave blank to hide the button.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Public address of the signed-in app - Google's redirect URI is built from it.
+      APP_URL: ${APP_URL:-https://app.fundipos.co.ke}
       # Browser-facing (client-side fetches) - the browser runs on the host,
       # so it must use the host-mapped port, not the container-internal one.
       # Overridable so a production .env can point this at the real public

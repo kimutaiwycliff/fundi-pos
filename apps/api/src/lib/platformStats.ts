@@ -80,7 +80,8 @@ export async function buildStats(payload: Payload) {
       FROM trial_grants g
       JOIN trial_grants p ON p.id <> g.id AND p.created_at < g.created_at
         AND (p.tenant_id IS NULL OR p.tenant_id <> g.tenant_id)
-        AND ((g.email_canonical IS NOT NULL AND p.email_canonical = g.email_canonical) OR (g.phone IS NOT NULL AND p.phone = g.phone))
+        AND ((g.email_canonical IS NOT NULL AND p.email_canonical = g.email_canonical) OR (g.phone IS NOT NULL AND p.phone = g.phone)
+          OR (g.google_sub IS NOT NULL AND p.google_sub = g.google_sub))
       WHERE g.tenant_id IS NOT NULL
       GROUP BY g.tenant_id`),
   ]);

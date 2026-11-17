@@ -23,6 +23,7 @@ export const TrialGrants: CollectionConfig = {
     { name: 'emailRaw', type: 'text' },
     { name: 'phone', type: 'text', index: true },
     { name: 'ip', type: 'text', index: true },
+    { name: 'googleSub', type: 'text', index: true },
     { name: 'source', type: 'select', required: true, options: ['signup', 'operator'] },
     { name: 'trialDays', type: 'number' },
     // Operator granted it knowing it was a repeat.

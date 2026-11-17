@@ -213,6 +213,9 @@ export interface UserAuthOperations {
 export interface PlatformAdmin {
   id: number;
   name: string;
+  totpEnabled?: boolean | null;
+  totpSecret?: string | null;
+  totpPendingSecret?: string | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -426,6 +429,7 @@ export interface Store {
  */
 export interface User {
   id: number;
+  googleSub?: string | null;
   tenant: number | Tenant;
   store?: (number | null) | Store;
   role: 'owner' | 'manager' | 'cashier';
@@ -1016,6 +1020,7 @@ export interface TrialGrant {
   emailRaw?: string | null;
   phone?: string | null;
   ip?: string | null;
+  googleSub?: string | null;
   source: 'signup' | 'operator';
   trialDays?: number | null;
   repeatOverride?: boolean | null;
@@ -1428,6 +1433,9 @@ export interface PayloadMigration {
  */
 export interface PlatformAdminsSelect<T extends boolean = true> {
   name?: T;
+  totpEnabled?: T;
+  totpSecret?: T;
+  totpPendingSecret?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;
@@ -1518,6 +1526,7 @@ export interface StoresSelect<T extends boolean = true> {
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
+  googleSub?: T;
   tenant?: T;
   store?: T;
   role?: T;
@@ -2010,6 +2019,7 @@ export interface TrialGrantsSelect<T extends boolean = true> {
   emailRaw?: T;
   phone?: T;
   ip?: T;
+  googleSub?: T;
   source?: T;
   trialDays?: T;
   repeatOverride?: T;

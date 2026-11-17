@@ -135,7 +135,7 @@ const greeting = (name: string | null) => (name ? `Hi ${name.split(' ')[0]},` : 
 export function notifyNewSignup(payload: Payload, tenantId: number | string, priorTrials: PriorTrial[] = []): void {
   background('notify:signup', async () => {
     const { tenant, to: ownerEmails } = await tenantContacts(payload, tenantId);
-    const strong = priorTrials.filter((p) => p.matchedOn.includes('email') || p.matchedOn.includes('phone'));
+    const strong = priorTrials.filter((p) => p.matchedOn.includes('email') || p.matchedOn.includes('phone') || p.matchedOn.includes('google'));
     const { html, text } = render({
       heading: `${strong.length ? 'Repeat trial? ' : ''}New sign-up: ${tenant.name}`,
       intro: [
@@ -484,4 +484,25 @@ export async function runScheduledPurges(payload: Payload, now = new Date()): Pr
     }
   }
   return { purged, failed };
+}
+
+// "Forgot password?" - the reset link (same /set-password page owners use).
+export async function sendPasswordReset(payload: Payload, args: { userId: number | string; email: string; name: string | null; link: string }): Promise<SendResult> {
+  const { html, text } = render({
+    heading: 'Reset your Fundi POS password',
+    intro: [
+      greeting(args.name),
+      'Someone (hopefully you) asked to reset the password for this Fundi POS account. Choose a new one with the button below.',
+      "The link works for 72 hours. If you didn't ask for this, ignore this email - your password stays the same.",
+    ],
+    cta: { label: 'Choose a new password', href: args.link },
+  });
+  return sendEmail(payload, {
+    key: `password_reset:${args.userId}:${Date.now()}`,
+    kind: 'password_reset',
+    to: [args.email],
+    subject: 'Reset your Fundi POS password',
+    html,
+    text,
+  });
 }
