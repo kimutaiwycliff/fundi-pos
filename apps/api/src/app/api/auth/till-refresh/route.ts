@@ -5,6 +5,7 @@ import { ACCESS_REVOKED_CODE, checkTenantAccess } from '@/lib/billing';
 import { isTenantUser, toID } from '@/lib/relations';
 import { extendTillSession, mintTillToken } from '@/lib/tillAuth';
 import { activitySource, recordActivity } from '@/lib/activity';
+import { DEVICE_REVOKED_MESSAGE, isDeviceRevoked, terminalFromHeaders, touchDevice } from '@/lib/devices';
 
 // Lets an already-logged-in till (still holding a currently-valid session)
 // silently extend its own session another TILL_TOKEN_TTL_SECONDS - a till
@@ -47,9 +48,15 @@ export async function POST() {
     return Response.json({ error: 'No active session to refresh' }, { status: 400 });
   }
 
-  await extendTillSession(payload, user.id, sid);
   const headers = await nextHeaders();
+  const till = terminalFromHeaders(headers);
+  if (await isDeviceRevoked(payload, toID(user.tenant), till.terminalId)) {
+    return Response.json({ error: DEVICE_REVOKED_MESSAGE, code: ACCESS_REVOKED_CODE, reason: 'device_revoked' }, { status: 403 });
+  }
+
+  await extendTillSession(payload, user.id, sid);
   recordActivity(payload, { userId: user.id, tenantId: toID(user.tenant), source: activitySource(headers) });
+  touchDevice(payload, { tenantId: toID(user.tenant), ...till, platform: activitySource(headers), userId: user.id });
   const { token, exp } = await mintTillToken(payload, { id: user.id, email: user.email, sid });
 
   return Response.json({ token, exp, user });

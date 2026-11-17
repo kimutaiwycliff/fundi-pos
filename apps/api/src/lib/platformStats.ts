@@ -44,7 +44,7 @@ export async function buildStats(payload: Payload) {
   const now = new Date();
   const since30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [tenants, owners, payments, stores, users, products, orders30, lastOrder, rollups, daily, pendingClaims, pendingTrials] = await Promise.all([
+  const [tenants, owners, payments, stores, users, products, orders30, lastOrder, rollups, daily, pendingClaims, pendingTrials, repeatTrials] = await Promise.all([
     payload.find({ collection: 'tenants', where: { status: { not_equals: 'deleted' } }, pagination: false, depth: 0, overrideAccess: true }),
     payload.find({
       collection: 'users',
@@ -74,7 +74,17 @@ export async function buildStats(payload: Payload) {
     platformDaily(payload, now),
     payload.db.drizzle.execute<CountRow>(sql`SELECT tenant_id, COUNT(*)::int AS n FROM subscription_payments WHERE status = 'pending' GROUP BY tenant_id`),
     payload.db.drizzle.execute<CountRow>(sql`SELECT tenant_id, COUNT(*)::int AS n FROM trial_extension_requests WHERE status = 'pending' GROUP BY tenant_id`),
+    // Earlier trials matching this tenant's own trial grant on email or phone.
+    payload.db.drizzle.execute<CountRow>(sql`
+      SELECT g.tenant_id, COUNT(DISTINCT p.id)::int AS n
+      FROM trial_grants g
+      JOIN trial_grants p ON p.id <> g.id AND p.created_at < g.created_at
+        AND (p.tenant_id IS NULL OR p.tenant_id <> g.tenant_id)
+        AND ((g.email_canonical IS NOT NULL AND p.email_canonical = g.email_canonical) OR (g.phone IS NOT NULL AND p.phone = g.phone))
+      WHERE g.tenant_id IS NOT NULL
+      GROUP BY g.tenant_id`),
   ]);
+  const repeatTrialCounts = new Map(repeatTrials.rows.map((r) => [Number(r.tenant_id), Number(r.n)]));
   const claimCounts = new Map(pendingClaims.rows.map((r) => [Number(r.tenant_id), Number(r.n)]));
   const trialRequestCounts = new Map(pendingTrials.rows.map((r) => [Number(r.tenant_id), Number(r.n)]));
   const today = nairobiDay(now);
@@ -175,6 +185,7 @@ export async function buildStats(payload: Payload) {
         stockRetail: roll.stockRetail,
         spark30: roll.spark30,
       },
+      repeatTrial: (repeatTrialCounts.get(id) ?? 0) > 0,
       pendingClaims: claimCounts.get(id) ?? 0,
       pendingTrialRequests: trialRequestCounts.get(id) ?? 0,
       followUpOn: roll.followUpOn,

@@ -6,6 +6,7 @@ import { verifyPin } from '@/lib/pin';
 import { checkTenantAccess } from '@/lib/billing';
 import { toID } from '@/lib/relations';
 import { activitySource, recordActivity } from '@/lib/activity';
+import { DEVICE_REVOKED_MESSAGE, isDeviceRevoked, terminalFromHeaders, touchDevice } from '@/lib/devices';
 import { extendTillSession, mintTillToken } from '@/lib/tillAuth';
 
 // Fast till login: phone + PIN instead of email + password (the web
@@ -90,6 +91,10 @@ export async function POST(request: Request) {
   if (!billing.allowed) {
     return Response.json({ error: billing.message }, { status: 403 });
   }
+  const till = terminalFromHeaders(request.headers);
+  if (await isDeviceRevoked(payload, toID(user.tenant), till.terminalId)) {
+    return Response.json({ error: DEVICE_REVOKED_MESSAGE }, { status: 403 });
+  }
 
   // Payload 3.x tracks sessions server-side (revocable, not just a
   // stateless JWT) - a session pushed via a normal payload.update() call is
@@ -136,6 +141,7 @@ export async function POST(request: Request) {
     },
   });
   recordActivity(payload, { userId: user.id, tenantId: toID(user.tenant), source: activitySource(request.headers), login: true });
+  touchDevice(payload, { tenantId: toID(user.tenant), ...till, platform: activitySource(request.headers), userId: user.id });
 
   return Response.json({ token, exp, user });
 }

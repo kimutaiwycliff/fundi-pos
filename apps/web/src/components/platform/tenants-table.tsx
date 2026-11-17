@@ -36,6 +36,7 @@ export interface DeletedTenant {
   subscriptionTier: string;
   statusChangedAt?: string | null;
   statusReason?: string | null;
+  scheduledPurgeAt?: string | null;
   createdAt: string;
 }
 
@@ -446,6 +447,7 @@ export function TenantsTable({
                   </div>
                   {row.health.reasons[0] ? <span className="text-xs text-muted-foreground">{row.health.reasons[0]}</span> : null}
                   {row.followUpDue ? <FollowUpBadge on={row.followUpOn} /> : null}
+                  {row.repeatTrial ? <RepeatTrialBadge /> : null}
                   <dl className="grid grid-cols-3 gap-2 text-xs">
                     <div className="flex flex-col">
                       <dt className="text-muted-foreground">Plan</dt>
@@ -516,6 +518,7 @@ export function TenantsTable({
                         </Link>
                         <span className="truncate text-xs text-muted-foreground">{row.owner?.email ?? '—'}</span>
                         {row.followUpDue ? <FollowUpBadge on={row.followUpOn} /> : null}
+                        {row.repeatTrial ? <RepeatTrialBadge /> : null}
                       </div>
                     </TableCell>
                     <TableCell className="w-56 max-w-56 whitespace-normal">
@@ -586,6 +589,14 @@ export function TenantsTable({
   );
 }
 
+function RepeatTrialBadge() {
+  return (
+    <span className="w-fit rounded-full bg-orange-500/12 px-2 text-xs font-medium text-orange-800 dark:text-orange-300" title="Same email or phone as an earlier free trial">
+      Repeat trial
+    </span>
+  );
+}
+
 function FollowUpBadge({ on }: { on: string | null }) {
   return (
     <span className="w-fit rounded-full bg-red-500/12 px-2 text-xs font-medium text-red-700 dark:text-red-300">
@@ -618,7 +629,8 @@ function DeletedList({ rows }: { rows: DeletedTenant[] }) {
               </span>
             </div>
             <span className="text-xs text-muted-foreground">
-              Deleted {t.statusChangedAt ? formatDay(t.statusChangedAt) : ''} · Restore from the tenant page
+              Deleted {t.statusChangedAt ? formatDay(t.statusChangedAt) : ''}
+              {t.scheduledPurgeAt ? ` · permanently deleted ${formatDay(t.scheduledPurgeAt)}` : ''} · Restore from the tenant page
             </span>
           </Link>
         </li>

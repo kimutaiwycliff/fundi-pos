@@ -10,6 +10,7 @@ import { reminderMessage } from '@/components/platform/contact-links';
 import { formatDay, formatDayTime, formatKES, relativeDays, titleCase } from '@/components/platform/format';
 import { FollowUpPanel } from '@/components/platform/follow-up-panel';
 import { HealthBadge } from '@/components/platform/insights';
+import { SetPasswordLinkButton } from '@/components/platform/device-actions';
 import { OverviewTab, TeamTab, UsageTab } from '@/components/platform/tenant-insights';
 import { PaymentClaims } from '@/components/platform/payment-claims';
 import { PaymentHistory } from '@/components/platform/payment-history';
@@ -36,6 +37,7 @@ type Tenant = {
   status: TenantStatus;
   statusChangedAt: string | null;
   statusReason: string | null;
+  scheduledPurgeAt?: string | null;
   subscriptionTier: string;
   billingStatus: string;
   billingCycle?: string | null;
@@ -149,6 +151,11 @@ export default async function PlatformTenantDetailPage({
             <h1 className="text-2xl font-semibold tracking-tight break-words">{tenant.name}</h1>
             <div className="flex flex-wrap items-center gap-2">
               {row ? <HealthBadge level={row.health.level} /> : null}
+              {row?.repeatTrial ? (
+                <span className="inline-flex h-5 items-center rounded-full bg-orange-500/12 px-2 text-xs font-medium text-orange-800 dark:text-orange-300">
+                  Repeat trial
+                </span>
+              ) : null}
               <SubscriptionStateBadge state={state} />
               <TenantStatusBadge status={tenant.status} />
               <span className="text-xs text-muted-foreground">
@@ -264,6 +271,32 @@ export default async function PlatformTenantDetailPage({
               <FollowUpPanel tenantId={tenant.id} notes={notes} />
             </CardContent>
           </Card>
+          {insights.priorTrials.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Earlier trials</CardTitle>
+                <CardDescription>Other free trials with the same email or phone (or, weaker, the same network).</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="flex flex-col gap-2 text-sm">
+                  {insights.priorTrials.map((p) => (
+                    <li key={p.id} className="flex flex-col">
+                      {p.tenantId ? (
+                        <Link href={`/platform/tenants/${p.tenantId}`} className="font-medium underline-offset-2 hover:underline">
+                          {p.businessName}
+                        </Link>
+                      ) : (
+                        <span className="font-medium">{p.businessName} <span className="font-normal text-muted-foreground">(deleted)</span></span>
+                      )}
+                      <span className="text-xs text-muted-foreground">
+                        {p.createdAt ? formatDay(p.createdAt) : ''} · {p.source === 'operator' ? 'added by you' : 'self sign-up'} · matched on {p.matchedOn.join(' + ')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          ) : null}
         </OverviewTab>
       ) : null}
       {tab === 'usage' && insights ? <UsageTab data={insights} /> : null}
@@ -325,11 +358,18 @@ export default async function PlatformTenantDetailPage({
             <CardDescription>
               {tenant.status === 'active'
                 ? 'Suspend to lock every staff member out; soft-delete to also hide the tenant.'
-                : `This tenant is ${tenant.status}${tenant.statusChangedAt ? ` since ${formatDay(tenant.statusChangedAt)}` : ''}.`}
+                : `This tenant is ${tenant.status}${tenant.statusChangedAt ? ` since ${formatDay(tenant.statusChangedAt)}` : ''}.${
+                    tenant.status === 'deleted' && tenant.scheduledPurgeAt
+                      ? ` It will be permanently deleted on ${formatDay(tenant.scheduledPurgeAt)} unless you restore it.`
+                      : ''
+                  }`}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <TenantStatusActions tenantId={tenant.id} status={tenant.status} name={tenant.name} />
+            <div className="flex flex-col gap-4">
+              <TenantStatusActions tenantId={tenant.id} status={tenant.status} name={tenant.name} />
+              {tenant.status === 'active' ? <SetPasswordLinkButton tenantId={tenant.id} /> : null}
+            </div>
           </CardContent>
         </Card>
 

@@ -47,7 +47,7 @@ fundipos.co.ke {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
-	@app path /login* /signup* /dashboard* /platform* /subscription-canceled* /billing*
+	@app path /login* /signup* /dashboard* /platform* /subscription-canceled* /billing* /set-password*
 	redir @app https://app.fundipos.co.ke{uri} permanent
 	reverse_proxy fundi-web:3000
 }

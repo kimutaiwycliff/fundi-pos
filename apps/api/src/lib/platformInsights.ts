@@ -237,7 +237,7 @@ export async function tenantDetail(payload: Payload, tenantId: number, now: Date
   const day30 = nairobiDay(new Date(now.getTime() - 29 * DAY_MS));
   const t = tenantId;
 
-  const [daily, dailyProfit, busy, mix, top, perStore, storeStock, staffRows, terminals, calendar, sources, features, milestones, lifetime] =
+  const [daily, dailyProfit, busy, mix, top, perStore, storeStock, staffRows, terminals, calendar, sources, features, milestones, lifetime, devices, priorTrials] =
     await Promise.all([
       rows(payload, sql`
         SELECT ${NAIROBI_DAY(sql`created_at`)} AS day, COUNT(*) AS orders, COALESCE(SUM(total), 0) AS revenue
@@ -338,6 +338,22 @@ export async function tenantDetail(payload: Payload, tenantId: number, now: Date
         SELECT COUNT(*) AS orders, COALESCE(SUM(total), 0) AS revenue,
           (SELECT COALESCE(SUM(amount), 0) FROM subscription_payments WHERE tenant_id = ${t}) AS paid_to_us
         FROM orders WHERE tenant_id = ${t} AND status = 'completed'`),
+      rows(payload, sql`
+        SELECT d.id, d.terminal_id, d.name, d.platform, d.first_seen_at, d.last_seen_at, d.revoked_at, d.revoke_reason, u.name AS user_name, u.email AS user_email
+        FROM devices d LEFT JOIN users u ON u.id = d.last_user_id
+        WHERE d.tenant_id = ${t} ORDER BY d.revoked_at NULLS FIRST, d.last_seen_at DESC NULLS LAST`),
+      rows(payload, sql`
+        SELECT p.id, p.business_name, p.tenant_id, p.created_at, p.source,
+          (g.email_canonical IS NOT NULL AND p.email_canonical = g.email_canonical) AS email_match,
+          (g.phone IS NOT NULL AND p.phone = g.phone) AS phone_match,
+          (g.ip IS NOT NULL AND p.ip = g.ip) AS ip_match
+        FROM trial_grants g
+        JOIN trial_grants p ON p.id <> g.id AND (p.tenant_id IS NULL OR p.tenant_id <> g.tenant_id)
+          AND ((g.email_canonical IS NOT NULL AND p.email_canonical = g.email_canonical)
+            OR (g.phone IS NOT NULL AND p.phone = g.phone)
+            OR (g.ip IS NOT NULL AND p.ip = g.ip))
+        WHERE g.tenant_id = ${t}
+        ORDER BY p.created_at`),
     ]);
 
   const dailyMap = new Map(daily.map((d) => [String(d.day), d]));
@@ -417,6 +433,26 @@ export async function tenantDetail(payload: Payload, tenantId: number, now: Date
       firstPayment: iso(m.first_payment),
     },
     lifetime: { orders: num(l.orders), revenue: num(l.revenue), paidToUs: num(l.paid_to_us) },
+    devices: devices.map((d) => ({
+      id: Number(d.id),
+      terminalId: String(d.terminal_id),
+      name: (d.name as string | null) ?? null,
+      platform: (d.platform as string | null) ?? null,
+      firstSeenAt: iso(d.first_seen_at),
+      lastSeenAt: iso(d.last_seen_at),
+      revokedAt: iso(d.revoked_at),
+      revokeReason: (d.revoke_reason as string | null) ?? null,
+      lastUser: (d.user_name as string | null) ?? (d.user_email as string | null) ?? null,
+    })),
+    // Other trials sharing this shop's email / phone (or, weakly, network).
+    priorTrials: priorTrials.map((p) => ({
+      id: Number(p.id),
+      businessName: String(p.business_name),
+      tenantId: p.tenant_id == null ? null : Number(p.tenant_id),
+      createdAt: iso(p.created_at),
+      source: String(p.source),
+      matchedOn: [p.email_match && 'email', p.phone_match && 'phone', p.ip_match && 'network'].filter(Boolean) as string[],
+    })),
   };
 }
 
