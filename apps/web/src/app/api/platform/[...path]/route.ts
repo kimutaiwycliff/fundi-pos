@@ -6,7 +6,23 @@ const PAYLOAD_API_URL = process.env.PAYLOAD_API_URL ?? 'http://localhost:3011';
 // the platform-admin's own cookie instead - so client components on the
 // platform pages can PATCH e.g. /api/platform/tenants/:id the same way the
 // tenant dashboard's own client components already call /api/payload/*.
+//
+// Only the collections/routes the console actually uses are forwarded -
+// previously any Payload endpoint was reachable with the operator's token,
+// leaving Payload's access control as the only line of defence.
+const ALLOWED_ROOTS = new Set(['tenants', 'subscription-payments', 'platform-audit-log', 'platform-stats']);
+
+function isAllowed(path: string[]): boolean {
+  if (path.length === 0 || !ALLOWED_ROOTS.has(path[0])) return false;
+  // No dot-segments or smuggled separators: fetch() would normalise
+  // tenants/../users into /api/users and step outside the allowlist.
+  return path.every((seg) => seg !== '' && seg !== '.' && seg !== '..' && !/[\\/]|%2f|%5c/i.test(seg));
+}
+
 async function proxy(request: Request, path: string[]) {
+  if (!isAllowed(path)) {
+    return Response.json({ error: 'Not found' }, { status: 404 });
+  }
   const token = await getPlatformSessionToken();
   if (!token) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });

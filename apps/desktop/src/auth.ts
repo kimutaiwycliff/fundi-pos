@@ -107,6 +107,14 @@ export async function loginWithPin(phone: string, pin: string): Promise<LoginRes
   return { payloadToken: body.token as string, user: body.user as PayloadUser };
 }
 
+// Thrown by refreshTillToken when the server says this till must stop: the
+// tenant's trial/subscription lapsed past its grace period, the account was
+// suspended/canceled, or this user was banned. Unlike a network or 5xx
+// failure, retrying won't help - the till signs out and shows the message.
+export class AccessRevokedError extends Error {
+  override readonly name = 'AccessRevokedError';
+}
+
 /**
  * POST /api/auth/till-refresh - slides this till's session forward another
  * TILL_TOKEN_TTL_SECONDS (30 days server-side, see apps/api/src/lib/
@@ -125,6 +133,9 @@ export async function refreshTillToken(payloadToken: string): Promise<LoginResul
   });
 
   const body = await res.json().catch(() => ({}));
+  if (res.status === 403 && body?.code === 'access_revoked') {
+    throw new AccessRevokedError(body.error ?? 'This till has been signed out.');
+  }
   if (!res.ok) {
     throw new Error(body?.error ?? `Session refresh failed (HTTP ${res.status})`);
   }

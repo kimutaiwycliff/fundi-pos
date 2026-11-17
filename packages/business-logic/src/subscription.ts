@@ -119,3 +119,66 @@ export function nextBillingPeriod(
   const start = current && current > now ? current : now;
   return { start, end: addMonths(start, CYCLE_MONTHS[(cycle as BillingCycle) ?? 'monthly'] ?? 1) };
 }
+
+// ---------------------------------------------------------------------------
+// Automatic access enforcement.
+//
+// A lapsed trial or an unpaid period doesn't lock the shop out on the spot:
+// they get ACCESS_GRACE_DAYS to pay, with a warning everywhere in the
+// meantime. After that every login, PIN login and till-session refresh is
+// refused, and an open dashboard redirects on its next page load.
+// 'never_paid' (a paid tier with no payment ever recorded - typically a
+// tenant the operator moved off trial by hand) is deliberately NOT blocked:
+// there's no date it lapsed on, so there's nothing to count a grace from.
+export const ACCESS_GRACE_DAYS = 3;
+
+export type AccessBlockReason = 'suspended' | 'deleted' | 'canceled' | 'trial_ended' | 'payment_overdue';
+
+export interface TenantAccess {
+  allowed: boolean;
+  reason?: AccessBlockReason;
+  state: SubscriptionState;
+  // When access stops (allowed) or stopped (blocked) - only for the two
+  // date-driven lapses; null for everything else.
+  lockAt: Date | null;
+}
+
+function trialEndDate(t: SubscriptionInput): Date | null {
+  if (t.trialEndsAt) return new Date(t.trialEndsAt);
+  if (t.createdAt) return new Date(new Date(t.createdAt).getTime() + TRIAL_DAYS * DAY);
+  return null;
+}
+
+export function tenantAccess(t: SubscriptionInput, now: Date = new Date()): TenantAccess {
+  const state = subscriptionState(t, now);
+  if (t.status === 'suspended') return { allowed: false, reason: 'suspended', state, lockAt: null };
+  if (t.status === 'deleted') return { allowed: false, reason: 'deleted', state, lockAt: null };
+  if (state === 'canceled') return { allowed: false, reason: 'canceled', state, lockAt: null };
+
+  let lapsedAt: Date | null = null;
+  let reason: AccessBlockReason | undefined;
+  if (state === 'trial' || state === 'trial_ending' || state === 'trial_expired') {
+    // A trial tenant who once paid but let it run out is held to whichever
+    // date is later - the trial end or the end of what they paid for.
+    const trialEnd = trialEndDate(t);
+    const paid = t.paidUntil ? new Date(t.paidUntil) : null;
+    lapsedAt = trialEnd && paid ? (trialEnd > paid ? trialEnd : paid) : (trialEnd ?? paid);
+    reason = 'trial_ended';
+  } else if (state === 'due_soon' || state === 'overdue') {
+    lapsedAt = t.paidUntil ? new Date(t.paidUntil) : null;
+    reason = 'payment_overdue';
+  }
+
+  if (!lapsedAt) return { allowed: true, state, lockAt: null };
+  const lockAt = new Date(lapsedAt.getTime() + ACCESS_GRACE_DAYS * DAY);
+  if (now >= lockAt) return { allowed: false, reason, state, lockAt };
+  return { allowed: true, state, lockAt };
+}
+
+export const ACCESS_BLOCK_MESSAGES: Record<AccessBlockReason, string> = {
+  suspended: 'This account has been suspended. Contact Fundi POS support.',
+  deleted: 'This account no longer exists.',
+  canceled: "This account's subscription has been canceled. Contact Fundi POS support to reactivate it.",
+  trial_ended: 'Your free trial has ended. Pay for your subscription to keep using Fundi POS.',
+  payment_overdue: 'Your subscription payment is overdue. Pay to restore access to Fundi POS.',
+};

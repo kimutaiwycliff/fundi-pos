@@ -7,7 +7,7 @@ import { KeyboardProvider, KeyboardAvoidingView } from 'react-native-keyboard-co
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NavigationContainer } from '@react-navigation/native';
-import { API_BASE_URL, OFFLINE_MESSAGE, loginToPayload, loginWithPin, refreshTillToken, type PayloadUser } from '../lib/auth';
+import { API_BASE_URL, OFFLINE_MESSAGE, loginToPayload, loginWithPin, refreshTillToken, AccessRevokedError, type PayloadUser } from '../lib/auth';
 import { clearSession, loadSession, saveSession, updateSessionStore } from '../lib/session';
 import { getTerminalId, getTerminalName, setTerminalName } from '../lib/terminal';
 import { MIN_PIN_LENGTH, MAX_PIN_LENGTH } from '../lib/pin';
@@ -93,6 +93,7 @@ function AppInner() {
           })
           .catch(async (err) => {
             if (err instanceof Error && err.message === OFFLINE_MESSAGE) return;
+            if (err instanceof AccessRevokedError) setError(err.message);
             await clearSession();
             setUser(null);
             setPayloadToken(null);
@@ -107,8 +108,9 @@ function AppInner() {
 
   // Slides this till's session forward while it's connected, well ahead of
   // the server's TILL_TOKEN_TTL_SECONDS (apps/api/src/lib/tillAuth.ts) -
-  // failures (offline, banned, canceled subscription) are silently ignored
-  // here since a genuinely offline till simply can't refresh; the next
+  // transient failures (offline, 5xx) are ignored here since a genuinely
+  // offline till simply can't refresh (a definite lock-out -
+  // AccessRevokedError - signs the till out instead); the next
   // attempt retries, and any request needing a valid token will surface its
   // own clear "you're offline"/auth error at the point of use. Matches
   // apps/desktop/src/App.tsx's identical effect. Re-arms on every
@@ -124,6 +126,13 @@ function AppInner() {
         setUser(freshUser);
         await saveSession(freshToken, freshUser, activeStoreId);
       } catch (err) {
+        // Locked out (trial/subscription lapsed, account suspended, user
+        // banned) - sign out now; retrying won't help.
+        if (err instanceof AccessRevokedError) {
+          handleSignOut();
+          setError(err.message);
+          return;
+        }
         console.warn('Till session refresh failed (will retry later):', err);
       }
     }, TILL_REFRESH_INTERVAL_MS);

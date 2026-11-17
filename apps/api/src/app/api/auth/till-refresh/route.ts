@@ -1,7 +1,7 @@
 import config from '@payload-config';
 import { getPayload } from 'payload';
 import { headers as nextHeaders } from 'next/headers';
-import { checkTenantAccess } from '@/lib/billing';
+import { ACCESS_REVOKED_CODE, checkTenantAccess } from '@/lib/billing';
 import { isTenantUser, toID } from '@/lib/relations';
 import { extendTillSession, mintTillToken } from '@/lib/tillAuth';
 
@@ -32,10 +32,10 @@ export async function POST() {
   const tenant = await payload.findByID({ collection: 'tenants', id: toID(user.tenant), overrideAccess: true });
   const billing = checkTenantAccess(tenant);
   if (!billing.allowed) {
-    return Response.json({ error: billing.message }, { status: 403 });
+    return Response.json({ error: billing.message, code: ACCESS_REVOKED_CODE, reason: billing.reason }, { status: 403 });
   }
   if (user.status === 'banned') {
-    return Response.json({ error: 'This account has been disabled.' }, { status: 403 });
+    return Response.json({ error: 'This account has been disabled.', code: ACCESS_REVOKED_CODE }, { status: 403 });
   }
 
   // Set by the JWT auth strategy (auth/strategies/jwt.js) on every

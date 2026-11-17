@@ -20,17 +20,17 @@ async function truncateAll() {
 
 const DAY = 24 * 60 * 60 * 1000;
 
+beforeAll(async () => {
+  payload = await getPayload({ config });
+});
+afterAll(async () => {
+  await payload.destroy();
+});
+
 describe('Platform billing: subscription payments + stats', () => {
   let tenantId: number;
   let admin: any;
   let owner: any;
-
-  beforeAll(async () => {
-    payload = await getPayload({ config });
-  });
-  afterAll(async () => {
-    await payload.destroy();
-  });
 
   beforeEach(async () => {
     await truncateAll();
@@ -139,5 +139,98 @@ describe('Platform billing: subscription payments + stats', () => {
     expect(overdue).toMatchObject({ state: 'overdue', needsAttention: true });
     expect(body.collectionsByMonth).toHaveLength(12);
     expect(body.recentPayments[0]).toMatchObject({ tenantName: 'Luxe Collections', amount: 1500 });
+  });
+});
+
+describe('Platform phase 0: automatic lockout, purge, payment edits', () => {
+  let tenantId: number;
+  let admin: any;
+
+  beforeEach(async () => {
+    await truncateAll();
+    authHeader = null;
+    const tenant = await payload.create({
+      collection: 'tenants',
+      data: { name: 'Mlolongo Hardware', status: 'active', subscriptionTier: 'trial', billingStatus: 'trialing' },
+      overrideAccess: true,
+    });
+    tenantId = tenant.id as number;
+    const adminDoc = await payload.create({
+      collection: 'platform-admins',
+      data: { name: 'Ops', email: 'ops@test.local', password: 'pw123456' } as any,
+      overrideAccess: true,
+    });
+    admin = { ...adminDoc, collection: 'platform-admins' };
+    await payload.create({
+      collection: 'users',
+      data: { tenant: tenantId, role: 'owner', status: 'active', email: 'owner@test.local', password: 'pw123456', name: 'Otieno' },
+      overrideAccess: true,
+    });
+  });
+
+  const setTrialEnd = (daysFromNow: number) =>
+    payload.update({ collection: 'tenants', id: tenantId, data: { trialEndsAt: new Date(Date.now() + daysFromNow * DAY).toISOString() }, overrideAccess: true });
+  const ownerLogin = () => payload.login({ collection: 'users', data: { email: 'owner@test.local', password: 'pw123456' } });
+
+  it('lets a lapsed trial in during the grace period, then blocks login automatically', async () => {
+    await setTrialEnd(-1);
+    await expect(ownerLogin()).resolves.toMatchObject({ token: expect.any(String) });
+    await setTrialEnd(-4);
+    await expect(ownerLogin()).rejects.toThrow(/free trial has ended/);
+  });
+
+  it('refuses a till refresh with access_revoked once the trial lapses past grace', async () => {
+    const { token } = await ownerLogin();
+    await setTrialEnd(-4);
+    authHeader = `JWT ${token}`;
+    const { POST } = await import('../app/api/auth/till-refresh/route.ts');
+    const res = await POST();
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ code: 'access_revoked', reason: 'trial_ended' });
+  });
+
+  it('restores access as soon as a payment is recorded', async () => {
+    await setTrialEnd(-10);
+    await expect(ownerLogin()).rejects.toThrow();
+    await payload.create({
+      collection: 'subscription-payments',
+      data: { tenant: tenantId, amount: 1000, method: 'mpesa', reference: 'QJK7PAID' } as any,
+      user: admin,
+      overrideAccess: false,
+    });
+    await expect(ownerLogin()).resolves.toMatchObject({ token: expect.any(String) });
+  });
+
+  it('purges a deleted tenant that has payments and promo codes', async () => {
+    await payload.create({
+      collection: 'subscription-payments',
+      data: { tenant: tenantId, amount: 1000, method: 'mpesa' } as any,
+      user: admin,
+      overrideAccess: false,
+    });
+    await payload.create({ collection: 'promo-codes', data: { tenant: tenantId, code: 'KARIBU10', kind: 'percentage', value: 10 } as any, overrideAccess: true });
+    await payload.update({ collection: 'tenants', id: tenantId, data: { status: 'deleted' }, overrideAccess: true });
+
+    const { token } = await payload.login({ collection: 'platform-admins', data: { email: 'ops@test.local', password: 'pw123456' } });
+    authHeader = `JWT ${token}`;
+    const { POST } = await import('../app/api/tenants/[id]/purge/route.ts');
+    const res = await POST(new Request('http://test/purge', { method: 'POST' }), { params: Promise.resolve({ id: String(tenantId) }) });
+    expect(res.status).toBe(200);
+    const left = await payload.find({ collection: 'tenants', where: { id: { equals: tenantId } }, overrideAccess: true });
+    expect(left.totalDocs).toBe(0);
+  });
+
+  it('audit-logs payment edits with what changed', async () => {
+    const payment = await payload.create({
+      collection: 'subscription-payments',
+      data: { tenant: tenantId, amount: 1000, method: 'mpesa', reference: 'QJK7EDIT' } as any,
+      user: admin,
+      overrideAccess: false,
+    });
+    await payload.update({ collection: 'subscription-payments', id: payment.id, data: { amount: 1200 }, user: admin, overrideAccess: false });
+    const log = await payload.find({ collection: 'platform-audit-log', where: { action: { equals: 'billing_updated' } }, overrideAccess: true });
+    expect(log.docs).toHaveLength(1);
+    expect(log.docs[0].summary).toMatch(/payment edited/);
+    expect((log.docs[0].metadata as any).changes.amount).toEqual({ from: 1000, to: 1200 });
   });
 });

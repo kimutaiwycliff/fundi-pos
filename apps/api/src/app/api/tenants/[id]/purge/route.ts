@@ -35,6 +35,8 @@ const TENANT_SCOPED_COLLECTIONS = [
   'credit-payments',
   'stock-movements',
   'orders',
+  // After orders (an order can reference the promo code it used).
+  'promo-codes',
   'purchase-orders',
   'stock-transfers',
   'quotations',
@@ -99,6 +101,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     for (const doc of media.docs) {
       await payload.delete({ collection: 'media', id: doc.id, overrideAccess: true });
     }
+
+    // Subscription payments go straight through the db adapter, skipping
+    // SubscriptionPayments' afterDelete hooks - those recompute paidUntil
+    // and write a payment_deleted audit row per payment, pointless for a
+    // tenant that's about to stop existing. Like promo-codes, these have a
+    // NOT NULL tenant_id behind an ON DELETE SET NULL foreign key, so
+    // leaving any behind made the final tenant delete below fail.
+    await payload.db.deleteMany({ collection: 'subscription-payments', where: { tenant: { equals: tenant.id } } });
 
     await payload.delete({ collection: 'users', where: { tenant: { equals: tenant.id } }, overrideAccess: true });
     await payload.delete({ collection: 'tenants', id: tenant.id, overrideAccess: true });

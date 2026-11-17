@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { loginToPayload, loginWithPin, refreshTillToken, type PayloadUser } from "./auth";
+import { AccessRevokedError, loginToPayload, loginWithPin, refreshTillToken, type PayloadUser } from "./auth";
 import { getTerminalId, getTerminalName, setTerminalName } from "./terminal";
 import { checkForUpdate, type AvailableUpdate } from "./updateCheck";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -53,10 +53,10 @@ function App() {
   // TILL_TOKEN_TTL_SECONDS (apps/api/src/lib/tillAuth.ts) - a till left
   // running continuously for a long time (weeks/months without a restart)
   // would otherwise eventually need a fresh phone+PIN login mid-shift once
-  // its token actually expired. Failures (offline, banned, canceled
-  // subscription) are silently ignored here - the next attempt retries, and
-  // this timer isn't the place to interrupt an already-working till mid-shift
-  // over a transient network blip.
+  // its token actually expired. Transient failures (offline, 5xx) are
+  // ignored - the next attempt retries, and this timer isn't the place to
+  // interrupt an already-working till over a network blip. A definite
+  // lock-out (AccessRevokedError) signs the till out.
   useEffect(() => {
     if (state !== "connected" || !user) return;
     const TILL_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -67,6 +67,14 @@ function App() {
         payloadTokenRef.current = freshToken;
         setUser(freshUser);
       } catch (err) {
+        // Locked out (trial/subscription lapsed, account suspended, user
+        // banned) - sign out now rather than keep selling on a session the
+        // server has already refused to renew.
+        if (err instanceof AccessRevokedError) {
+          handleDisconnect();
+          setError(err.message);
+          return;
+        }
         console.warn("Till session refresh failed (will retry later):", err);
       }
     }, TILL_REFRESH_INTERVAL_MS);
