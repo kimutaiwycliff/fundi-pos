@@ -17,13 +17,13 @@ export interface DeviceSighting {
 export function terminalFromHeaders(headers: Headers | null | undefined) {
   const terminalId = headers?.get('x-fundi-terminal')?.trim().slice(0, 100) || null;
   const raw = headers?.get('x-fundi-terminal-name');
-  let name: string | null = null;
+  let decoded: string | null | undefined = raw;
   try {
-    name = raw ? decodeURIComponent(raw).trim().slice(0, 80) || null : null;
+    decoded = raw ? decodeURIComponent(raw) : raw;
   } catch {
-    name = raw?.trim().slice(0, 80) || null;
+    // Not URI-encoded (an older till) - use it as sent.
   }
-  return { terminalId, name };
+  return { terminalId, name: decoded?.trim().slice(0, 80) || null };
 }
 
 // Upsert, fire-and-forget (same reasoning as lib/activity.ts: never block or
