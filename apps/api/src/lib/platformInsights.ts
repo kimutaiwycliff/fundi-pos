@@ -346,12 +346,14 @@ export async function tenantDetail(payload: Payload, tenantId: number, now: Date
         SELECT p.id, p.business_name, p.tenant_id, p.created_at, p.source,
           (g.email_canonical IS NOT NULL AND p.email_canonical = g.email_canonical) AS email_match,
           (g.phone IS NOT NULL AND p.phone = g.phone) AS phone_match,
-          (g.ip IS NOT NULL AND p.ip = g.ip) AS ip_match
+          (g.ip IS NOT NULL AND p.ip = g.ip) AS ip_match,
+          (g.google_sub IS NOT NULL AND p.google_sub = g.google_sub) AS google_match
         FROM trial_grants g
         JOIN trial_grants p ON p.id <> g.id AND (p.tenant_id IS NULL OR p.tenant_id <> g.tenant_id)
           AND ((g.email_canonical IS NOT NULL AND p.email_canonical = g.email_canonical)
             OR (g.phone IS NOT NULL AND p.phone = g.phone)
-            OR (g.ip IS NOT NULL AND p.ip = g.ip))
+            OR (g.ip IS NOT NULL AND p.ip = g.ip)
+            OR (g.google_sub IS NOT NULL AND p.google_sub = g.google_sub))
         WHERE g.tenant_id = ${t}
         ORDER BY p.created_at`),
     ]);
@@ -451,7 +453,7 @@ export async function tenantDetail(payload: Payload, tenantId: number, now: Date
       tenantId: p.tenant_id == null ? null : Number(p.tenant_id),
       createdAt: iso(p.created_at),
       source: String(p.source),
-      matchedOn: [p.email_match && 'email', p.phone_match && 'phone', p.ip_match && 'network'].filter(Boolean) as string[],
+      matchedOn: [p.email_match && 'email', p.phone_match && 'phone', p.google_match && 'Google account', p.ip_match && 'network'].filter(Boolean) as string[],
     })),
   };
 }

@@ -28,6 +28,7 @@ import * as migration_20261117_081253_platform_insights from './20261117_081253_
 import * as migration_20261117_100511_platform_billing_email from './20261117_100511_platform_billing_email';
 import * as migration_20261117_150807_platform_lifecycle from './20261117_150807_platform_lifecycle';
 import * as migration_20261117_152624_platform_campaigns from './20261117_152624_platform_campaigns';
+import * as migration_20261117_161309_auth_extras from './20261117_161309_auth_extras';
 
 export const migrations = [
   {
@@ -178,6 +179,11 @@ export const migrations = [
   {
     up: migration_20261117_152624_platform_campaigns.up,
     down: migration_20261117_152624_platform_campaigns.down,
-    name: '20261117_152624_platform_campaigns'
+    name: '20261117_152624_platform_campaigns',
+  },
+  {
+    up: migration_20261117_161309_auth_extras.up,
+    down: migration_20261117_161309_auth_extras.down,
+    name: '20261117_161309_auth_extras'
   },
 ];

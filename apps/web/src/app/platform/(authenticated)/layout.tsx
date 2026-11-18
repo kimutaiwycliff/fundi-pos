@@ -36,9 +36,13 @@ export default async function PlatformLayout({ children }: { children: React.Rea
             <PlatformNav variant="inline" />
           </div>
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
-            <span className="hidden max-w-48 truncate text-sm text-muted-foreground md:inline" title={me.email}>
+            <Link
+              href="/platform/security"
+              className="hidden max-w-48 truncate rounded text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 md:inline"
+              title={`${me.email} - sign-in security`}
+            >
               {name}
-            </span>
+            </Link>
             <ThemeToggle />
             <PlatformLogoutButton />
           </div>

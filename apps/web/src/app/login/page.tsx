@@ -11,12 +11,23 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LogoMark } from '@/components/marketing/logo-mark';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { GoogleButton } from '@/components/auth/google-button';
+
+// ?error= from the Google sign-in redirect (apps/web api/auth/google/callback).
+const GOOGLE_ERRORS: Record<string, string> = {
+  google_unavailable: "Google sign-in isn't set up yet - use your email and password.",
+  google_cancelled: 'Google sign-in was cancelled.',
+  google_expired: 'That Google sign-in took too long - try again.',
+  google_failed: "Couldn't sign in with Google - try again, or use your email and password.",
+};
 import { clientFetch, errorMessageFrom } from '@/lib/client-fetch';
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const expired = searchParams.get('expired') === '1';
+  const errorParam = searchParams.get('error');
+  const redirectError = errorParam ? (GOOGLE_ERRORS[errorParam] ?? errorParam) : null;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +84,9 @@ export default function LoginPage() {
             <CardTitle>Fundi</CardTitle>
             <CardDescription>Sign in to manage your stores and inventory.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-4">
+            {redirectError ? <p className="text-sm text-destructive">{redirectError}</p> : null}
+            <GoogleButton />
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               {expired ? <p className="text-sm text-muted-foreground">Your session expired - please sign in again.</p> : null}
               <div className="flex flex-col gap-2">
@@ -88,7 +101,12 @@ export default function LoginPage() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="password">Password</Label>
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Link href="/forgot-password" className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+                    Forgot password?
+                  </Link>
+                </div>
                 <PasswordInput
                   id="password"
                   required
@@ -102,7 +120,7 @@ export default function LoginPage() {
                 {loading ? 'Signing in…' : 'Sign in'}
               </Button>
             </form>
-            <p className="mt-4 text-center text-sm text-muted-foreground">
+            <p className="text-center text-sm text-muted-foreground">
               New here?{' '}
               <Link href="/signup" className="text-primary underline underline-offset-2">
                 Start a free trial

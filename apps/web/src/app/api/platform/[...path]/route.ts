@@ -22,6 +22,8 @@ const ALLOWED_ROOTS = new Set([
   'devices',
   'platform-export',
   'platform-campaign',
+  'platform-2fa',
+  'platform-admin-handoff',
 ]);
 
 function isAllowed(path: string[]): boolean {
