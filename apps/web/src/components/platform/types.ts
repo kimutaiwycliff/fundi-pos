@@ -1,4 +1,4 @@
-import type { SubscriptionState } from '@hardware-pos/business-logic';
+import type { Health, SetupStage, SubscriptionState } from '@hardware-pos/business-logic';
 
 // Shapes returned by the API's GET /api/platform-stats (apps/api/src/app/
 // api/platform-stats/route.ts) and the subscription-payments collection.
@@ -33,6 +33,32 @@ export interface PlatformTenantRow {
     lastOrderAt: string | null;
   };
   payments: { total: number; count: number; lastPaidAt: string | null };
+  // When automatic lockout kicks in (null = not on a lapsing clock).
+  lockAt: string | null;
+  blocked: boolean;
+  health: Health;
+  setupStage: SetupStage;
+  activity: {
+    lastActiveAt: string | null;
+    lastLoginAt: string | null;
+    logins30: number;
+    activeDays30: number;
+    activeStaff30: number;
+    staff: number;
+    active7: boolean;
+  };
+  sales: {
+    firstSaleAt: string | null;
+    revenue30: number;
+    revenuePrev30: number;
+    profit30: number;
+    stockCost: number;
+    stockRetail: number;
+    spark30: number[];
+  };
+  followUpOn: string | null;
+  followUpDue: boolean;
+  lastNoteAt: string | null;
 }
 
 export interface PlatformRecentPayment {
@@ -65,10 +91,78 @@ export interface PlatformStats {
     collectedThisMonth: number;
     collectedLastMonth: number;
     addons: Record<string, number>;
+    active7: number;
+    revenue30: number;
+    profit30: number;
+    health: Record<string, number>;
+    atRisk: number;
+    setupFunnel: Record<string, number>;
+    followUpsDue: number;
+    blocked: number;
   };
   collectionsByMonth: { month: string; amount: number }[];
   recentPayments: PlatformRecentPayment[];
+  daily: { day: string; revenue: number; activeTenants: number }[];
   tenants: PlatformTenantRow[];
+}
+
+// GET /api/tenants/:id/insights (apps/api/src/app/api/tenants/[id]/insights).
+export interface TenantInsights {
+  generatedAt: string;
+  health: Health;
+  setupStage: SetupStage;
+  rollup: {
+    lastActiveAt: string | null;
+    lastLoginAt: string | null;
+    logins30: number;
+    activeDays30: number;
+    activeStaff30: number;
+    firstSaleAt: string | null;
+    lastSaleAt: string | null;
+    sales30: number;
+    revenue30: number;
+    revenuePrev30: number;
+    profit30: number;
+    stockCost: number;
+    stockRetail: number;
+    products: number;
+    staff: number;
+  };
+  daily: { day: string; revenue: number; orders: number; profit: number }[];
+  busyHours: { dow: number; hour: number; count: number }[];
+  paymentMix: { method: string; count: number; amount: number }[];
+  topProducts: { id: number; name: string; qty: number; revenue: number; profit: number | null }[];
+  stores: { id: number; name: string; orders30: number; revenue30: number; stockCost: number }[];
+  stockLinesMissingCost: number;
+  staff: {
+    id: number;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    role: string;
+    status: string;
+    lastActiveAt: string | null;
+    logins30: number;
+    activeDays30: number;
+    sales30: number;
+    revenue30: number;
+  }[];
+  terminals: { terminal: string; name: string | null; store: string | null; lastSaleAt: string | null; sales30: number }[];
+  activityCalendar: { day: string; users: number }[];
+  appShare: { source: string; count: number }[];
+  features: Record<string, number>;
+  milestones: { firstProduct: string | null; firstStock: string | null; firstSale: string | null; tenthSale: string | null; firstPayment: string | null };
+  lifetime: { orders: number; revenue: number; paidToUs: number };
+}
+
+export interface PlatformTenantNote {
+  id: number;
+  tenant: number | { id: number };
+  author?: number | { id: number; name?: string | null; email: string } | null;
+  kind: 'call' | 'whatsapp' | 'email' | 'visit' | 'note';
+  body: string;
+  followUpOn?: string | null;
+  createdAt: string;
 }
 
 export interface SubscriptionPayment {

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getPayload, type Payload } from 'payload';
 import config from '../payload.config.ts';
+import { flushActivity } from '../lib/activity.ts';
 
 // The report/validate routes authenticate via next/headers - stubbed here
 // with a real JWT minted by payload.login(), so they run their genuine
@@ -17,6 +18,7 @@ function asUser(user: { id: number; tenant: number; role: string }) {
 }
 
 async function truncateAll() {
+  await flushActivity();
   const tables = [
     'orders_line_items', 'orders', 'stock_movements', 'products_variants', 'products', 'promo_codes',
     'customers', 'users_sessions', 'users', 'stores', 'platform_audit_log', 'platform_admins_sessions',

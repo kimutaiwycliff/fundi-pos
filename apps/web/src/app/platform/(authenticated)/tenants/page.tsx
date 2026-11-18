@@ -10,9 +10,9 @@ export const metadata = { title: 'Tenants · Platform' };
 export default async function PlatformTenantsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; state?: string }>;
+  searchParams: Promise<{ view?: string; state?: string; usage?: string }>;
 }) {
-  const { view, state } = await searchParams;
+  const { view, state, usage } = await searchParams;
   const showDeleted = view === 'deleted';
 
   const [stats, deleted] = await Promise.all([
@@ -31,10 +31,18 @@ export default async function PlatformTenantsPage({
         <p className="text-sm text-muted-foreground">
           {showDeleted
             ? `${deleted.length} soft-deleted tenant${deleted.length === 1 ? '' : 's'}`
-            : `${stats.summary.tenants} tenants · ${stats.summary.needsAttention} need attention`}
+            : `${stats.summary.tenants} tenants · ${stats.summary.needsAttention} billing issues · ${stats.summary.atRisk} slipping or inactive · ${stats.summary.followUpsDue} follow-ups due`}
         </p>
       </div>
-      <TenantsTable key={`${view}-${state}`} rows={stats.tenants} now={stats.generatedAt} initialChip={state} showDeleted={showDeleted} deleted={deleted} />
+      <TenantsTable
+        key={`${view}-${state}-${usage}`}
+        rows={stats.tenants}
+        now={stats.generatedAt}
+        initialChip={state}
+        initialUsage={usage}
+        showDeleted={showDeleted}
+        deleted={deleted}
+      />
     </div>
   );
 }

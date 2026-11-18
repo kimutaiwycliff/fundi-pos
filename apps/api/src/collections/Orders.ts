@@ -14,6 +14,7 @@ import {
 } from '@hardware-pos/business-logic';
 import { isAuthenticated, managerOrOwner, neverDelete, ownTenantOnly } from '../access/index.ts';
 import { isTenantUser, toID } from '../lib/relations.ts';
+import { activitySource, recordActivity } from '../lib/activity.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
 const REVERSAL_STATUSES = new Set(['refunded', 'voided']);
@@ -329,6 +330,13 @@ export const Orders: CollectionConfig = {
       },
     ],
     afterChange: [
+      // A synced sale is proof someone is using a till (lib/activity.ts).
+      async ({ doc, operation, req }) => {
+        if (operation === 'create' && isTenantUser(req.user)) {
+          recordActivity(req.payload, { userId: req.user.id, tenantId: toID(doc.tenant), source: activitySource(req.headers) });
+        }
+        return doc;
+      },
       async ({ doc, operation, req, previousDoc }) => {
         // Derive the ledger rows this order implies. On create: one 'sale'
         // movement per line item. On a status transition into 'refunded' OR

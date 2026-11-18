@@ -22,6 +22,8 @@ export async function payloadFetch<T = unknown>(
   const token = await getSessionToken();
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
+  // For the platform console's activity tracking (apps/api lib/activity.ts).
+  headers.set('X-Fundi-Client', 'web');
   if (token) {
     headers.set('Authorization', `JWT ${token}`);
   }

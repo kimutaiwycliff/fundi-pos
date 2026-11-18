@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { getPayload, type Payload } from 'payload';
 import config from '../payload.config.ts';
+import { flushActivity } from '../lib/activity.ts';
 
 let payload: Payload;
 
@@ -19,6 +20,7 @@ function idOf(value: unknown): unknown {
 }
 
 async function truncateAll() {
+  await flushActivity();
   const tables = [
     'orders_line_items', 'orders', 'stock_movements', 'products_bundle_components',
     'products_variants', 'products', 'store_product_overrides', 'purchase_orders_line_items',

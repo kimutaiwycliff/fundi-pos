@@ -7,10 +7,18 @@ import {
   cyclePrice,
   daysUntil,
   monthlyValue,
+  computeHealth,
+  HEALTH_LEVELS,
+  isAttentionHealth,
   needsAttention,
+  SETUP_STAGES,
+  setupStage,
   subscriptionState,
+  tenantAccess,
   type SubscriptionState,
 } from '@hardware-pos/business-logic';
+import { emptyRollup, nairobiDay, platformDaily, tenantRollups } from '@/lib/platformInsights';
+import { getCachedStats, setCachedStats } from '@/lib/platformStatsCache';
 
 interface CountRow extends Record<string, unknown> {
   tenant_id: number;
@@ -36,17 +44,29 @@ function monthKey(date: Date): string {
 // portfolio KPIs (MRR, overdue, trials ending...), collections by month and
 // a per-tenant row with billing state, owner contact and 30-day usage. Read
 // only; all heavy counting happens in SQL GROUP BYs, not per-tenant queries.
-export async function GET() {
+//
+// Cached for a minute (lib/platformStatsCache.ts) - cleared by any write to
+// tenants, payments or notes, so operator changes show up at once.
+
+export async function GET(request?: Request) {
   const payload = await getPayload({ config });
   const { user } = await payload.auth({ headers: await nextHeaders() });
   if (user?.collection !== 'platform-admins') {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const fresh = request ? new URL(request.url).searchParams.has('fresh') : false;
+  const cached = fresh ? null : getCachedStats();
+  if (cached) return Response.json(cached);
+  const body = await buildStats(payload);
+  setCachedStats(body);
+  return Response.json(body);
+}
 
+async function buildStats(payload: Awaited<ReturnType<typeof getPayload>>) {
   const now = new Date();
   const since30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [tenants, owners, payments, stores, users, products, orders30, lastOrder] = await Promise.all([
+  const [tenants, owners, payments, stores, users, products, orders30, lastOrder, rollups, daily] = await Promise.all([
     payload.find({ collection: 'tenants', where: { status: { not_equals: 'deleted' } }, pagination: false, depth: 0, overrideAccess: true }),
     payload.find({
       collection: 'users',
@@ -65,7 +85,10 @@ export async function GET() {
       FROM orders WHERE status = 'completed' AND created_at >= ${since30}
       GROUP BY tenant_id`),
     payload.db.drizzle.execute<LastRow>(sql`SELECT tenant_id, MAX(created_at) AS last_at FROM orders GROUP BY tenant_id`),
+    tenantRollups(payload, now),
+    platformDaily(payload, now),
   ]);
+  const today = nairobiDay(now);
 
   const byTenant = <T extends { tenant_id: number }>(rows: T[]) => new Map(rows.map((r) => [Number(r.tenant_id), r]));
   const storeCounts = byTenant(stores.rows);
@@ -93,6 +116,20 @@ export async function GET() {
     const state = subscriptionState(t as never, now);
     const order = orderStats.get(id);
     const paid = paymentsByTenant.get(id);
+    const roll = rollups.get(id) ?? emptyRollup();
+    const access = tenantAccess(t as never, now);
+    const health = computeHealth({
+      now,
+      createdAt: t.createdAt as string,
+      lastActiveAt: roll.lastActiveAt,
+      firstSaleAt: roll.firstSaleAt,
+      revenue30: roll.revenue30,
+      revenuePrev30: roll.revenuePrev30,
+      activeStaff30: roll.activeStaff30,
+      staffCount: roll.staff,
+      state,
+      daysLeft: access.lockAt ? daysUntil(access.lockAt.toISOString(), now) : null,
+    });
     return {
       id,
       name: t.name as string,
@@ -125,6 +162,32 @@ export async function GET() {
         lastOrderAt: lastOrders.get(id)?.last_at ? new Date(lastOrders.get(id)!.last_at as string).toISOString() : null,
       },
       payments: { total: paid?.total ?? 0, count: paid?.count ?? 0, lastPaidAt: paid?.last ?? null },
+      // When automatic lockout kicks in (null = not on a lapsing clock).
+      lockAt: access.lockAt?.toISOString() ?? null,
+      blocked: !access.allowed,
+      health,
+      setupStage: setupStage({ products: roll.products, pricedProducts: roll.pricedProducts, stockedProducts: roll.stockedProducts, firstSaleAt: roll.firstSaleAt }),
+      activity: {
+        lastActiveAt: roll.lastActiveAt,
+        lastLoginAt: roll.lastLoginAt,
+        logins30: roll.logins30,
+        activeDays30: roll.activeDays30,
+        activeStaff30: roll.activeStaff30,
+        staff: roll.staff,
+        active7: roll.active7,
+      },
+      sales: {
+        firstSaleAt: roll.firstSaleAt,
+        revenue30: roll.revenue30,
+        revenuePrev30: roll.revenuePrev30,
+        profit30: roll.profit30,
+        stockCost: roll.stockCost,
+        stockRetail: roll.stockRetail,
+        spark30: roll.spark30,
+      },
+      followUpOn: roll.followUpOn,
+      followUpDue: roll.followUpOn != null && roll.followUpOn <= today,
+      lastNoteAt: roll.lastNoteAt,
     };
   });
 
@@ -149,7 +212,7 @@ export async function GET() {
     }, {});
   const tenantName = new Map(rows.map((r) => [r.id, r.name]));
 
-  return Response.json({
+  return {
     generatedAt: now.toISOString(),
     summary: {
       tenants: rows.length,
@@ -170,6 +233,14 @@ export async function GET() {
         .filter((p) => monthKey(new Date(p.paidAt as string)) === lastMonth)
         .reduce((sum, p) => sum + Number(p.amount ?? 0), 0),
       addons: Object.fromEntries(ADDONS.map((a) => [a, rows.filter((r) => r.addons.includes(a)).length])),
+      active7: rows.filter((r) => r.activity.active7).length,
+      revenue30: rows.reduce((sum, r) => sum + r.sales.revenue30, 0),
+      profit30: rows.reduce((sum, r) => sum + r.sales.profit30, 0),
+      health: Object.fromEntries(HEALTH_LEVELS.map((h) => [h, rows.filter((r) => r.health.level === h).length])),
+      atRisk: rows.filter((r) => isAttentionHealth(r.health.level)).length,
+      setupFunnel: Object.fromEntries(SETUP_STAGES.map((st) => [st, rows.filter((r) => r.setupStage === st).length])),
+      followUpsDue: rows.filter((r) => r.followUpDue).length,
+      blocked: rows.filter((r) => r.blocked).length,
     },
     collectionsByMonth: Array.from(byMonth.entries()).map(([month, amount]) => ({ month, amount })),
     recentPayments: payments.docs.slice(0, 15).map((p) => ({
@@ -182,6 +253,7 @@ export async function GET() {
       paidAt: p.paidAt,
       periodEnd: p.periodEnd ?? null,
     })),
+    daily,
     tenants: rows,
-  });
+  };
 }

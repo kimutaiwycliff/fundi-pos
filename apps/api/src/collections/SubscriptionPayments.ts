@@ -2,6 +2,7 @@ import type { Access, CollectionConfig, PayloadRequest } from 'payload';
 import { APIError } from 'payload';
 import { nextBillingPeriod } from '@hardware-pos/business-logic';
 import { toID } from '../lib/relations.ts';
+import { invalidatePlatformStats } from '../lib/platformStatsCache.ts';
 
 const platformAdmin: Access = ({ req }) => req.user?.collection === 'platform-admins';
 
@@ -47,6 +48,7 @@ export const SubscriptionPayments: CollectionConfig = {
       },
     ],
     afterChange: [
+      () => invalidatePlatformStats(),
       async ({ doc, previousDoc, operation, req }) => {
         await syncPaidUntil(req, toID(doc.tenant));
         if (operation === 'create') await logPayment(req, doc, 'payment_recorded');
@@ -59,6 +61,7 @@ export const SubscriptionPayments: CollectionConfig = {
       },
     ],
     afterDelete: [
+      () => invalidatePlatformStats(),
       async ({ doc, req }) => {
         await syncPaidUntil(req, toID(doc.tenant));
         await logPayment(req, doc, 'payment_deleted');

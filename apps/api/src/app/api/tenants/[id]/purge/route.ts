@@ -61,8 +61,18 @@ const TENANT_SCOPED_COLLECTIONS = [
   // an unhandled error that surfaced as a bare 500 on every purge attempt.
   'store-product-overrides',
   'products',
-  'stores',
+  // 'stores' is deleted last, after users (see below).
 ] as const;
+
+type BulkDeleteResult = { errors?: { message?: string }[] };
+
+// A bulk payload.delete({ where }) doesn't throw when individual documents
+// fail (a beforeDelete guard, a foreign key) - it returns them in `errors`.
+// Ignoring that is how stores silently survived every purge until now.
+function assertDeleted(collection: string, result: BulkDeleteResult) {
+  const failure = result.errors?.[0];
+  if (failure) throw new Error(`${collection}: ${failure.message ?? 'could not be deleted'}`);
+}
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const payload = await getPayload({ config });
@@ -91,7 +101,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   // but the returned message at least says which collection it stopped on.
   try {
     for (const collection of TENANT_SCOPED_COLLECTIONS) {
-      await payload.delete({ collection, where: { tenant: { equals: tenant.id } }, overrideAccess: true });
+      assertDeleted(collection, await payload.delete({ collection, where: { tenant: { equals: tenant.id } }, overrideAccess: true }));
     }
 
     // Media one document at a time, not a bulk `where` delete - R2 object
@@ -109,8 +119,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // NOT NULL tenant_id behind an ON DELETE SET NULL foreign key, so
     // leaving any behind made the final tenant delete below fail.
     await payload.db.deleteMany({ collection: 'subscription-payments', where: { tenant: { equals: tenant.id } } });
+    // Same NOT NULL-behind-SET NULL shape. Activity rows also reference
+    // users, so they must go before the users delete below.
+    await payload.db.deleteMany({ collection: 'tenant-activity-days', where: { tenant: { equals: tenant.id } } });
+    await payload.db.deleteMany({ collection: 'platform-tenant-notes', where: { tenant: { equals: tenant.id } } });
 
-    await payload.delete({ collection: 'users', where: { tenant: { equals: tenant.id } }, overrideAccess: true });
+    assertDeleted('users', await payload.delete({ collection: 'users', where: { tenant: { equals: tenant.id } }, overrideAccess: true }));
+    // Stores after users: Stores' beforeDelete refuses while any staff
+    // member is still assigned to the branch.
+    assertDeleted('stores', await payload.delete({ collection: 'stores', where: { tenant: { equals: tenant.id } }, overrideAccess: true }));
     await payload.delete({ collection: 'tenants', id: tenant.id, overrideAccess: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

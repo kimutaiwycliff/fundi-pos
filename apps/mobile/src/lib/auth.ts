@@ -28,8 +28,12 @@ export const OFFLINE_MESSAGE = "You're offline. Check your connection and try ag
  * site keeps working unchanged.
  */
 export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  // Tells the API which app this is, for the platform console's activity
+  // tracking (apps/api/src/lib/activity.ts). No CORS concerns: React Native fetch has no CORS.
+  const headers = new Headers(init?.headers);
+  headers.set('X-Fundi-Client', 'mobile');
   try {
-    return await fetch(input, init);
+    return await fetch(input, { ...init, headers });
   } catch {
     throw new Error(OFFLINE_MESSAGE);
   }

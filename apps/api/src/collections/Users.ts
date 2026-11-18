@@ -5,6 +5,7 @@ import { managerOrOwner, ownTenantOnly } from '../access/index.ts';
 import { hashPin } from '../lib/pin.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 import { checkTenantAccess } from '../lib/billing.ts';
+import { activitySource, recordActivity } from '../lib/activity.ts';
 import { toID } from '../lib/relations.ts';
 
 export const Users: CollectionConfig = {
@@ -160,6 +161,19 @@ export const Users: CollectionConfig = {
           },
           req,
         });
+        recordActivity(req.payload, { userId: user.id, tenantId: toID(user.tenant), source: activitySource(req.headers), login: true });
+      },
+    ],
+    // Every dashboard navigation calls /api/users/me (apps/web's
+    // getCurrentUser), as do tills on resume - a cheap, throttled signal
+    // that someone is actively using the app (lib/activity.ts).
+    afterMe: [
+      async ({ req, response }) => {
+        const user = req.user;
+        if (user?.collection === 'users' && user.tenant != null) {
+          recordActivity(req.payload, { userId: user.id, tenantId: toID(user.tenant), source: activitySource(req.headers) });
+        }
+        return response;
       },
     ],
     beforeChange: [
@@ -304,6 +318,13 @@ export const Users: CollectionConfig = {
             400,
           );
         }
+      },
+      // tenant_activity_days.user_id is NOT NULL behind an ON DELETE SET
+      // NULL foreign key (Payload's default for a required relationship),
+      // so a user with activity history couldn't otherwise be deleted.
+      // Runs after the self-delete guard above.
+      async ({ id, req }) => {
+        await req.payload.db.deleteMany({ collection: 'tenant-activity-days', where: { user: { equals: id } }, req });
       },
     ],
   },

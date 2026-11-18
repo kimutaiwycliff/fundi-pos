@@ -7,3 +7,4 @@ export * from './phone.ts';
 export * from './promo.ts';
 export * from './marketing.ts';
 export * from './subscription.ts';
+export * from './health.ts';
