@@ -9,7 +9,7 @@ export interface TenantBilling {
   trialEndsAt: string;
   paidUntil: string | null;
   plans: { tier: string; monthly: number }[];
-  payTo: { kind: 'paybill' | 'till' | null; number: string | null; account: string | null; line: string };
+  payTo: { kind: 'paybill' | 'till' | 'phone' | null; number: string | null; account: string | null; name: string | null; line: string };
   payments: {
     id: number;
     amount: number;

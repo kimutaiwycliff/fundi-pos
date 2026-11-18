@@ -106,14 +106,21 @@ function BillingDetails({ data }: { data: TenantBilling }) {
       <Card>
         <CardHeader>
           <CardTitle>How to pay</CardTitle>
-          <CardDescription>Pay with M-Pesa, then send us the confirmation code below.</CardDescription>
+          <CardDescription>
+            {data.payTo.kind === 'phone'
+              ? 'Send the money with M-Pesa (Send Money), then enter the confirmation code from the M-Pesa SMS below.'
+              : 'Pay with M-Pesa, then send us the confirmation code below.'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {data.payTo.kind ? (
             <dl className="grid gap-2 sm:grid-cols-3">
               <div className="rounded-lg bg-muted/50 px-3 py-2">
-                <dt className="text-xs text-muted-foreground">{data.payTo.kind === 'paybill' ? 'Paybill number' : 'Till number (Buy Goods)'}</dt>
+                <dt className="text-xs text-muted-foreground">
+                  {data.payTo.kind === 'paybill' ? 'Paybill number' : data.payTo.kind === 'till' ? 'Till number (Buy Goods)' : 'Send Money to'}
+                </dt>
                 <dd className="text-lg font-semibold tabular-nums">{data.payTo.number}</dd>
+                {data.payTo.name ? <dd className="text-xs text-muted-foreground">M-Pesa shows: {data.payTo.name}</dd> : null}
               </div>
               {data.payTo.account ? (
                 <div className="rounded-lg bg-muted/50 px-3 py-2">

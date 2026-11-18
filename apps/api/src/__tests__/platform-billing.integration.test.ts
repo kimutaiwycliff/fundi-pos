@@ -161,6 +161,22 @@ describe('Tenant billing: claims, trial extensions, reminders, digest', () => {
     expect(body.payments[0]).toMatchObject({ reference: 'QJK7VIEW01', status: 'pending' });
   });
 
+  it('can ask shops to Send Money to a phone number instead', async () => {
+    delete process.env.PLATFORM_MPESA_PAYBILL;
+    process.env.PLATFORM_MPESA_PHONE = '0716522948';
+    process.env.PLATFORM_MPESA_NAME = 'Wycliff Kimutai';
+    try {
+      await loginAs('owner@ruiru.test');
+      const { GET } = await import('../app/api/billing/route.ts');
+      const body = await (await GET()).json();
+      expect(body.payTo).toMatchObject({ kind: 'phone', number: '0716522948', account: null, name: 'Wycliff Kimutai' });
+      expect(body.payTo.line).toBe('M-Pesa Send Money to 0716522948 (Wycliff Kimutai)');
+    } finally {
+      delete process.env.PLATFORM_MPESA_PHONE;
+      delete process.env.PLATFORM_MPESA_NAME;
+    }
+  });
+
   it('extends a trial when the operator approves a request, which lifts a lockout', async () => {
     await loginAs('owner@ruiru.test'); // an existing session, then the trial lapses
     await setTrialEnd(-10);

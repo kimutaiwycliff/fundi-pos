@@ -27,6 +27,7 @@ import * as migration_20261006_055107_product_galleries from './20261006_055107_
 import * as migration_20261117_081253_platform_insights from './20261117_081253_platform_insights';
 import * as migration_20261117_100511_platform_billing_email from './20261117_100511_platform_billing_email';
 import * as migration_20261117_150807_platform_lifecycle from './20261117_150807_platform_lifecycle';
+import * as migration_20261117_152624_platform_campaigns from './20261117_152624_platform_campaigns';
 
 export const migrations = [
   {
@@ -172,6 +173,11 @@ export const migrations = [
   {
     up: migration_20261117_150807_platform_lifecycle.up,
     down: migration_20261117_150807_platform_lifecycle.down,
-    name: '20261117_150807_platform_lifecycle'
+    name: '20261117_150807_platform_lifecycle',
+  },
+  {
+    up: migration_20261117_152624_platform_campaigns.up,
+    down: migration_20261117_152624_platform_campaigns.down,
+    name: '20261117_152624_platform_campaigns'
   },
 ];

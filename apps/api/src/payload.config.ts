@@ -29,6 +29,7 @@ import { PlatformNotifications } from './collections/PlatformNotifications.ts';
 import { TrialExtensionRequests } from './collections/TrialExtensionRequests.ts';
 import { TrialGrants } from './collections/TrialGrants.ts';
 import { Devices } from './collections/Devices.ts';
+import { PlatformCampaigns } from './collections/PlatformCampaigns.ts';
 import { runBillingReminders, runPlatformDigest, runScheduledPurges } from './lib/notifications.ts';
 import { PlatformAuditLog } from './collections/PlatformAuditLog.ts';
 import { Posts } from './collections/Posts.ts';
@@ -78,6 +79,7 @@ export default buildConfig({
     TrialExtensionRequests,
     TrialGrants,
     Devices,
+    PlatformCampaigns,
     Posts,
     PostImages,
   ],

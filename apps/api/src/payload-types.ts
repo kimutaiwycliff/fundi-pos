@@ -95,6 +95,7 @@ export interface Config {
     'trial-extension-requests': TrialExtensionRequest;
     'trial-grants': TrialGrant;
     devices: Device;
+    'platform-campaigns': PlatformCampaign;
     posts: Post;
     'post-images': PostImage;
     'payload-kv': PayloadKv;
@@ -132,6 +133,7 @@ export interface Config {
     'trial-extension-requests': TrialExtensionRequestsSelect<false> | TrialExtensionRequestsSelect<true>;
     'trial-grants': TrialGrantsSelect<false> | TrialGrantsSelect<true>;
     devices: DevicesSelect<false> | DevicesSelect<true>;
+    'platform-campaigns': PlatformCampaignsSelect<false> | PlatformCampaignsSelect<true>;
     posts: PostsSelect<false> | PostsSelect<true>;
     'post-images': PostImagesSelect<false> | PostImagesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
@@ -257,6 +259,7 @@ export interface Tenant {
    */
   planPrice?: number | null;
   paidUntil?: string | null;
+  marketingOptOut?: boolean | null;
   trialEndsAt?: string | null;
   billingContactName?: string | null;
   billingContactPhone?: string | null;
@@ -1040,6 +1043,21 @@ export interface Device {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-campaigns".
+ */
+export interface PlatformCampaign {
+  id: number;
+  subject: string;
+  body: string;
+  segment: string;
+  recipients: number;
+  skippedOptedOut?: number | null;
+  sentBy?: (number | null) | PlatformAdmin;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "posts".
  */
 export interface Post {
@@ -1341,6 +1359,10 @@ export interface PayloadLockedDocument {
         value: number | Device;
       } | null)
     | ({
+        relationTo: 'platform-campaigns';
+        value: number | PlatformCampaign;
+      } | null)
+    | ({
         relationTo: 'posts';
         value: number | Post;
       } | null)
@@ -1440,6 +1462,7 @@ export interface TenantsSelect<T extends boolean = true> {
   billingCycle?: T;
   planPrice?: T;
   paidUntil?: T;
+  marketingOptOut?: T;
   trialEndsAt?: T;
   billingContactName?: T;
   billingContactPhone?: T;
@@ -2008,6 +2031,20 @@ export interface DevicesSelect<T extends boolean = true> {
   revokedAt?: T;
   revokedBy?: T;
   revokeReason?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-campaigns_select".
+ */
+export interface PlatformCampaignsSelect<T extends boolean = true> {
+  subject?: T;
+  body?: T;
+  segment?: T;
+  recipients?: T;
+  skippedOptedOut?: T;
+  sentBy?: T;
   updatedAt?: T;
   createdAt?: T;
 }

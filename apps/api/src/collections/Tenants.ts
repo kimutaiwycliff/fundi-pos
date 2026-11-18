@@ -132,6 +132,8 @@ export const Tenants: CollectionConfig = {
       admin: { description: 'KES per billing cycle (negotiated price). Empty = list price for the tier.' },
     },
     { name: 'paidUntil', type: 'date', access: { update: platformAdminOnly } },
+    // Unsubscribed from operator campaigns (link in the email). Billing emails still go out.
+    { name: 'marketingOptOut', type: 'checkbox', defaultValue: false, access: { update: platformAdminOnly } },
     { name: 'trialEndsAt', type: 'date', access: { update: platformAdminOnly } },
     { name: 'billingContactName', type: 'text', access: { update: platformAdminOnly } },
     { name: 'billingContactPhone', type: 'text', access: { update: platformAdminOnly } },
