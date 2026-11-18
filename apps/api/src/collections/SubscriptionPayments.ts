@@ -47,9 +47,14 @@ export const SubscriptionPayments: CollectionConfig = {
       },
     ],
     afterChange: [
-      async ({ doc, operation, req }) => {
+      async ({ doc, previousDoc, operation, req }) => {
         await syncPaidUntil(req, toID(doc.tenant));
         if (operation === 'create') await logPayment(req, doc, 'payment_recorded');
+        if (operation === 'update') {
+          // Moved to another tenant: the old one's paidUntil needs redoing too.
+          if (previousDoc?.tenant && toID(previousDoc.tenant) !== toID(doc.tenant)) await syncPaidUntil(req, toID(previousDoc.tenant));
+          await logPaymentEdit(req, doc, previousDoc ?? {});
+        }
         return doc;
       },
     ],
@@ -105,6 +110,36 @@ async function logPayment(req: PayloadRequest, doc: Record<string, unknown>, act
       action,
       summary: `${tenant.name}: ${action === 'payment_recorded' ? 'payment recorded' : 'payment deleted'} - ${amount}${doc.reference ? ` (${doc.reference})` : ''}`,
       metadata: { amount: doc.amount, method: doc.method, reference: doc.reference ?? null, periodEnd: doc.periodEnd ?? null },
+    },
+    req,
+  });
+}
+
+const EDIT_TRACKED = ['tenant', 'amount', 'method', 'reference', 'paidAt', 'periodStart', 'periodEnd', 'note'] as const;
+
+// Edits used to go unlogged (only record/delete were). Logged as
+// billing_updated - the platform_audit_log action enum has no payment_updated
+// value, and the summary says exactly what happened anyway.
+async function logPaymentEdit(req: PayloadRequest, doc: Record<string, unknown>, previousDoc: Record<string, unknown>) {
+  if (req.user?.collection !== 'platform-admins') return;
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  for (const field of EDIT_TRACKED) {
+    const from = field === 'tenant' ? (previousDoc.tenant != null ? toID(previousDoc.tenant) : null) : (previousDoc[field] ?? null);
+    const to = field === 'tenant' ? (doc.tenant != null ? toID(doc.tenant) : null) : (doc[field] ?? null);
+    if (String(from) !== String(to)) changes[field] = { from, to };
+  }
+  if (Object.keys(changes).length === 0) return;
+  const tenant = await req.payload.findByID({ collection: 'tenants', id: toID(doc.tenant), overrideAccess: true, depth: 0, req });
+  const amount = `KES ${Number(doc.amount ?? 0).toLocaleString('en-KE')}`;
+  await req.payload.create({
+    collection: 'platform-audit-log',
+    overrideAccess: true,
+    data: {
+      tenant: Number(tenant.id),
+      actor: Number(req.user.id),
+      action: 'billing_updated',
+      summary: `${tenant.name}: payment edited - ${amount}${doc.reference ? ` (${doc.reference})` : ''} (${Object.keys(changes).join(', ')})`,
+      metadata: { paymentId: doc.id, changes },
     },
     req,
   });

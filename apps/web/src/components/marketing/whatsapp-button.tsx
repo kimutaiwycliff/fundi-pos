@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
+import { supportWhatsAppLink } from '@/lib/support';
 
-const PHONE_NUMBER = '254716522948';
 const DEFAULT_MESSAGE = "Hi! I'm interested in Fundi POS for my business.";
 
 // Plain server component - a wa.me link needs no client-side state, so no
@@ -8,7 +8,7 @@ const DEFAULT_MESSAGE = "Hi! I'm interested in Fundi POS for my business.";
 // no interactivity). lucide-react has no WhatsApp brand glyph, hence the
 // inline SVG rather than an icon import.
 export function WhatsAppButton({ message = DEFAULT_MESSAGE, className }: { message?: string; className?: string }) {
-  const href = `https://wa.me/${PHONE_NUMBER}?text=${encodeURIComponent(message)}`;
+  const href = supportWhatsAppLink(message);
 
   return (
     <a

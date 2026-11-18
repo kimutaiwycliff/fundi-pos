@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addMonths, cyclePrice, monthlyValue, needsAttention, nextBillingPeriod, subscriptionState } from './subscription.ts';
+import { addMonths, cyclePrice, monthlyValue, needsAttention, nextBillingPeriod, subscriptionState, tenantAccess } from './subscription.ts';
 
 const now = new Date('2026-10-05T09:00:00Z');
 
@@ -56,5 +56,43 @@ describe('pricing + periods', () => {
     const lapsed = nextBillingPeriod('2026-09-01T00:00:00Z', 'quarterly', now);
     expect(lapsed.start.toISOString().slice(0, 10)).toBe('2026-10-05');
     expect(lapsed.end.toISOString().slice(0, 10)).toBe('2027-01-05');
+  });
+});
+
+describe('tenantAccess', () => {
+  const trial = { status: 'active', subscriptionTier: 'trial', billingStatus: 'trialing' };
+  const paid = { status: 'active', subscriptionTier: 'starter', billingStatus: 'active' };
+
+  it('allows an active trial and warns with the lock date', () => {
+    const a = tenantAccess({ ...trial, trialEndsAt: '2026-10-07T00:00:00Z' }, now);
+    expect(a.allowed).toBe(true);
+    expect(a.lockAt?.toISOString()).toBe('2026-10-10T00:00:00.000Z');
+  });
+
+  it('keeps an expired trial open through the grace period, then blocks', () => {
+    expect(tenantAccess({ ...trial, trialEndsAt: '2026-10-03T00:00:00Z' }, now).allowed).toBe(true);
+    const blocked = tenantAccess({ ...trial, trialEndsAt: '2026-10-01T00:00:00Z' }, now);
+    expect(blocked).toMatchObject({ allowed: false, reason: 'trial_ended' });
+  });
+
+  it('blocks an unpaid period after the grace period', () => {
+    expect(tenantAccess({ ...paid, paidUntil: '2026-10-03T00:00:00Z' }, now).allowed).toBe(true);
+    expect(tenantAccess({ ...paid, paidUntil: '2026-10-01T00:00:00Z' }, now)).toMatchObject({ allowed: false, reason: 'payment_overdue' });
+    expect(tenantAccess({ ...paid, paidUntil: '2026-12-01T00:00:00Z' }, now)).toMatchObject({ allowed: true, lockAt: null });
+  });
+
+  it('holds a trial tenant to the later of trial end and paid-until', () => {
+    const a = tenantAccess({ ...trial, trialEndsAt: '2026-09-01T00:00:00Z', paidUntil: '2026-10-04T00:00:00Z' }, now);
+    expect(a.allowed).toBe(true);
+  });
+
+  it('never blocks a paid tier with no payment date to count from', () => {
+    expect(tenantAccess({ ...paid, paidUntil: null }, now)).toMatchObject({ allowed: true, state: 'never_paid' });
+  });
+
+  it('blocks suspended, deleted and canceled tenants regardless of dates', () => {
+    expect(tenantAccess({ ...paid, status: 'suspended', paidUntil: '2027-01-01' }, now).reason).toBe('suspended');
+    expect(tenantAccess({ ...paid, status: 'deleted' }, now).reason).toBe('deleted');
+    expect(tenantAccess({ ...paid, billingStatus: 'canceled', paidUntil: '2027-01-01' }, now).reason).toBe('canceled');
   });
 });

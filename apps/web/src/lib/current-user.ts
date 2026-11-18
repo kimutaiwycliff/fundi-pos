@@ -10,7 +10,20 @@ export type CurrentUser = {
   // `addons` (platform-admin-controlled, see Tenants.ts) gates the Sell
   // Online screens - checked with business-logic's hasAddon().
   tenant:
-    | { id: number; name: string; billingStatus: 'active' | 'trialing' | 'past_due' | 'canceled'; addons?: string[] | null; storefrontListAll?: boolean | null }
+    | {
+        id: number;
+        name: string;
+        status?: 'active' | 'suspended' | 'deleted';
+        billingStatus: 'active' | 'trialing' | 'past_due' | 'canceled';
+        // Read by the dashboard layout's access gate (business-logic's
+        // tenantAccess) - lapsed trial/payment locks the dashboard.
+        subscriptionTier?: string | null;
+        paidUntil?: string | null;
+        trialEndsAt?: string | null;
+        createdAt?: string | null;
+        addons?: string[] | null;
+        storefrontListAll?: boolean | null;
+      }
     | number;
   // Nullable for org-level users (owner/manager overseeing multiple stores) -
   // see Users.ts's `store` field. A cashier/store-level manager always has

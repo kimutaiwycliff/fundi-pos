@@ -1,40 +1,39 @@
-// billingStatus was previously just a label a platform admin could set via
-// /admin with zero actual effect - nothing ever read it. This is the one
-// place that decides what each status actually does, so every enforcement
-// point (login, PIN login, till-session refresh) stays consistent.
+// The one place that decides whether a tenant's people may sign in or keep
+// a till session alive, so every enforcement point (Users.ts beforeLogin,
+// pin-login, till-refresh) stays consistent. The rule itself lives in
+// @hardware-pos/business-logic's tenantAccess() so the web dashboard gate
+// applies exactly the same one:
+//   - suspended / deleted / canceled: blocked
+//   - trial ended or paid period lapsed: blocked once ACCESS_GRACE_DAYS pass
 //
-// Deliberately soft on 'past_due' (a real subscription grace period, not an
-// instant lockout) and hard on 'canceled' - blocking new sessions/token
-// refreshes rather than touching every collection's access control, which
-// would be far more invasive for the same practical effect: no login, and
-// an already-open till session stops renewing once its current token
-// expires (see tillAuth.ts's TILL_TOKEN_TTL_SECONDS).
-//
-// tenant.status (platform-admin-controlled suspend/soft-delete, distinct
-// from the tenant's own billingStatus) is checked first and takes priority -
-// a suspended/deleted tenant is locked out regardless of billing state, and
-// gets its own distinct message rather than being folded into the billing
-// one, since the two mean genuinely different things to whoever reads it.
+// Blocking new sessions/token refreshes rather than touching every
+// collection's access control: no login, and an open till is signed out on
+// its next session refresh (apps/desktop + apps/mobile react to
+// ACCESS_REVOKED_CODE below).
+import { ACCESS_BLOCK_MESSAGES, tenantAccess, type AccessBlockReason } from '@hardware-pos/business-logic';
+
 export type BillingStatus = 'active' | 'trialing' | 'past_due' | 'canceled';
 export type TenantStatus = 'active' | 'suspended' | 'deleted';
 
+// Returned as `code` on a 403 from till-refresh so tills can tell "you've
+// been locked out, sign out now" apart from a transient failure.
+export const ACCESS_REVOKED_CODE = 'access_revoked';
+
 export interface TenantAccessCheckResult {
   allowed: boolean;
+  reason?: AccessBlockReason;
   message?: string;
 }
 
-export function checkTenantAccess(tenant: { status: string; billingStatus: string }): TenantAccessCheckResult {
-  if (tenant.status === 'suspended') {
-    return { allowed: false, message: 'This account has been suspended. Contact your platform administrator.' };
-  }
-  if (tenant.status === 'deleted') {
-    return { allowed: false, message: 'This account no longer exists.' };
-  }
-  if (tenant.billingStatus === 'canceled') {
-    return {
-      allowed: false,
-      message: 'This account\'s subscription has been canceled. Contact your platform administrator to reactivate it.',
-    };
-  }
-  return { allowed: true };
+export function checkTenantAccess(tenant: {
+  status?: string | null;
+  billingStatus?: string | null;
+  subscriptionTier?: string | null;
+  paidUntil?: string | null;
+  trialEndsAt?: string | null;
+  createdAt?: string | null;
+}): TenantAccessCheckResult {
+  const access = tenantAccess(tenant);
+  if (access.allowed || !access.reason) return { allowed: true };
+  return { allowed: false, reason: access.reason, message: ACCESS_BLOCK_MESSAGES[access.reason] };
 }

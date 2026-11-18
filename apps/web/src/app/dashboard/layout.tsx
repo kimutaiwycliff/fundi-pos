@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-import { AlertTriangle } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -18,7 +17,8 @@ import { LogoutButton } from '@/components/logout-button';
 import { LogoMark } from '@/components/marketing/logo-mark';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { getCurrentUser } from '@/lib/current-user';
-import { hasAddon } from '@hardware-pos/business-logic';
+import { hasAddon, tenantAccess } from '@hardware-pos/business-logic';
+import { BillingBanner } from './billing-banner';
 import { NavItems } from './nav-items';
 import { PageTitle } from './page-title';
 import { UserMenu } from './user-menu';
@@ -41,12 +41,14 @@ const NAV_ITEMS = [
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const me = await getCurrentUser();
   const tenantName = typeof me.tenant === 'object' ? me.tenant.name : `Tenant #${me.tenant}`;
-  const billingStatus = typeof me.tenant === 'object' ? me.tenant.billingStatus : 'active';
-  // A tenant can go from active to canceled while an existing session's
-  // cookie is still valid (login itself already blocks a canceled tenant -
-  // see Users.ts's beforeLogin hook - this covers the "already logged in
-  // when it happened" case the login-time check can't).
-  if (billingStatus === 'canceled') redirect('/subscription-canceled');
+  const tenant = typeof me.tenant === 'object' ? me.tenant : null;
+  const billingStatus = tenant?.billingStatus ?? 'active';
+  // Same rule as login (Users.ts beforeLogin -> lib/billing.ts): a tenant
+  // can lapse or be canceled while a session cookie is still valid, and
+  // getCurrentUser() re-reads the tenant on every navigation, so this
+  // catches the "already logged in when it happened" case on the next page.
+  const access = tenant ? tenantAccess(tenant) : null;
+  if (access && !access.allowed) redirect(`/subscription-canceled?reason=${access.reason}`);
   // Same "already logged in when it happened" reasoning, for a staff
   // member banned mid-session - getCurrentUser() re-fetches live on every
   // dashboard navigation, so this takes effect on their very next page
@@ -100,11 +102,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <ThemeToggle />
             <UserMenu name={me.name} email={me.email} role={me.role} />
           </header>
-          {billingStatus === 'past_due' ? (
-            <div className="flex items-center gap-2 border-b bg-destructive/10 px-4 py-2 text-sm text-destructive">
-              <AlertTriangle className="size-4 shrink-0" />
-              <span>Your subscription payment is past due. Please update billing to avoid service interruption.</span>
-            </div>
+          {access ? (
+            <BillingBanner access={access} tenantName={tenantName} paidUntil={tenant?.paidUntil} billingStatus={billingStatus} />
           ) : null}
           <main className="flex-1 p-4 sm:p-6">{children}</main>
         </SidebarInset>
