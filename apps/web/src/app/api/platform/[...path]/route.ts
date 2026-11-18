@@ -10,7 +10,15 @@ const PAYLOAD_API_URL = process.env.PAYLOAD_API_URL ?? 'http://localhost:3011';
 // Only the collections/routes the console actually uses are forwarded -
 // previously any Payload endpoint was reachable with the operator's token,
 // leaving Payload's access control as the only line of defence.
-const ALLOWED_ROOTS = new Set(['tenants', 'subscription-payments', 'platform-audit-log', 'platform-stats', 'platform-tenant-notes']);
+const ALLOWED_ROOTS = new Set([
+  'tenants',
+  'subscription-payments',
+  'platform-audit-log',
+  'platform-stats',
+  'platform-tenant-notes',
+  'trial-extension-requests',
+  'platform-notifications',
+]);
 
 function isAllowed(path: string[]): boolean {
   if (path.length === 0 || !ALLOWED_ROOTS.has(path[0])) return false;

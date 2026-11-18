@@ -60,6 +60,16 @@ services:
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
       R2_ENDPOINT: ${R2_ENDPOINT:-}
       R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
+      # Platform email (Brevo) + billing. Without BREVO_API_KEY nothing is
+      # emailed - messages are only logged (see apps/api/src/lib/email.ts).
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-billing@fundipos.co.ke}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Fundi POS}
+      EMAIL_REPLY_TO: ${EMAIL_REPLY_TO:-}
+      PLATFORM_NOTIFY_EMAIL: ${PLATFORM_NOTIFY_EMAIL:-}
+      APP_URL: ${APP_URL:-https://app.fundipos.co.ke}
+      PLATFORM_MPESA_PAYBILL: ${PLATFORM_MPESA_PAYBILL:-}
+      PLATFORM_MPESA_TILL: ${PLATFORM_MPESA_TILL:-}
     ports: ["3001:3000"]
     networks: [default, colocated_net]
     depends_on:

@@ -11,9 +11,21 @@ import { formatDay, formatDayTime, formatKES, relativeDays, titleCase } from '@/
 import { FollowUpPanel } from '@/components/platform/follow-up-panel';
 import { HealthBadge } from '@/components/platform/insights';
 import { OverviewTab, TeamTab, UsageTab } from '@/components/platform/tenant-insights';
+import { PaymentClaims } from '@/components/platform/payment-claims';
 import { PaymentHistory } from '@/components/platform/payment-history';
+import { TrialRequests } from '@/components/platform/trial-requests';
 import { RecordPaymentDialog } from '@/components/platform/record-payment-dialog';
-import type { PlatformStats, PlatformTenantNote, PlatformTenantRow, SubscriptionPayment, TenantInsights, TenantStatus } from '@/components/platform/types';
+import {
+  CYCLE_LABELS,
+  type PlatformNotification,
+  type PlatformStats,
+  type PlatformTenantNote,
+  type PlatformTenantRow,
+  type SubscriptionPayment,
+  type TenantInsights,
+  type TenantStatus,
+  type TrialExtensionRequest,
+} from '@/components/platform/types';
 import { platformFetch, PlatformApiError } from '@/lib/platform-client';
 import { cn } from '@/lib/utils';
 import { TenantAddonsForm, TenantStatusActions } from './tenant-actions';
@@ -82,7 +94,7 @@ export default async function PlatformTenantDetailPage({
   }
 
   // Only what the open tab needs (plus the stats row, which the header uses).
-  const [{ docs: auditEntries }, { docs: payments }, stats, insights, { docs: notes }] = await Promise.all([
+  const [{ docs: auditEntries }, { docs: payments }, stats, insights, { docs: notes }, { docs: trialRequests }, { docs: emails }] = await Promise.all([
     tab === 'billing'
       ? platformFetch<{ docs: PlatformAuditEntry[] }>(`/api/platform-audit-log?where[tenant][equals]=${id}&sort=-createdAt&depth=1&limit=100`)
       : { docs: [] as PlatformAuditEntry[] },
@@ -94,7 +106,15 @@ export default async function PlatformTenantDetailPage({
     tab === 'overview'
       ? platformFetch<{ docs: PlatformTenantNote[] }>(`/api/platform-tenant-notes?where[tenant][equals]=${id}&sort=-createdAt&depth=1&limit=100`)
       : { docs: [] as PlatformTenantNote[] },
+    tab === 'billing'
+      ? platformFetch<{ docs: TrialExtensionRequest[] }>(`/api/trial-extension-requests?where[tenant][equals]=${id}&sort=-createdAt&depth=1&limit=20`)
+      : { docs: [] as TrialExtensionRequest[] },
+    tab === 'billing'
+      ? platformFetch<{ docs: PlatformNotification[] }>(`/api/platform-notifications?where[tenant][equals]=${id}&sort=-createdAt&depth=0&limit=30`)
+      : { docs: [] as PlatformNotification[] },
   ]);
+  const claims = payments.filter((p) => p.status === 'pending');
+  const settledPayments = payments.filter((p) => p.status !== 'pending');
 
   // Deleted tenants aren't in platform-stats; fall back to computing the
   // state locally (usage then simply isn't shown).
@@ -112,6 +132,7 @@ export default async function PlatformTenantDetailPage({
     paidUntil: tenant.paidUntil ?? null,
   };
   const daysUntilDue = row?.daysUntilDue ?? null;
+  const waiting = (row?.pendingClaims ?? 0) + (row?.pendingTrialRequests ?? 0);
 
   return (
     <div className="flex flex-col gap-5">
@@ -223,6 +244,9 @@ export default async function PlatformTenantDetailPage({
             )}
           >
             {t.label}
+            {t.key === 'billing' && waiting > 0 ? (
+              <span className="ml-1.5 rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white tabular-nums">{waiting}</span>
+            ) : null}
           </Link>
         ))}
       </nav>
@@ -245,13 +269,35 @@ export default async function PlatformTenantDetailPage({
       {tab === 'usage' && insights ? <UsageTab data={insights} /> : null}
       {tab === 'team' && insights ? <TeamTab data={insights} /> : null}
       {tab === 'billing' ? (
+        <>
+        {claims.length > 0 ? (
+          <Card className="ring-2 ring-amber-500/40">
+            <CardHeader>
+              <CardTitle>Payments to confirm</CardTitle>
+              <CardDescription>The shop says they paid. Check each M-Pesa code against your statement before confirming.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <PaymentClaims claims={claims} cycleLabel={CYCLE_LABELS[tenant.billingCycle ?? 'monthly'] ?? 'month'} onTrialTier={tenant.subscriptionTier === 'trial'} />
+            </CardContent>
+          </Card>
+        ) : null}
+        {trialRequests.length > 0 ? (
+          <Card className={trialRequests.some((r) => r.status === 'pending') ? 'ring-2 ring-amber-500/40' : undefined}>
+            <CardHeader>
+              <CardTitle>Trial extension requests</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TrialRequests requests={trialRequests} />
+            </CardContent>
+          </Card>
+        ) : null}
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Payments</CardTitle>
             <CardDescription>
-              {payments.length > 0
-                ? `${payments.length} payment${payments.length === 1 ? '' : 's'} · last ${formatDay(payments[0].paidAt)}`
+              {settledPayments.length > 0
+                ? `${settledPayments.length} payment${settledPayments.length === 1 ? '' : 's'} · last ${formatDay(settledPayments[0].paidAt)}`
                 : 'Nothing recorded yet'}
             </CardDescription>
             <CardAction>
@@ -259,7 +305,7 @@ export default async function PlatformTenantDetailPage({
             </CardAction>
           </CardHeader>
           <CardContent>
-            <PaymentHistory payments={payments} />
+            <PaymentHistory payments={settledPayments} />
           </CardContent>
         </Card>
 
@@ -321,6 +367,35 @@ export default async function PlatformTenantDetailPage({
           </CardContent>
         </Card>
       </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Emails</CardTitle>
+            <CardDescription>Everything Fundi POS has emailed about this shop - reminders, receipts and replies to requests.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {emails.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nothing sent yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {emails.map((e) => (
+                  <li key={e.id} className="flex flex-col gap-0.5 border-b pb-2 last:border-b-0 last:pb-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                    <span className="min-w-0 text-sm">
+                      {e.subject}
+                      <span className="block truncate text-xs text-muted-foreground">to {e.to}</span>
+                    </span>
+                    <span
+                      className={cn('shrink-0 text-xs', e.status === 'failed' ? 'font-medium text-red-700 dark:text-red-300' : 'text-muted-foreground')}
+                      title={e.error ?? undefined}
+                    >
+                      {e.status === 'sent' ? 'Sent' : e.status === 'logged' ? 'Not sent (email not set up)' : 'Failed'} · {formatDayTime(e.createdAt)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+        </>
       ) : null}
     </div>
   );

@@ -91,9 +91,12 @@ export interface Config {
     'platform-audit-log': PlatformAuditLog;
     'tenant-activity-days': TenantActivityDay;
     'platform-tenant-notes': PlatformTenantNote;
+    'platform-notifications': PlatformNotification;
+    'trial-extension-requests': TrialExtensionRequest;
     posts: Post;
     'post-images': PostImage;
     'payload-kv': PayloadKv;
+    'payload-jobs': PayloadJob;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
@@ -123,9 +126,12 @@ export interface Config {
     'platform-audit-log': PlatformAuditLogSelect<false> | PlatformAuditLogSelect<true>;
     'tenant-activity-days': TenantActivityDaysSelect<false> | TenantActivityDaysSelect<true>;
     'platform-tenant-notes': PlatformTenantNotesSelect<false> | PlatformTenantNotesSelect<true>;
+    'platform-notifications': PlatformNotificationsSelect<false> | PlatformNotificationsSelect<true>;
+    'trial-extension-requests': TrialExtensionRequestsSelect<false> | TrialExtensionRequestsSelect<true>;
     posts: PostsSelect<false> | PostsSelect<true>;
     'post-images': PostImagesSelect<false> | PostImagesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
+    'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
@@ -134,15 +140,26 @@ export interface Config {
     defaultIDType: number;
   };
   fallbackLocale: null;
-  globals: {};
-  globalsSelect: {};
+  globals: {
+    'payload-jobs-stats': PayloadJobsStat;
+  };
+  globalsSelect: {
+    'payload-jobs-stats': PayloadJobsStatsSelect<false> | PayloadJobsStatsSelect<true>;
+  };
   locale: null;
   widgets: {
     collections: CollectionsWidget;
   };
   user: PlatformAdmin | User;
   jobs: {
-    tasks: unknown;
+    tasks: {
+      'billing-reminders': TaskBillingReminders;
+      'platform-digest': TaskPlatformDigest;
+      inline: {
+        input: unknown;
+        output: unknown;
+      };
+    };
     workflows: unknown;
   };
 }
@@ -783,6 +800,14 @@ export interface SubscriptionPayment {
   periodEnd?: string | null;
   note?: string | null;
   recordedBy?: (number | null) | PlatformAdmin;
+  status: 'pending' | 'confirmed' | 'rejected';
+  claimedBy?: (number | null) | User;
+  decidedBy?: (number | null) | PlatformAdmin;
+  decidedAt?: string | null;
+  /**
+   * Shown to the tenant in the rejection email.
+   */
+  rejectReason?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -934,6 +959,40 @@ export interface PlatformTenantNote {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-notifications".
+ */
+export interface PlatformNotification {
+  id: number;
+  tenant?: (number | null) | Tenant;
+  kind: string;
+  key: string;
+  to: string;
+  subject: string;
+  status: 'sent' | 'logged' | 'failed';
+  error?: string | null;
+  providerId?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "trial-extension-requests".
+ */
+export interface TrialExtensionRequest {
+  id: number;
+  tenant: number | Tenant;
+  requestedBy?: (number | null) | User;
+  message?: string | null;
+  status: 'pending' | 'approved' | 'declined';
+  daysGranted?: number | null;
+  decidedBy?: (number | null) | PlatformAdmin;
+  decidedAt?: string | null;
+  newTrialEndsAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "posts".
  */
 export interface Post {
@@ -1017,6 +1076,107 @@ export interface PayloadKv {
     | number
     | boolean
     | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-jobs".
+ */
+export interface PayloadJob {
+  id: number;
+  /**
+   * Input data provided to the job
+   */
+  input?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  taskStatus?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  completedAt?: string | null;
+  totalTried?: number | null;
+  /**
+   * If hasError is true this job will not be retried
+   */
+  hasError?: boolean | null;
+  /**
+   * If hasError is true, this is the error that caused it
+   */
+  error?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Task execution log
+   */
+  log?:
+    | {
+        executedAt: string;
+        completedAt: string;
+        taskSlug: 'inline' | 'billing-reminders' | 'platform-digest';
+        taskID: string;
+        input?:
+          | {
+              [k: string]: unknown;
+            }
+          | unknown[]
+          | string
+          | number
+          | boolean
+          | null;
+        output?:
+          | {
+              [k: string]: unknown;
+            }
+          | unknown[]
+          | string
+          | number
+          | boolean
+          | null;
+        state: 'failed' | 'succeeded';
+        error?:
+          | {
+              [k: string]: unknown;
+            }
+          | unknown[]
+          | string
+          | number
+          | boolean
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  taskSlug?: ('inline' | 'billing-reminders' | 'platform-digest') | null;
+  queue?: string | null;
+  waitUntil?: string | null;
+  processing?: boolean | null;
+  meta?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -1116,6 +1276,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'platform-tenant-notes';
         value: number | PlatformTenantNote;
+      } | null)
+    | ({
+        relationTo: 'platform-notifications';
+        value: number | PlatformNotification;
+      } | null)
+    | ({
+        relationTo: 'trial-extension-requests';
+        value: number | TrialExtensionRequest;
       } | null)
     | ({
         relationTo: 'posts';
@@ -1624,6 +1792,11 @@ export interface SubscriptionPaymentsSelect<T extends boolean = true> {
   periodEnd?: T;
   note?: T;
   recordedBy?: T;
+  status?: T;
+  claimedBy?: T;
+  decidedBy?: T;
+  decidedAt?: T;
+  rejectReason?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1717,6 +1890,38 @@ export interface PlatformTenantNotesSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "platform-notifications_select".
+ */
+export interface PlatformNotificationsSelect<T extends boolean = true> {
+  tenant?: T;
+  kind?: T;
+  key?: T;
+  to?: T;
+  subject?: T;
+  status?: T;
+  error?: T;
+  providerId?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "trial-extension-requests_select".
+ */
+export interface TrialExtensionRequestsSelect<T extends boolean = true> {
+  tenant?: T;
+  requestedBy?: T;
+  message?: T;
+  status?: T;
+  daysGranted?: T;
+  decidedBy?: T;
+  decidedAt?: T;
+  newTrialEndsAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "posts_select".
  */
 export interface PostsSelect<T extends boolean = true> {
@@ -1760,6 +1965,38 @@ export interface PayloadKvSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-jobs_select".
+ */
+export interface PayloadJobsSelect<T extends boolean = true> {
+  input?: T;
+  taskStatus?: T;
+  completedAt?: T;
+  totalTried?: T;
+  hasError?: T;
+  error?: T;
+  log?:
+    | T
+    | {
+        executedAt?: T;
+        completedAt?: T;
+        taskSlug?: T;
+        taskID?: T;
+        input?: T;
+        output?: T;
+        state?: T;
+        error?: T;
+        id?: T;
+      };
+  taskSlug?: T;
+  queue?: T;
+  waitUntil?: T;
+  processing?: T;
+  meta?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents_select".
  */
 export interface PayloadLockedDocumentsSelect<T extends boolean = true> {
@@ -1792,6 +2029,34 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-jobs-stats".
+ */
+export interface PayloadJobsStat {
+  id: number;
+  stats?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "payload-jobs-stats_select".
+ */
+export interface PayloadJobsStatsSelect<T extends boolean = true> {
+  stats?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "collections_widget".
  */
 export interface CollectionsWidget {
@@ -1799,6 +2064,22 @@ export interface CollectionsWidget {
     [k: string]: unknown;
   };
   width: 'full';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskBilling-reminders".
+ */
+export interface TaskBillingReminders {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskPlatform-digest".
+ */
+export interface TaskPlatformDigest {
+  input?: unknown;
+  output?: unknown;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

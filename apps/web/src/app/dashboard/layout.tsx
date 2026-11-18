@@ -57,6 +57,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const navItems = [
     ...NAV_ITEMS,
     ...(me.role === 'manager' || me.role === 'owner' ? [{ href: '/dashboard/audit-log', label: 'Audit Log' }] : []),
+    ...(me.role === 'manager' || me.role === 'owner' ? [{ href: '/billing', label: 'Billing' }] : []),
     ...(me.role === 'manager' || me.role === 'owner' ? [{ href: '/dashboard/quotations', label: 'Quotations' }] : []),
     // Sell Online add-on - only listed once a platform admin switches it on.
     ...((me.role === 'manager' || me.role === 'owner') && typeof me.tenant === 'object' && hasAddon(me.tenant, 'sell_online')
@@ -103,7 +104,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <UserMenu name={me.name} email={me.email} role={me.role} />
           </header>
           {access ? (
-            <BillingBanner access={access} tenantName={tenantName} paidUntil={tenant?.paidUntil} billingStatus={billingStatus} />
+            <BillingBanner access={access} paidUntil={tenant?.paidUntil} billingStatus={billingStatus} />
           ) : null}
           <main className="flex-1 p-4 sm:p-6">{children}</main>
         </SidebarInset>

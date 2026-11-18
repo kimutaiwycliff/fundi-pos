@@ -123,6 +123,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // users, so they must go before the users delete below.
     await payload.db.deleteMany({ collection: 'tenant-activity-days', where: { tenant: { equals: tenant.id } } });
     await payload.db.deleteMany({ collection: 'platform-tenant-notes', where: { tenant: { equals: tenant.id } } });
+    await payload.db.deleteMany({ collection: 'trial-extension-requests', where: { tenant: { equals: tenant.id } } });
 
     assertDeleted('users', await payload.delete({ collection: 'users', where: { tenant: { equals: tenant.id } }, overrideAccess: true }));
     // Stores after users: Stores' beforeDelete refuses while any staff

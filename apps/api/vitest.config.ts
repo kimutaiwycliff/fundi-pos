@@ -30,7 +30,9 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     testTimeout: 20000,
-    hookTimeout: 20000,
+    // beforeAll boots Payload (schema pull + init across ~30 collections),
+    // which can take ~20s on a cold local Postgres.
+    hookTimeout: 60000,
     // All integration test files share one physical Postgres database and
     // each truncates all tables in its own beforeEach - running files in
     // parallel races two files' truncates/inserts against each other
@@ -52,6 +54,18 @@ export default defineConfig({
     env: {
       DATABASE_URI: resolveDatabaseUri(),
       PAYLOAD_SECRET: process.env.PAYLOAD_SECRET ?? 'test_only_secret',
+      // Never touch real object storage from tests: apps/api/.env carries the
+      // real Cloudflare R2 bucket, and with it set every gallery test
+      // uploaded to it (and hung whenever the network was slow). Blank =
+      // payload.config.ts's s3Storage plugin stays disabled; uploads go to
+      // local disk.
+      R2_BUCKET: '',
+      R2_ACCESS_KEY_ID: '',
+      R2_SECRET_ACCESS_KEY: '',
+      R2_ENDPOINT: '',
+      R2_PUBLIC_URL: '',
+      // Nor send real email, whatever the local .env says.
+      BREVO_API_KEY: '',
     },
   },
   resolve: {

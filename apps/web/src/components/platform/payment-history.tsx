@@ -64,6 +64,15 @@ function DeletePaymentButton({ payment }: { payment: SubscriptionPayment }) {
   );
 }
 
+function RejectedTag({ payment, className }: { payment: SubscriptionPayment; className?: string }) {
+  if (payment.status !== 'rejected') return null;
+  return (
+    <span className={`text-xs font-medium text-red-700 dark:text-red-300 ${className ?? ''}`} title={payment.rejectReason ?? undefined}>
+      Claim rejected{payment.rejectReason ? `: ${payment.rejectReason}` : ''}
+    </span>
+  );
+}
+
 export function PaymentHistory({ payments }: { payments: SubscriptionPayment[] }) {
   if (payments.length === 0) {
     return (
@@ -74,7 +83,8 @@ export function PaymentHistory({ payments }: { payments: SubscriptionPayment[] }
       />
     );
   }
-  const total = payments.reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
+  // Rejected claims stay listed (with why) but never count.
+  const total = payments.filter((p) => p.status !== 'rejected').reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
 
   return (
     <>
@@ -82,7 +92,9 @@ export function PaymentHistory({ payments }: { payments: SubscriptionPayment[] }
         {payments.map((p) => (
           <li key={p.id} className="flex items-start justify-between gap-2 py-2.5 first:pt-0">
             <div className="flex min-w-0 flex-col gap-0.5">
-              <span className="font-semibold tabular-nums">{formatKES(p.amount)}</span>
+              <span className="font-semibold tabular-nums">
+                {formatKES(p.amount)} <RejectedTag payment={p} />
+              </span>
               <span className="text-xs text-muted-foreground">
                 {formatDay(p.paidAt)} · {PAYMENT_METHOD_LABELS[p.method] ?? p.method}
                 {p.reference ? ` · ${p.reference}` : ''}
@@ -99,7 +111,7 @@ export function PaymentHistory({ payments }: { payments: SubscriptionPayment[] }
           </li>
         ))}
         <li className="flex justify-between pt-2.5 text-sm font-medium">
-          <span>Total paid ({payments.length})</span>
+          <span>Total paid ({payments.filter((p) => p.status !== 'rejected').length})</span>
           <span className="tabular-nums">{formatKES(total)}</span>
         </li>
       </ul>
@@ -122,7 +134,10 @@ export function PaymentHistory({ payments }: { payments: SubscriptionPayment[] }
             {payments.map((p) => (
               <TableRow key={p.id}>
                 <TableCell>{formatDay(p.paidAt)}</TableCell>
-                <TableCell className="text-right font-medium tabular-nums">{formatKES(p.amount)}</TableCell>
+                <TableCell className="text-right font-medium tabular-nums">
+                  <span className={p.status === 'rejected' ? 'text-muted-foreground line-through' : undefined}>{formatKES(p.amount)}</span>
+                  <RejectedTag payment={p} className="block" />
+                </TableCell>
                 <TableCell>
                   <div className="flex flex-col">
                     <span>{PAYMENT_METHOD_LABELS[p.method] ?? p.method}</span>
@@ -149,7 +164,7 @@ export function PaymentHistory({ payments }: { payments: SubscriptionPayment[] }
           </TableBody>
           <TableFooter>
             <TableRow>
-              <TableCell>Total ({payments.length})</TableCell>
+              <TableCell>Total ({payments.filter((p) => p.status !== 'rejected').length})</TableCell>
               <TableCell className="text-right tabular-nums">{formatKES(total)}</TableCell>
               <TableCell colSpan={4} />
             </TableRow>

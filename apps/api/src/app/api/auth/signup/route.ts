@@ -1,5 +1,6 @@
 import config from '@payload-config';
 import { getPayload } from 'payload';
+import { notifyNewSignup } from '@/lib/notifications';
 
 // Self-serve tenant onboarding - previously the only way to get a new
 // tenant into the system was a human running seed.ts/the Local API by
@@ -57,5 +58,6 @@ export async function POST(request: Request) {
     data: { email: owner.email, password },
   });
 
+  notifyNewSignup(payload, tenant.id);
   return Response.json({ token, user, exp });
 }

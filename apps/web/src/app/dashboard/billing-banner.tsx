@@ -1,6 +1,6 @@
 import { AlertTriangle } from 'lucide-react';
 import { daysUntil, type TenantAccess } from '@hardware-pos/business-logic';
-import { supportWhatsAppLink } from '@/lib/support';
+import Link from 'next/link';
 
 function formatDay(date: Date | string): string {
   return new Date(date).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi' });
@@ -11,12 +11,10 @@ function formatDay(date: Date | string): string {
 // warning before tenantAccess() locks them out (see the layout's gate).
 export function BillingBanner({
   access,
-  tenantName,
   paidUntil,
   billingStatus,
 }: {
   access: TenantAccess;
-  tenantName: string;
   paidUntil?: string | null;
   billingStatus?: string | null;
 }) {
@@ -44,7 +42,6 @@ export function BillingBanner({
   if (!text) return null;
 
   const urgent = access.state === 'trial_expired' || access.state === 'overdue' || billingStatus === 'past_due';
-  const href = supportWhatsAppLink(`Hi Fundi POS, I'd like to pay for ${tenantName}'s subscription.`);
   return (
     <div
       className={`flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-4 py-2 text-sm ${
@@ -53,9 +50,9 @@ export function BillingBanner({
     >
       <AlertTriangle className="size-4 shrink-0" />
       <span className="min-w-0 flex-1">{text}</span>
-      <a href={href} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2">
-        Pay via WhatsApp
-      </a>
+      <Link href="/billing" className="font-medium underline underline-offset-2">
+        Pay now
+      </Link>
     </div>
   );
 }
