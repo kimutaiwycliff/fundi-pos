@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { SalesProfitChart } from './daily-charts';
+import { DeviceActions } from './device-actions';
 import { formatDay, formatKES, timeAgo, titleCase } from './format';
 import { Delta, HealthBadge, kesShort, SetupStageBadge, Stat } from './insights';
 import type { TenantInsights } from './types';
@@ -350,8 +351,44 @@ export function UsageTab({ data }: { data: TenantInsights }) {
 
 // -------------------------------------------------------------------- Team
 
+const PLATFORM_LABELS: Record<string, string> = { desktop: 'desktop', mobile: 'phone', web: 'web' };
+
 export function TeamTab({ data }: { data: TenantInsights }) {
   const now = data.generatedAt;
+  // Registered tills first (with revoke), then tills only known from synced sales.
+  const sales = new Map(data.terminals.map((t) => [t.terminal, t]));
+  const tills = [
+    ...data.devices.map((d) => {
+      const s = sales.get(d.terminalId);
+      const lastSale = s?.lastSaleAt ?? null;
+      return {
+        deviceId: d.id,
+        terminalId: d.terminalId,
+        name: d.name ?? s?.name ?? null,
+        platform: d.platform,
+        store: s?.store ?? null,
+        lastUser: d.lastUser,
+        lastSeenAt: [d.lastSeenAt, lastSale].filter(Boolean).sort().at(-1) ?? null,
+        sales30: s?.sales30 ?? 0,
+        revokedAt: d.revokedAt,
+        revokeReason: d.revokeReason,
+      };
+    }),
+    ...data.terminals
+      .filter((t) => !data.devices.some((d) => d.terminalId === t.terminal))
+      .map((t) => ({
+        deviceId: null as number | null,
+        terminalId: t.terminal,
+        name: t.name,
+        platform: null as string | null,
+        store: t.store,
+        lastUser: null as string | null,
+        lastSeenAt: t.lastSaleAt,
+        sales30: t.sales30,
+        revokedAt: null as string | null,
+        revokeReason: null as string | null,
+      })),
+  ];
   const stale = (iso: string | null, days: number) => !iso || new Date(now).getTime() - new Date(iso).getTime() > days * 86_400_000;
   return (
     <div className="flex flex-col gap-4">
@@ -405,33 +442,57 @@ export function TeamTab({ data }: { data: TenantInsights }) {
       <Card>
         <CardHeader>
           <CardTitle>Tills</CardTitle>
-          <CardDescription>Each device that has synced a sale, by its till ID.</CardDescription>
+          <CardDescription>
+            Each till registers when someone signs in or a sale syncs. Revoke a lost or stolen one: it can&apos;t sign in again and an open
+            session ends within a few hours.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          {data.terminals.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No till has synced a sale yet.</p>
+          {tills.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No till has signed in or synced a sale yet.</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Till</TableHead>
-                  <TableHead>Branch</TableHead>
-                  <TableHead>Last sale</TableHead>
+                  <TableHead>Branch · last user</TableHead>
+                  <TableHead>Last seen</TableHead>
                   <TableHead className="text-right">Sales · 30d</TableHead>
+                  <TableHead className="w-24">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.terminals.map((t) => (
-                  <TableRow key={t.terminal}>
+                {tills.map((t) => (
+                  <TableRow key={t.terminalId} className={cn(t.revokedAt && 'opacity-60')}>
                     <TableCell>
                       <span className="flex flex-col">
-                        <span>{t.name || 'Unnamed till'}</span>
-                        <span className="font-mono text-xs text-muted-foreground">{t.terminal.slice(0, 8)}</span>
+                        <span>
+                          {t.name || 'Unnamed till'}
+                          {t.platform ? <span className="ml-1 text-xs text-muted-foreground">({PLATFORM_LABELS[t.platform] ?? t.platform})</span> : null}
+                        </span>
+                        <span className="font-mono text-xs text-muted-foreground">{t.terminalId.slice(0, 8)}</span>
+                        {t.revokedAt ? (
+                          <span className="text-xs font-medium text-red-700 dark:text-red-300">
+                            Revoked {formatDay(t.revokedAt)}
+                            {t.revokeReason ? ` - ${t.revokeReason}` : ''}
+                          </span>
+                        ) : null}
                       </span>
                     </TableCell>
-                    <TableCell>{t.store ?? '—'}</TableCell>
-                    <TableCell className={cn(stale(t.lastSaleAt, 7) && 'text-amber-700 dark:text-amber-300')}>{timeAgo(t.lastSaleAt, now)}</TableCell>
+                    <TableCell className="text-muted-foreground">{[t.store, t.lastUser].filter(Boolean).join(' · ') || '—'}</TableCell>
+                    <TableCell className={cn(stale(t.lastSeenAt, 7) && 'text-amber-700 dark:text-amber-300')}>{timeAgo(t.lastSeenAt, now)}</TableCell>
                     <TableCell className="text-right tabular-nums">{t.sales30}</TableCell>
+                    <TableCell className="text-right">
+                      {t.deviceId != null ? (
+                        <DeviceActions id={t.deviceId} name={t.name || 'this till'} revoked={Boolean(t.revokedAt)} />
+                      ) : (
+                        <span className="text-xs text-muted-foreground" title="Registers the next time it signs in or syncs">
+                          Not registered yet
+                        </span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

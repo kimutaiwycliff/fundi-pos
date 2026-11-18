@@ -6,11 +6,15 @@ import { hashPin } from '../lib/pin.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 import { checkTenantAccess } from '../lib/billing.ts';
 import { activitySource, recordActivity } from '../lib/activity.ts';
+import { DEVICE_REVOKED_MESSAGE, isDeviceRevoked, terminalFromHeaders, touchDevice } from '../lib/devices.ts';
 import { toID } from '../lib/relations.ts';
 
 export const Users: CollectionConfig = {
   slug: 'users',
-  auth: true, // email/password login, for the web dashboard
+  // email/password login, for the web dashboard. Set-password links (a new
+  // owner added from the platform console) last 72h - long enough to send
+  // over WhatsApp.
+  auth: { forgotPassword: { expiration: 72 * 60 * 60 * 1000 } },
   admin: { useAsTitle: 'email' },
   access: {
     read: ownTenantOnly,
@@ -103,6 +107,10 @@ export const Users: CollectionConfig = {
           id: toID(user.tenant),
           overrideAccess: true,
         });
+        // A till the operator revoked can't sign in with a password either.
+        if (await isDeviceRevoked(req.payload, toID(user.tenant), terminalFromHeaders(req.headers).terminalId)) {
+          throw new APIError(DEVICE_REVOKED_MESSAGE, 403);
+        }
         const check = checkTenantAccess(tenant);
         if (!check.allowed) {
           // A plain Error gets masked as a generic 500 "Something went
@@ -162,6 +170,8 @@ export const Users: CollectionConfig = {
           req,
         });
         recordActivity(req.payload, { userId: user.id, tenantId: toID(user.tenant), source: activitySource(req.headers), login: true });
+        const till = terminalFromHeaders(req.headers);
+        if (till.terminalId) touchDevice(req.payload, { tenantId: toID(user.tenant), ...till, platform: activitySource(req.headers), userId: user.id });
       },
     ],
     // Every dashboard navigation calls /api/users/me (apps/web's

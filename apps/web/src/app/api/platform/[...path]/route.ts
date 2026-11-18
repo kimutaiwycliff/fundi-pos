@@ -18,6 +18,8 @@ const ALLOWED_ROOTS = new Set([
   'platform-tenant-notes',
   'trial-extension-requests',
   'platform-notifications',
+  'platform-provision',
+  'devices',
 ]);
 
 function isAllowed(path: string[]): boolean {

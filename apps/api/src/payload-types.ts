@@ -93,6 +93,8 @@ export interface Config {
     'platform-tenant-notes': PlatformTenantNote;
     'platform-notifications': PlatformNotification;
     'trial-extension-requests': TrialExtensionRequest;
+    'trial-grants': TrialGrant;
+    devices: Device;
     posts: Post;
     'post-images': PostImage;
     'payload-kv': PayloadKv;
@@ -128,6 +130,8 @@ export interface Config {
     'platform-tenant-notes': PlatformTenantNotesSelect<false> | PlatformTenantNotesSelect<true>;
     'platform-notifications': PlatformNotificationsSelect<false> | PlatformNotificationsSelect<true>;
     'trial-extension-requests': TrialExtensionRequestsSelect<false> | TrialExtensionRequestsSelect<true>;
+    'trial-grants': TrialGrantsSelect<false> | TrialGrantsSelect<true>;
+    devices: DevicesSelect<false> | DevicesSelect<true>;
     posts: PostsSelect<false> | PostsSelect<true>;
     'post-images': PostImagesSelect<false> | PostImagesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
@@ -155,6 +159,7 @@ export interface Config {
     tasks: {
       'billing-reminders': TaskBillingReminders;
       'platform-digest': TaskPlatformDigest;
+      'purge-tenants': TaskPurgeTenants;
       inline: {
         input: unknown;
         output: unknown;
@@ -237,6 +242,7 @@ export interface Tenant {
    */
   status: 'active' | 'suspended' | 'deleted';
   statusChangedAt?: string | null;
+  scheduledPurgeAt?: string | null;
   /**
    * Optional note - shown in the platform audit log, not to the tenant.
    */
@@ -894,7 +900,7 @@ export interface AuditLog {
 export interface PlatformAuditLog {
   id: number;
   tenant?: (number | null) | Tenant;
-  actor: number | PlatformAdmin;
+  actor?: (number | null) | PlatformAdmin;
   action:
     | 'tenant_suspended'
     | 'tenant_reactivated'
@@ -904,7 +910,11 @@ export interface PlatformAuditLog {
     | 'addon_changed'
     | 'payment_recorded'
     | 'payment_deleted'
-    | 'billing_updated';
+    | 'billing_updated'
+    | 'tenant_provisioned'
+    | 'tenant_purged'
+    | 'device_revoked'
+    | 'device_restored';
   summary: string;
   metadata?:
     | {
@@ -988,6 +998,43 @@ export interface TrialExtensionRequest {
   decidedBy?: (number | null) | PlatformAdmin;
   decidedAt?: string | null;
   newTrialEndsAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "trial-grants".
+ */
+export interface TrialGrant {
+  id: number;
+  tenant?: (number | null) | Tenant;
+  businessName: string;
+  emailCanonical?: string | null;
+  emailRaw?: string | null;
+  phone?: string | null;
+  ip?: string | null;
+  source: 'signup' | 'operator';
+  trialDays?: number | null;
+  repeatOverride?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "devices".
+ */
+export interface Device {
+  id: number;
+  tenant: number | Tenant;
+  terminalId: string;
+  name?: string | null;
+  platform?: ('desktop' | 'mobile' | 'web') | null;
+  lastUser?: (number | null) | User;
+  firstSeenAt?: string | null;
+  lastSeenAt?: string | null;
+  revokedAt?: string | null;
+  revokedBy?: (number | null) | PlatformAdmin;
+  revokeReason?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -1129,7 +1176,7 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'billing-reminders' | 'platform-digest';
+        taskSlug: 'inline' | 'billing-reminders' | 'platform-digest' | 'purge-tenants';
         taskID: string;
         input?:
           | {
@@ -1162,7 +1209,7 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'billing-reminders' | 'platform-digest') | null;
+  taskSlug?: ('inline' | 'billing-reminders' | 'platform-digest' | 'purge-tenants') | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
@@ -1286,6 +1333,14 @@ export interface PayloadLockedDocument {
         value: number | TrialExtensionRequest;
       } | null)
     | ({
+        relationTo: 'trial-grants';
+        value: number | TrialGrant;
+      } | null)
+    | ({
+        relationTo: 'devices';
+        value: number | Device;
+      } | null)
+    | ({
         relationTo: 'posts';
         value: number | Post;
       } | null)
@@ -1376,6 +1431,7 @@ export interface TenantsSelect<T extends boolean = true> {
   name?: T;
   status?: T;
   statusChangedAt?: T;
+  scheduledPurgeAt?: T;
   statusReason?: T;
   subscriptionTier?: T;
   billingStatus?: T;
@@ -1922,6 +1978,41 @@ export interface TrialExtensionRequestsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "trial-grants_select".
+ */
+export interface TrialGrantsSelect<T extends boolean = true> {
+  tenant?: T;
+  businessName?: T;
+  emailCanonical?: T;
+  emailRaw?: T;
+  phone?: T;
+  ip?: T;
+  source?: T;
+  trialDays?: T;
+  repeatOverride?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "devices_select".
+ */
+export interface DevicesSelect<T extends boolean = true> {
+  tenant?: T;
+  terminalId?: T;
+  name?: T;
+  platform?: T;
+  lastUser?: T;
+  firstSeenAt?: T;
+  lastSeenAt?: T;
+  revokedAt?: T;
+  revokedBy?: T;
+  revokeReason?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "posts_select".
  */
 export interface PostsSelect<T extends boolean = true> {
@@ -2078,6 +2169,14 @@ export interface TaskBillingReminders {
  * via the `definition` "TaskPlatform-digest".
  */
 export interface TaskPlatformDigest {
+  input?: unknown;
+  output?: unknown;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskPurge-tenants".
+ */
+export interface TaskPurgeTenants {
   input?: unknown;
   output?: unknown;
 }

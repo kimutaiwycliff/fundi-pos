@@ -15,6 +15,7 @@ import {
 import { isAuthenticated, managerOrOwner, neverDelete, ownTenantOnly } from '../access/index.ts';
 import { isTenantUser, toID } from '../lib/relations.ts';
 import { activitySource, recordActivity } from '../lib/activity.ts';
+import { touchDevice } from '../lib/devices.ts';
 import { enforceOwnTenant } from '../hooks/enforceTenant.ts';
 
 const REVERSAL_STATUSES = new Set(['refunded', 'voided']);
@@ -334,6 +335,10 @@ export const Orders: CollectionConfig = {
       async ({ doc, operation, req }) => {
         if (operation === 'create' && isTenantUser(req.user)) {
           recordActivity(req.payload, { userId: req.user.id, tenantId: toID(doc.tenant), source: activitySource(req.headers) });
+          const source = activitySource(req.headers);
+          if (source !== 'web') {
+            touchDevice(req.payload, { tenantId: toID(doc.tenant), terminalId: doc.terminal, name: doc.terminalName ?? null, platform: source, userId: req.user.id });
+          }
         }
         return doc;
       },

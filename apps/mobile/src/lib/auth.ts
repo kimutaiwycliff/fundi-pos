@@ -1,3 +1,4 @@
+import { getTerminalId, getTerminalName } from './terminal';
 // Auth flow against the Payload API (apps/api), ported from
 // apps/desktop/src/auth.ts. RN's built-in `fetch` isn't subject to a
 // webview's CORS policy the way desktop's Tauri webview is (there's no
@@ -32,6 +33,11 @@ export async function apiFetch(input: string, init?: RequestInit): Promise<Respo
   // tracking (apps/api/src/lib/activity.ts). No CORS concerns: React Native fetch has no CORS.
   const headers = new Headers(init?.headers);
   headers.set('X-Fundi-Client', 'mobile');
+  // Which till this is - the server's device registry, and how a till the
+  // operator revoked gets refused (apps/api/src/lib/devices.ts).
+  headers.set('X-Fundi-Terminal', await getTerminalId());
+  const terminalName = await getTerminalName();
+  if (terminalName) headers.set('X-Fundi-Terminal-Name', encodeURIComponent(terminalName));
   try {
     return await fetch(input, { ...init, headers });
   } catch {

@@ -11,6 +11,8 @@ import {
 import { background } from './background.ts';
 import { sendEmail, type SendResult } from './email.ts';
 import { buildStats } from './platformStats.ts';
+import { purgeTenant } from './purgeTenant.ts';
+import type { PriorTrial } from './trialGrants.ts';
 
 // Every email Fundi POS sends: billing emails to tenant owners, alerts and
 // the weekly digest to the operator. Event emails (a claim came in, a
@@ -112,19 +114,27 @@ const greeting = (name: string | null) => (name ? `Hi ${name.split(' ')[0]},` : 
 
 // ------------------------------------------------------ operator: events
 
-export function notifyNewSignup(payload: Payload, tenantId: number | string): void {
+export function notifyNewSignup(payload: Payload, tenantId: number | string, priorTrials: PriorTrial[] = []): void {
   background('notify:signup', async () => {
     const { tenant, to: ownerEmails } = await tenantContacts(payload, tenantId);
+    const strong = priorTrials.filter((p) => p.matchedOn.includes('email') || p.matchedOn.includes('phone'));
     const { html, text } = render({
-      heading: `New sign-up: ${tenant.name}`,
+      heading: `${strong.length ? 'Repeat trial? ' : ''}New sign-up: ${tenant.name}`,
       intro: [
         `${tenant.name} just signed up and started a ${TRIAL_DAYS}-day free trial.`,
         `Owner: ${ownerEmails[0] ?? 'no email on file'}.`,
+        ...(priorTrials.length
+          ? [
+              `Heads up: this looks like ${strong.length ? 'a repeat trial' : 'it may be a repeat trial (same network only)'} - earlier trial(s): ${priorTrials
+                .map((p) => `${p.businessName} (${day(p.createdAt)}, matched on ${p.matchedOn.join(' + ')})`)
+                .join('; ')}.`,
+            ]
+          : []),
         'A welcome call in the first few days is the best predictor of a shop that sticks.',
       ],
       cta: { label: 'Open in the console', href: appUrl(`/platform/tenants/${tenant.id}`) },
     });
-    await sendEmail(payload, { key: `signup:${tenant.id}`, kind: 'operator_signup', tenantId: tenant.id, to: await operatorRecipients(payload), subject: `New sign-up: ${tenant.name}`, html, text });
+    await sendEmail(payload, { key: `signup:${tenant.id}`, kind: 'operator_signup', tenantId: tenant.id, to: await operatorRecipients(payload), subject: `${strong.length ? 'Repeat trial? ' : ''}New sign-up: ${tenant.name}`, html, text });
   });
 }
 
@@ -399,4 +409,61 @@ export async function runPlatformDigest(payload: Payload, now = new Date(), { fo
     html,
     text,
   });
+}
+
+// ------------------------------------------- owner: added by the operator
+
+// A shop the operator set up from the console: the owner gets a link to
+// choose their own password (valid 72h - Users.ts auth.forgotPassword).
+export async function sendOwnerWelcome(
+  payload: Payload,
+  args: { tenantId: number | string; ownerEmail: string; ownerName: string | null; link: string; trialDays: number; resend?: boolean },
+): Promise<SendResult> {
+  const tenant = await payload.findByID({ collection: 'tenants', id: args.tenantId, depth: 0, overrideAccess: true });
+  const { html, text } = render({
+    heading: args.resend ? 'Set your Fundi POS password' : `Welcome to Fundi POS, ${tenant.name}`,
+    intro: [
+      greeting(args.ownerName),
+      args.resend
+        ? `Here's a new link to set your password for ${tenant.name}.`
+        : `Your shop ${tenant.name} is ready${args.trialDays > 0 ? `, with a ${args.trialDays}-day free trial` : ''}. Choose a password to sign in.`,
+      'The link works for 72 hours. Your email address is your username.',
+    ],
+    cta: { label: 'Set my password', href: args.link },
+  });
+  return sendEmail(payload, {
+    key: `owner_welcome:${tenant.id}:${Date.now()}`,
+    kind: args.resend ? 'owner_set_password' : 'owner_welcome',
+    tenantId: tenant.id,
+    to: [args.ownerEmail],
+    subject: args.resend ? 'Set your Fundi POS password' : `Welcome to Fundi POS - set your password`,
+    html,
+    text,
+  });
+}
+
+// --------------------------------------------- scheduled: 30-day purges
+
+// Daily. Soft-deleted tenants whose 30-day grace (Tenants.scheduledPurgeAt)
+// has passed are deleted for good. One failure doesn't stop the rest.
+export async function runScheduledPurges(payload: Payload, now = new Date()): Promise<{ purged: number; failed: number }> {
+  const due = await payload.find({
+    collection: 'tenants',
+    where: { status: { equals: 'deleted' }, scheduledPurgeAt: { less_than_equal: now.toISOString() } },
+    pagination: false,
+    depth: 0,
+    overrideAccess: true,
+  });
+  let purged = 0;
+  let failed = 0;
+  for (const t of due.docs) {
+    try {
+      await purgeTenant(payload, Number(t.id), { reason: '30 days after it was soft-deleted' });
+      purged++;
+    } catch (err) {
+      failed++;
+      console.warn(`[purge] tenant ${t.id} (${t.name}) failed`, err);
+    }
+  }
+  return { purged, failed };
 }

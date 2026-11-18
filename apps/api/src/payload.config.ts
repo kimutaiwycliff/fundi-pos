@@ -27,7 +27,9 @@ import { TenantActivityDays } from './collections/TenantActivityDays.ts';
 import { PlatformTenantNotes } from './collections/PlatformTenantNotes.ts';
 import { PlatformNotifications } from './collections/PlatformNotifications.ts';
 import { TrialExtensionRequests } from './collections/TrialExtensionRequests.ts';
-import { runBillingReminders, runPlatformDigest } from './lib/notifications.ts';
+import { TrialGrants } from './collections/TrialGrants.ts';
+import { Devices } from './collections/Devices.ts';
+import { runBillingReminders, runPlatformDigest, runScheduledPurges } from './lib/notifications.ts';
 import { PlatformAuditLog } from './collections/PlatformAuditLog.ts';
 import { Posts } from './collections/Posts.ts';
 import { PostImages } from './collections/PostImages.ts';
@@ -74,6 +76,8 @@ export default buildConfig({
     PlatformTenantNotes,
     PlatformNotifications,
     TrialExtensionRequests,
+    TrialGrants,
+    Devices,
     Posts,
     PostImages,
   ],
@@ -112,6 +116,12 @@ export default buildConfig({
         slug: 'platform-digest',
         schedule: [{ cron: '0 10 * * * *', queue: 'platform' }],
         handler: async ({ req }) => ({ output: { result: await runPlatformDigest(req.payload) } }),
+      },
+      {
+        // Soft-deleted tenants whose 30-day grace has run out.
+        slug: 'purge-tenants',
+        schedule: [{ cron: '0 30 2 * * *', queue: 'platform' }],
+        handler: async ({ req }) => ({ output: await runScheduledPurges(req.payload) }),
       },
     ],
     autoRun: process.env.VITEST || process.env.DISABLE_JOBS ? [] : [{ cron: '0 * * * * *', queue: 'platform' }],

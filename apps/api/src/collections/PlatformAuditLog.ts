@@ -25,12 +25,13 @@ export const PlatformAuditLog: CollectionConfig = {
     // self-contained human-readable record independent of this relationship,
     // same reasoning `required: true` would otherwise defeat entirely.
     { name: 'tenant', type: 'relationship', relationTo: 'tenants', index: true },
-    { name: 'actor', type: 'relationship', relationTo: 'platform-admins', required: true },
+    // Empty for scheduled jobs (e.g. the 30-day purge) - no person did it.
+    { name: 'actor', type: 'relationship', relationTo: 'platform-admins' },
     {
       name: 'action',
       type: 'select',
       required: true,
-      options: ['tenant_suspended', 'tenant_reactivated', 'tenant_soft_deleted', 'tenant_restored', 'subscription_changed', 'addon_changed', 'payment_recorded', 'payment_deleted', 'billing_updated'],
+      options: ['tenant_suspended', 'tenant_reactivated', 'tenant_soft_deleted', 'tenant_restored', 'subscription_changed', 'addon_changed', 'payment_recorded', 'payment_deleted', 'billing_updated', 'tenant_provisioned', 'tenant_purged', 'device_revoked', 'device_restored'],
     },
     { name: 'summary', type: 'text', required: true },
     { name: 'metadata', type: 'json' },

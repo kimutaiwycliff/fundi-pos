@@ -10,6 +10,7 @@
 // node_modules/@tauri-apps/plugin-http's guest-js, which just wraps a plain
 // Fetch-API-shaped call proxied through a Tauri command.
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+import { getTerminalId, getTerminalName } from './terminal';
 
 // apps/api (Payload). Vite-env-driven so a real distributed build points at
 // the real production domain instead of a dev machine's own localhost -
@@ -43,6 +44,11 @@ export async function apiFetch(input: string, init?: Parameters<typeof tauriFetc
   // tracking (apps/api/src/lib/activity.ts). No CORS concerns: Tauri fetches from Rust, not the webview.
   const headers = new Headers(init?.headers);
   headers.set('X-Fundi-Client', 'desktop');
+  // Which till this is - the server's device registry, and how a till the
+  // operator revoked gets refused (apps/api/src/lib/devices.ts).
+  headers.set('X-Fundi-Terminal', getTerminalId());
+  const terminalName = getTerminalName();
+  if (terminalName) headers.set('X-Fundi-Terminal-Name', encodeURIComponent(terminalName));
   try {
     return await tauriFetch(input, { ...init, headers });
   } catch {

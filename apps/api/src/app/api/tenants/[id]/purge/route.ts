@@ -1,6 +1,7 @@
 import config from '@payload-config';
 import { getPayload } from 'payload';
 import { headers as nextHeaders } from 'next/headers';
+import { purgeTenant } from '@/lib/purgeTenant';
 
 // Irreversible, full cascade delete of a tenant and every row it owns -
 // reachable from web via the platform proxy at /api/platform/tenants/:id/
@@ -29,51 +30,6 @@ import { headers as nextHeaders } from 'next/headers';
 // relationship) and sync-log (no `tenant` field at all - it's keyed by
 // terminal id, diagnostic-only, not worth a fragile cross-collection join
 // to clean up).
-const TENANT_SCOPED_COLLECTIONS = [
-  'audit-log',
-  'shifts',
-  'credit-payments',
-  'stock-movements',
-  'orders',
-  // After orders (an order can reference the promo code it used).
-  'promo-codes',
-  'purchase-orders',
-  'stock-transfers',
-  'quotations',
-  'customers',
-  // Must come after 'purchase-orders' - PurchaseOrders.supplier is a
-  // required, top-level relationship, so a supplier can't be deleted while
-  // a purchase order still references it. Was missing from this list
-  // entirely (every OTHER collection with a `tenant` relationship is
-  // covered here or handled separately below) - the tenant row's own
-  // delete failed with any supplier left behind, for the identical
-  // NOT-NULL-vs-unsatisfiable-ON-DELETE-SET-NULL reason as the
-  // store-product-overrides fix below, just one level up (blocking the
-  // tenant delete itself, not a child collection's).
-  'suppliers',
-  // Must come before 'products' - StoreProductOverrides.product is a
-  // required, top-level relationship (unlike every other collection's own
-  // `product` field, which lives inside a line-items array and gets
-  // cascade-deleted along with its parent row instead). With no DB-level
-  // cascade on cross-collection FKs (see this file's own header comment),
-  // deleting a product while an override row still references it hits
-  // Postgres's NOT NULL constraint via an unsatisfiable ON DELETE SET NULL -
-  // an unhandled error that surfaced as a bare 500 on every purge attempt.
-  'store-product-overrides',
-  'products',
-  // 'stores' is deleted last, after users (see below).
-] as const;
-
-type BulkDeleteResult = { errors?: { message?: string }[] };
-
-// A bulk payload.delete({ where }) doesn't throw when individual documents
-// fail (a beforeDelete guard, a foreign key) - it returns them in `errors`.
-// Ignoring that is how stores silently survived every purge until now.
-function assertDeleted(collection: string, result: BulkDeleteResult) {
-  const failure = result.errors?.[0];
-  if (failure) throw new Error(`${collection}: ${failure.message ?? 'could not be deleted'}`);
-}
-
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const payload = await getPayload({ config });
   const { user } = await payload.auth({ headers: await nextHeaders() });
@@ -89,51 +45,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (tenant.status !== 'deleted') {
     return Response.json({ error: 'Soft-delete this tenant first - permanent delete is only available for an already-deleted tenant.' }, { status: 400 });
   }
-
-  // Wrapped end-to-end - this loop previously had no error handling at all,
-  // so any failure (the store-product-overrides ordering bug fixed above,
-  // or any future one) surfaced as a bare, uncaught 500 with no actionable
-  // message - the one place on this whole platform where that's worst,
-  // since a platform admin has no way to tell "misordered dependency" apart
-  // from "genuinely stuck, needs a database check" without server log
-  // access. Every dependent collection is now cleared before the request
-  // returns; a failure partway through can leave a tenant partially purged,
-  // but the returned message at least says which collection it stopped on.
+  // A failure partway through can leave a tenant partially purged; the
+  // message at least says which collection it stopped on.
   try {
-    for (const collection of TENANT_SCOPED_COLLECTIONS) {
-      assertDeleted(collection, await payload.delete({ collection, where: { tenant: { equals: tenant.id } }, overrideAccess: true }));
-    }
-
-    // Media one document at a time, not a bulk `where` delete - R2 object
-    // cleanup only happens through the storage plugin's per-document delete
-    // hook (@payloadcms/storage-s3), never as a side effect of a bulk query.
-    const media = await payload.find({ collection: 'media', where: { tenant: { equals: tenant.id } }, pagination: false, depth: 0, overrideAccess: true });
-    for (const doc of media.docs) {
-      await payload.delete({ collection: 'media', id: doc.id, overrideAccess: true });
-    }
-
-    // Subscription payments go straight through the db adapter, skipping
-    // SubscriptionPayments' afterDelete hooks - those recompute paidUntil
-    // and write a payment_deleted audit row per payment, pointless for a
-    // tenant that's about to stop existing. Like promo-codes, these have a
-    // NOT NULL tenant_id behind an ON DELETE SET NULL foreign key, so
-    // leaving any behind made the final tenant delete below fail.
-    await payload.db.deleteMany({ collection: 'subscription-payments', where: { tenant: { equals: tenant.id } } });
-    // Same NOT NULL-behind-SET NULL shape. Activity rows also reference
-    // users, so they must go before the users delete below.
-    await payload.db.deleteMany({ collection: 'tenant-activity-days', where: { tenant: { equals: tenant.id } } });
-    await payload.db.deleteMany({ collection: 'platform-tenant-notes', where: { tenant: { equals: tenant.id } } });
-    await payload.db.deleteMany({ collection: 'trial-extension-requests', where: { tenant: { equals: tenant.id } } });
-
-    assertDeleted('users', await payload.delete({ collection: 'users', where: { tenant: { equals: tenant.id } }, overrideAccess: true }));
-    // Stores after users: Stores' beforeDelete refuses while any staff
-    // member is still assigned to the branch.
-    assertDeleted('stores', await payload.delete({ collection: 'stores', where: { tenant: { equals: tenant.id } }, overrideAccess: true }));
-    await payload.delete({ collection: 'tenants', id: tenant.id, overrideAccess: true });
+    await purgeTenant(payload, Number(tenant.id), { actorId: Number(user.id), reason: 'deleted by an operator' });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return Response.json({ error: `Purge failed partway through: ${message}` }, { status: 500 });
   }
-
   return Response.json({ success: true });
 }

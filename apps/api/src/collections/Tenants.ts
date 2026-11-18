@@ -13,6 +13,8 @@ import {
 import { toID } from '../lib/relations.ts';
 import { invalidatePlatformStats } from '../lib/platformStatsCache.ts';
 
+export const PURGE_GRACE_DAYS = 30;
+
 const platformAdminOnly: FieldAccess = ({ req }) => req.user?.collection === 'platform-admins';
 
 function sameAddons(a: unknown, b: unknown): boolean {
@@ -74,6 +76,9 @@ export const Tenants: CollectionConfig = {
       admin: { description: 'Suspended/deleted tenants (and all their staff) are locked out of every login path - web and till PIN.' },
     },
     { name: 'statusChangedAt', type: 'date', admin: { readOnly: true } },
+    // Set when the tenant is soft-deleted: the daily purge job permanently
+    // deletes it after this date unless it's restored first (which clears it).
+    { name: 'scheduledPurgeAt', type: 'date', access: { update: platformAdminOnly }, admin: { readOnly: true } },
     { name: 'statusReason', type: 'text', admin: { description: 'Optional note - shown in the platform audit log, not to the tenant.' } },
     {
       name: 'subscriptionTier',
@@ -255,6 +260,9 @@ export const Tenants: CollectionConfig = {
         }
         if (operation === 'update' && data.status && originalDoc && data.status !== originalDoc.status) {
           data.statusChangedAt = new Date().toISOString();
+          // 30-day grace before a soft-deleted tenant is purged for good.
+          if (data.status === 'deleted') data.scheduledPurgeAt = new Date(Date.now() + PURGE_GRACE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+          else if (originalDoc.status === 'deleted') data.scheduledPurgeAt = null;
         }
         if (operation === 'update' && Array.isArray(data.addons) && originalDoc && !sameAddons(data.addons, originalDoc.addons)) {
           data.addonsChangedAt = new Date().toISOString();

@@ -56,6 +56,7 @@ export interface PlatformTenantRow {
     stockRetail: number;
     spark30: number[];
   };
+  repeatTrial: boolean;
   pendingClaims: number;
   pendingTrialRequests: number;
   followUpOn: string | null;
@@ -157,6 +158,18 @@ export interface TenantInsights {
   features: Record<string, number>;
   milestones: { firstProduct: string | null; firstStock: string | null; firstSale: string | null; tenthSale: string | null; firstPayment: string | null };
   lifetime: { orders: number; revenue: number; paidToUs: number };
+  devices: {
+    id: number;
+    terminalId: string;
+    name: string | null;
+    platform: string | null;
+    firstSeenAt: string | null;
+    lastSeenAt: string | null;
+    revokedAt: string | null;
+    revokeReason: string | null;
+    lastUser: string | null;
+  }[];
+  priorTrials: { id: number; businessName: string; tenantId: number | null; createdAt: string | null; source: string; matchedOn: string[] }[];
 }
 
 export interface PlatformTenantNote {

@@ -1,6 +1,7 @@
 import { platformFetch } from '@/lib/platform-client';
 import { TenantsTable, type DeletedTenant } from '@/components/platform/tenants-table';
 import type { PlatformStats } from '@/components/platform/types';
+import { AddTenantDialog } from '@/components/platform/add-tenant-dialog';
 
 export const metadata = { title: 'Tenants · Platform' };
 
@@ -26,13 +27,16 @@ export default async function PlatformTenantsPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
         <h1 className="text-2xl font-semibold tracking-tight">Tenants</h1>
         <p className="text-sm text-muted-foreground">
           {showDeleted
             ? `${deleted.length} soft-deleted tenant${deleted.length === 1 ? '' : 's'}`
             : `${stats.summary.tenants} tenants · ${stats.summary.needsAttention} billing issues · ${stats.summary.atRisk} slipping or inactive · ${stats.summary.followUpsDue} follow-ups due`}
         </p>
+        </div>
+        <AddTenantDialog />
       </div>
       <TenantsTable
         key={`${view}-${state}-${usage}`}

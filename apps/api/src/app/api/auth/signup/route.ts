@@ -1,6 +1,8 @@
 import config from '@payload-config';
 import { getPayload } from 'payload';
+import { TRIAL_DAYS } from '@hardware-pos/business-logic';
 import { notifyNewSignup } from '@/lib/notifications';
+import { clientIp, findPriorTrials, recordTrialGrant } from '@/lib/trialGrants';
 
 // Self-serve tenant onboarding - previously the only way to get a new
 // tenant into the system was a human running seed.ts/the Local API by
@@ -58,6 +60,12 @@ export async function POST(request: Request) {
     data: { email: owner.email, password },
   });
 
-  notifyNewSignup(payload, tenant.id);
+  // Repeat-trial check (warns the operator; doesn't block the sign-up).
+  const ip = clientIp(request.headers);
+  const priors = await findPriorTrials(payload, { email: email.trim(), ip }).catch(() => []);
+  await recordTrialGrant(payload, { tenantId: tenant.id, businessName: businessName.trim(), email: email.trim(), ip, source: 'signup', trialDays: TRIAL_DAYS }).catch((err) =>
+    console.warn('[signup] could not record trial grant', err),
+  );
+  notifyNewSignup(payload, tenant.id, priors);
   return Response.json({ token, user, exp });
 }

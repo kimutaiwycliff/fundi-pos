@@ -26,6 +26,7 @@ import * as migration_20261006_051408_storefront_list_all from './20261006_05140
 import * as migration_20261006_055107_product_galleries from './20261006_055107_product_galleries';
 import * as migration_20261117_081253_platform_insights from './20261117_081253_platform_insights';
 import * as migration_20261117_100511_platform_billing_email from './20261117_100511_platform_billing_email';
+import * as migration_20261117_150807_platform_lifecycle from './20261117_150807_platform_lifecycle';
 
 export const migrations = [
   {
@@ -166,6 +167,11 @@ export const migrations = [
   {
     up: migration_20261117_100511_platform_billing_email.up,
     down: migration_20261117_100511_platform_billing_email.down,
-    name: '20261117_100511_platform_billing_email'
+    name: '20261117_100511_platform_billing_email',
+  },
+  {
+    up: migration_20261117_150807_platform_lifecycle.up,
+    down: migration_20261117_150807_platform_lifecycle.down,
+    name: '20261117_150807_platform_lifecycle'
   },
 ];
